@@ -38,15 +38,23 @@ export function btnStyle(primary: boolean, disabled = false): React.CSSPropertie
 }
 
 // ── Input helpers ──────────────────────────────────────────────────────────────
-// Keeps only digits and the first decimal point (so ".1" stays typable), capped at 9 digits on
-// each side of the decimal — matches MarkeeSignModal's sanitizeAmountInput.
-export function sanitizeDecimalInput(raw: string): string {
-  let cleaned = raw.replace(/[^0-9.]/g, '')
-  const i = cleaned.indexOf('.')
-  if (i !== -1) cleaned = cleaned.slice(0, i + 1) + cleaned.slice(i + 1).replace(/\./g, '')
-  const [intPart, fracPart] = cleaned.split('.')
-  const cappedInt = (intPart ?? '').slice(0, 9)
-  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
+// Normalizes a typed amount, or returns null to keep the previous value. A comma is accepted as the
+// decimal separator, and when both kinds appear the last one is the decimal point. Anything else, or
+// more than 9 digits on either side, is refused rather than silently rewritten.
+export function sanitizeDecimalInput(raw: string): string | null {
+  const value = raw.replace(/\s/g, '')
+  if (/[^0-9.,]/.test(value)) return null
+  const separators = value.match(/[.,]/g) ?? []
+  let normalized = value
+  if (separators.length) {
+    const decimal = separators[separators.length - 1]
+    const thousands = decimal === '.' ? ',' : '.'
+    if (separators.filter(c => c === decimal).length > 1) return null
+    normalized = value.split(thousands).join('').replace(decimal, '.')
+  }
+  const [intPart, fracPart] = normalized.split('.')
+  if ((intPart ?? '').length > 9 || (fracPart ?? '').length > 9) return null
+  return normalized
 }
 
 // Parses what the sanitizer lets through, including ".1" and "1.", to wei. 0n on anything invalid.
@@ -335,7 +343,7 @@ export function RatePriceCard({
           <input
             inputMode="decimal"
             value={monthly}
-            onChange={e => { setMonthly(sanitizeDecimalInput(e.target.value)); setLastPreset(null) }}
+            onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setMonthly(v); setLastPreset(null) }}
             placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
             style={{
               background: 'transparent', border: 'none', outline: 'none',
@@ -519,11 +527,12 @@ export function TxSteps({ steps }: { steps: { label: string; done: boolean; acti
 }
 
 // The in-flight / success body: ring + headline + supporting line.
-export function TxProgress({ isSuccess, headline, detail, steps }: {
+export function TxProgress({ isSuccess, headline, detail, steps, explorerUrl }: {
   isSuccess: boolean
   headline: string
   detail?: string
   steps?: { label: string; done: boolean; active: boolean }[]
+  explorerUrl?: string
 }) {
   return (
     <div style={{ padding: steps ? '40px 22px 40px' : '56px 22px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, textAlign: 'center', flex: 1 }}>
@@ -535,6 +544,9 @@ export function TxProgress({ isSuccess, headline, detail, steps }: {
         </div>
         {detail && (
           <div style={{ fontSize: 13, color: MUTED, maxWidth: 340, lineHeight: 1.5 }}>{detail}</div>
+        )}
+        {explorerUrl && (
+          <a href={explorerUrl} target="_blank" rel="noreferrer" style={{ fontFamily: MONO, fontSize: 12, color: PINK }}>View on Basescan ↗</a>
         )}
       </div>
     </div>

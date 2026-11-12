@@ -6,8 +6,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
 import { formatEther, zeroAddress, type Address, type Hex } from 'viem'
-import { useAccount, useReadContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
@@ -103,7 +104,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
     query: { enabled: !!address },
   })
-  const hasPosition = (!!backedMarkee && backedMarkee !== zeroAddress) || (myDeposit ?? 0n) > 0n
+  const { data: mySettlement, refetch: refetchSettlement } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'pendingSettlement', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !!address },
+  })
+  const hasPosition = (!!backedMarkee && backedMarkee !== zeroAddress) || (myDeposit ?? 0n) > 0n || (mySettlement ?? 0n) > 0n
 
   const pending = usePendingMarkee(hasPosition ? board : undefined, address)
   // Decimal count is derived from the actual accrual rate (not a fixed guess) so the last digit
@@ -122,8 +127,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const { refetch: refetchPending } = pending
   const refetchAll = useCallback(() => {
-    refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); refetchPending()
-  }, [refetch, refetchBacked, refetchMyRate, refetchDeposit, refetchPending])
+    refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); refetchSettlement(); refetchPending()
+  }, [refetch, refetchBacked, refetchMyRate, refetchDeposit, refetchSettlement, refetchPending])
 
   // ── Views ───────────────────────────────────────────────────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -432,7 +437,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const [error, setError] = useState<string | null>(null)
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
   const MAX_LEN = 222
 
   useEffect(() => {

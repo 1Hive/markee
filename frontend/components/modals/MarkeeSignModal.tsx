@@ -3,7 +3,7 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useAccount, useBalance, useWaitForTransactionReceipt, useReadContract, useSwitchChain, usePublicClient } from 'wagmi'
+import { useAccount, useBalance, useReadContract, useSwitchChain, usePublicClient } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { parseEther, formatEther } from 'viem'
 import { Eye } from 'lucide-react'
@@ -15,7 +15,12 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
+import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
+import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { isBoardCreatedMarkee, useBoardTrust } from '@/lib/contracts/boardRegistry'
@@ -41,16 +46,6 @@ function formatViewsShort(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
   return `${(n / 1_000_000).toFixed(1)}M`
-}
-
-// Caps each side of the decimal at 9 digits so a pasted/huge value can't blow out the layout.
-function sanitizeAmountInput(raw: string): string {
-  let cleaned = raw.replace(/[^0-9.]/g, '')
-  const dot = cleaned.indexOf('.')
-  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
-  const [intPart, fracPart] = cleaned.split('.')
-  const cappedInt = (intPart ?? '').slice(0, 9)
-  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
 
@@ -137,7 +132,7 @@ function AmountCard({
             <input
               inputMode="decimal"
               value={amount}
-              onChange={e => { setHasUserEdited(true); setAmount(sanitizeAmountInput(e.target.value)); setLastPreset(null) }}
+              onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setHasUserEdited(true); setAmount(v); setLastPreset(null) }}
               placeholder={minimumAmountFormatted}
               disabled={busy}
               style={{
@@ -359,7 +354,11 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
   // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
   const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    hash, track: { account: activeAddress, board: leaderboardAddress, label: 'Your Markee payment' },
+  })
+  const pendingPayments = usePendingTxsFor(activeAddress, leaderboardAddress).filter(p => p.hash !== hash)
+  const walletTimeout = useWalletTimeoutGuard(writeError, activeAddress)
 
   const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined, chainId: CANONICAL_CHAIN.id,
@@ -411,14 +410,14 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   }, [isOpen, reset])
 
   useEffect(() => {
-    if (isSuccess && isOpen) {
-      setTimeout(() => {
-        refetchLeaderboard()
-        setView('list'); setTarget(null); setMessage(''); setName(''); setAmount(''); setError(null); setHasUserEdited(false)
-        reset()
-        onSuccess?.()
-      }, 2000)
-    }
+    if (!isSuccess || !isOpen) return
+    const timer = setTimeout(() => {
+      refetchLeaderboard()
+      setView('list'); setTarget(null); setMessage(''); setName(''); setAmount(''); setError(null); setHasUserEdited(false)
+      reset()
+      onSuccess?.()
+    }, 2000)
+    return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess, isOpen])
 
@@ -503,6 +502,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleBuyNew = async () => {
     if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
+    if (pendingPayments.length || walletTimeout.blocked) return
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (boardBlockedReason || !meta) { setError(boardBlockedReason ?? 'Could not load this Markee board.'); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
@@ -524,6 +524,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   const handleAddFunds = async () => {
     if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
+    if (pendingPayments.length || walletTimeout.blocked) return
     if (!target) return
     if (boardBlockedReason || !meta) { setError(boardBlockedReason ?? 'Could not load this Markee board.'); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
@@ -550,6 +551,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   }
 
   const handleUpdateMessage = async () => {
+    if (walletTimeout.blocked) return
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!target) return
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
@@ -608,8 +610,20 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const blocksOnBalance = insufficientBalance && view !== 'edit'
   const beneficiaryBlocks = view !== 'edit' && !!noBeneficiaryReason
   const boardBlocks = view !== 'edit' && !!boardBlockedReason
-  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || boardBlocks
-  const btnDisabledReason = busy ? 'Transaction in progress' : boardBlocks ? boardBlockedReason : beneficiaryBlocks ? noBeneficiaryReason : blocksOnBalance ? "You don't have enough ETH for this" : null
+  const paymentBlocked = (view !== 'edit' && pendingPayments.length > 0) || walletTimeout.blocked
+  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks || boardBlocks || paymentBlocked
+  const btnDisabledReason = busy ? 'Transaction in progress'
+    : boardBlocks ? boardBlockedReason
+    : beneficiaryBlocks ? noBeneficiaryReason
+    : view !== 'edit' && pendingPayments.length ? PENDING_PAYMENT_REASON
+    : walletTimeout.blocked ? 'Check your wallet first'
+    : blocksOnBalance ? "You don't have enough ETH for this" : null
+  const paymentNotices = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '0 0 14px' }}>
+      {view !== 'edit' && <PendingPaymentNotice pending={pendingPayments} />}
+      <WalletTimeoutNotice state={walletTimeout.state} accountUrl={walletTimeout.accountUrl} onAcknowledge={walletTimeout.acknowledge} />
+    </div>
+  )
 
   const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
@@ -657,16 +671,17 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
             isSuccess={txStep === 'success'}
             headline={
               txStep === 'signing' ? 'Waiting for wallet…' :
-              txStep === 'pending' ? 'Confirming on Base' :
+              txStep === 'pending' ? (isUnknown ? 'Still checking' : 'Confirming on Base') :
               view === 'edit' ? 'Success! Your message is updated' :
               view === 'list' ? 'Success! Your message is live' :
               'Success! Funds added to the sign'
             }
             detail={
               txStep === 'signing' ? 'Sign the transaction in your wallet.' :
-              txStep === 'pending' ? 'Usually under 2 seconds on Base.' :
+              txStep === 'pending' ? (isUnknown ? 'The network is not answering. Your payment may still go through, so check Basescan before paying again.' : 'Usually under 2 seconds on Base.') :
               'The sign will refresh in a moment.'
             }
+            explorerUrl={txStep === 'pending' ? explorerUrl : undefined}
           />
 
         ) : isWalletConnectionPending ? (
@@ -803,7 +818,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       />
                     </div>
 
-                    {((error && !isMessageFieldError(error)) || isError) && (
+                    {paymentNotices}
+                    {((error && !isMessageFieldError(error)) || isError) && !walletTimeout.blocked && (
                       <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
                         {(error && !isMessageFieldError(error)) ? error : formatTransactionError(writeError)}
                       </p>
@@ -942,7 +958,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                 )
               )}
 
-              {((error && !isMessageFieldError(error)) || isError) && view !== 'list' && !reviewOpen && (
+              {view !== 'list' && paymentNotices}
+              {((error && !isMessageFieldError(error)) || isError) && view !== 'list' && !reviewOpen && !walletTimeout.blocked && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
                   {(error && !isMessageFieldError(error)) ? error : formatTransactionError(writeError)}
                 </p>

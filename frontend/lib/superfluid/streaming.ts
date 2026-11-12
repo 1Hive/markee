@@ -190,14 +190,20 @@ const ETHX_AUTO_WRAP_SMALL_BALANCE_THRESHOLD = 2_000_000_000_000_000n // 0.002 E
 const ETHX_AUTO_WRAP_SMALL_BALANCE_PCT = 90n
 
 // The CFA requires the backer's own wallet balance to clear the flow's buffer too, on top of what
-// the board's depositBuffer pulls out of it -- so "already enough" means the existing balance clears
-// more than 2x the buffer, not just enough to cover the pull. Below that, default to wrapping 3
-// months' worth of ETH at this rate, capped at what's actually spendable.
-export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, walletEthBalance: bigint): AutoDeposit {
+// the board's depositBuffer pulls out of it (only the shortfall over a deposit the board already
+// holds) -- so "already enough" means the existing balance clears that pull plus one buffer. Below
+// that, default to wrapping 3 months' worth of ETH at this rate, capped at what's actually spendable.
+export function depositShortfall(ratePerSec: bigint, heldDeposit: bigint): bigint {
+  const buffer = bufferFor(ratePerSec)
+  return buffer > heldDeposit ? buffer - heldDeposit : 0n
+}
+
+export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, walletEthBalance: bigint, heldDeposit = 0n): AutoDeposit {
   if (ratePerSec <= 0n) return { wrapValue: 0n, prefund: 0n, runwaySeconds: 0n, insufficientEth: false }
   const buffer = bufferFor(ratePerSec)
-  if (ethxBalance > buffer * 2n) {
-    const prefund = ethxBalance - buffer
+  const pulled = depositShortfall(ratePerSec, heldDeposit)
+  if (ethxBalance > pulled + buffer) {
+    const prefund = ethxBalance - pulled
     return { wrapValue: 0n, prefund, runwaySeconds: runwaySeconds(prefund, ratePerSec), insufficientEth: false }
   }
   const threeMonths = ratePerSecToMonthly(ratePerSec) * 3n
@@ -205,7 +211,7 @@ export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, wall
     ? (walletEthBalance > ETHX_AUTO_WRAP_RESERVE ? walletEthBalance - ETHX_AUTO_WRAP_RESERVE : 0n)
     : (walletEthBalance * ETHX_AUTO_WRAP_SMALL_BALANCE_PCT) / 100n
   const wrapValue = threeMonths < affordable ? threeMonths : affordable
-  const prefundRaw = ethxBalance + wrapValue - buffer
+  const prefundRaw = ethxBalance + wrapValue - pulled
   const prefund = prefundRaw > 0n ? prefundRaw : 0n
   return {
     wrapValue, prefund,
@@ -336,11 +342,13 @@ export function buildOpenStreamOps(p: OpenStreamParams): Operation[] {
     })
   }
 
-  ops.push({
-    operationType: OP_SIMPLE_FORWARD_CALL,
-    target: p.board,
-    data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.buffer] }),
-  })
+  if (p.buffer > 0n) {
+    ops.push({
+      operationType: OP_SIMPLE_FORWARD_CALL,
+      target: p.board,
+      data: encodeFunctionData({ abi: DEPOSIT_BUFFER_ABI, functionName: 'depositBuffer', args: [p.backer, p.buffer] }),
+    })
+  }
 
   const callData = encodeFunctionData({
     abi: CFA_CREATE_FLOW_ABI,

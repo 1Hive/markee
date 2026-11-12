@@ -2,8 +2,14 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useAccount, useSwitchChain, useReadContract } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { parseAbi } from 'viem'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
+import { PendingPaymentNotice } from '@/components/tx/PendingPaymentNotice'
+import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
 import { Check } from 'lucide-react'
@@ -293,7 +299,7 @@ function ReviewSign({ vertical, strategy, values, selectedRepo, selectedFile, is
 function CreateWizardInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { isConnected, chain } = useAccount()
+  const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
 
   const [strategy, setStrategy] = useState<Strategy | null>(null)
@@ -309,7 +315,19 @@ function CreateWizardInner() {
   const [setupTouched, setSetupTouched] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useSponsoredWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useWaitForTransactionReceipt({ hash })
+  const deployFactory = strategy === 'streaming' ? STREAMING_FACTORY_ADDR : FACTORIES['fixed']['openinternet']
+  const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, data: receipt, explorerUrl } = useTrackedReceipt({
+    hash, track: { account: address, board: deployFactory, label: 'Your Markee deployment' },
+  })
+  const pendingDeploys = usePendingTxsFor(address, deployFactory).filter(p => p.hash !== hash)
+  const walletTimeout = useWalletTimeoutGuard(writeError, address)
+  const { data: deployedBeneficiary } = useReadContract({
+    address: newLeaderboardAddress as `0x${string}` | undefined,
+    abi: parseAbi(['function beneficiaryAddress() view returns (address)']),
+    functionName: 'beneficiaryAddress',
+    chainId: CANONICAL_CHAIN.id,
+    query: { enabled: !!newLeaderboardAddress },
+  })
 
   // Restore activate step after clicking the Basescan tx link: normally that opens in a new tab and
   // leaves this one untouched, but some browsers/wallet in-app browsers don't honor target="_blank"
@@ -373,7 +391,7 @@ function CreateWizardInner() {
         body: JSON.stringify({ address: found }),
       }).catch(() => {})
     }
-    setStep(s => s + 1)
+    setStep(2)
   }, [isSuccess, receipt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -400,11 +418,12 @@ function CreateWizardInner() {
     return !!(values.siteName?.trim() && b)
   }, [values])
 
+  const busy = isPending || isConfirming
   const go = (d: number) => setStep(s => Math.max(0, Math.min(s + d, stepKeys.length - 1)))
 
   const handleDeploy = () => {
     setTxError(null)
-    if (!strategy) return
+    if (!strategy || busy || pendingDeploys.length || walletTimeout.blocked) return
     if (chain?.id !== CANONICAL_CHAIN.id) {
       setTxError(`Wrong network. Switch your wallet to ${CANONICAL_CHAIN.name}, then deploy again.`)
       switchChain?.({ chainId: CANONICAL_CHAIN.id })
@@ -440,8 +459,6 @@ function CreateWizardInner() {
     }
   }
 
-  const busy = isPending || isConfirming
-
   return (
     <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '48px 24px 80px' }}>
       {stepKey === 'setup' && (
@@ -462,10 +479,16 @@ function CreateWizardInner() {
         <StepShell
           onBack={() => router.back()} backLabel="Cancel"
           onNext={() => {
+            if (isPending) return
             setSetupTouched(true)
             if (strategy && fieldsComplete) go(1)
           }}
         >
+          {isPending && (
+            <p style={{ margin: '0 0 18px', fontSize: 13, color: C.text2, lineHeight: 1.5 }}>
+              Your wallet still has a deploy request open with the details you submitted. Reject it in your wallet before changing anything here.
+            </p>
+          )}
           <WebsiteSetupFields values={values} setValue={setValue} touched={setupTouched} />
           <h2 style={{ margin: '28px 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Choose Pricing Strategy</h2>
           <ChooseStrategy selected={strategy} onSelect={s => { setStrategy(s); setSetupTouched(false) }} />
@@ -479,16 +502,25 @@ function CreateWizardInner() {
         <StepShell
           title="Deploy Markee"
           sub="Review your info and sign the transaction to deploy your Markee on Base."
-          onBack={() => go(-1)}
+          onBack={() => { if (!isConfirming) go(-1) }}
           onNext={busy ? undefined : handleDeploy}
-          nextLabel={isPending ? 'Confirm in wallet…' : isConfirming ? 'Deploying…' : 'Deploy Markee'}
-          nextDisabled={!isConnected || busy}
+          nextLabel={isPending ? 'Confirm in wallet…' : isConfirming ? (isUnknown ? 'Still checking…' : 'Deploying…') : 'Deploy Markee'}
+          nextDisabled={!isConnected || busy || pendingDeploys.length > 0 || walletTimeout.blocked}
         >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+            <PendingPaymentNotice pending={pendingDeploys} />
+            <WalletTimeoutNotice state={walletTimeout.state} accountUrl={walletTimeout.accountUrl} onAcknowledge={walletTimeout.acknowledge} />
+            {isConfirming && explorerUrl && (
+              <a href={explorerUrl} target="_blank" rel="noreferrer" style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12, color: C.pink }}>
+                {isUnknown ? 'The network is not answering. Check the deployment on Basescan before deploying again ↗' : 'View the deployment on Basescan ↗'}
+              </a>
+            )}
+          </div>
           <ReviewSign
             vertical={vInfo} strategy={strategy} values={values}
             selectedRepo={null} selectedFile={null}
             isPending={isPending} isConfirming={isConfirming}
-            error={txError ?? (writeError ? formatTransactionError(writeError) : null)}
+            error={txError ?? (writeError && !walletTimeout.blocked ? formatTransactionError(writeError) : null)}
             isConnected={isConnected}
           />
         </StepShell>
@@ -503,7 +535,7 @@ function CreateWizardInner() {
             <div>
               <div style={{ color: C.text, fontWeight: 700 as const, fontSize: 17 }}>Transaction confirmed</div>
               <p style={{ color: C.text2, fontSize: 14, margin: '4px 0 0', lineHeight: 1.55 }}>
-                Your Markee was deployed onchain.{' '}
+                Your Markee was deployed onchain{typeof deployedBeneficiary === 'string' ? <> and pays <span style={{ fontFamily: 'var(--font-jetbrains-mono)', color: C.text }}>{deployedBeneficiary.slice(0, 6)}…{deployedBeneficiary.slice(-4)}</span></> : null}.{' '}
                 {(deployedTxHash ?? hash) && (
                   <a href={`https://basescan.org/tx/${deployedTxHash ?? hash}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'var(--font-jetbrains-mono)', color: C.blue, textDecoration: 'none', borderBottom: `1px dotted ${C.blue}` }}>
                     {(deployedTxHash ?? hash)!.slice(0, 6)}…{(deployedTxHash ?? hash)!.slice(-4)} ↗

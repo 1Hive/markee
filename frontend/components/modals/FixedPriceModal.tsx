@@ -3,7 +3,7 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useReadContract } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { formatEther, parseEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -15,6 +15,11 @@ import { formatTransactionError, formatReceiptError, logTransactionError } from 
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
+import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
+import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { ModeratedContent } from '@/components/moderation'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -78,7 +83,12 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
   // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
   const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
+  const trackedBoard = fixedMarkee?.strategyAddress
+  const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    hash, track: { account: activeAddress, board: trackedBoard, label: 'Your sign payment' },
+  })
+  const pendingPayments = usePendingTxsFor(activeAddress, trackedBoard).filter(p => p.hash !== hash)
+  const walletTimeout = useWalletTimeoutGuard(writeError, activeAddress)
 
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
   const priceEth = formatEther(priceWei)
@@ -101,9 +111,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
-    if (isSuccess && isOpen) {
-      setTimeout(() => { onSuccess?.(); onClose() }, 2000)
-    }
+    if (!isSuccess || !isOpen) return
+    const timer = setTimeout(() => { onSuccess?.(); onClose() }, 2000)
+    return () => clearTimeout(timer)
   }, [isSuccess, onClose, isOpen, onSuccess])
 
   useEffect(() => {
@@ -143,6 +153,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const handleChangeMessage = async () => {
     if (!await messageModeration.guard(newMessage)) { setReviewOpen(false); return }
     if (!fixedMarkee || !hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (pendingPayments.length || walletTimeout.blocked) return
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
     if (priceWei === 0n) { setError('Unable to load price'); return }
@@ -169,9 +180,12 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const isOverLimit = newMessage.length > maxLen
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
-  const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
+  const paymentBlocked = pendingPayments.length > 0 || walletTimeout.blocked
+  const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit || paymentBlocked
   const btnDisabledReason = !btnDisabled || isSuccess ? null
     : (isPending || isConfirming) ? 'Transaction in progress'
+    : pendingPayments.length ? PENDING_PAYMENT_REASON
+    : walletTimeout.blocked ? 'Check your wallet first'
     : insufficientBalance ? 'Insufficient ETH balance'
     : isOverLimit ? 'Message exceeds character limit'
     : !newMessage.trim() ? 'Enter a message to continue'
@@ -239,9 +253,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             isSuccess={txStep === 'success'}
             headline={
               txStep === 'signing' ? 'Waiting for wallet…' :
-              txStep === 'pending' ? 'Confirming on Base' :
+              txStep === 'pending' ? (isUnknown ? 'Still checking' : 'Confirming on Base') :
               'Success! Message updated'
             }
+            detail={txStep === 'pending' && isUnknown ? 'The network is not answering. Your payment may still go through, so check Basescan before paying again.' : undefined}
+            explorerUrl={txStep === 'pending' ? explorerUrl : undefined}
           />
 
         ) : isWalletConnectionPending ? (
@@ -369,8 +385,12 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                 </>
               )}
 
-              {/* Error */}
-              {!reviewOpen && transactionError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+                <PendingPaymentNotice pending={pendingPayments} />
+                <WalletTimeoutNotice state={walletTimeout.state} accountUrl={walletTimeout.accountUrl} onAcknowledge={walletTimeout.acknowledge} />
+              </div>
+
+              {!reviewOpen && transactionError && !walletTimeout.blocked && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '14px 0 0' }}>
                   {transactionError}
                 </p>
