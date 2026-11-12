@@ -43,6 +43,11 @@ interface ListedBoard {
 
 export async function GET() {
   const cached = await kv.get<{ buys: BestBuy[] }>(CACHE_KEY)
+  // TEMP(e2e diagnosis, PR #62): is this request answered from the KV cache, and with what?
+  if (process.env.NEXT_PUBLIC_E2E === '1') {
+    const ttl = await kv.ttl(CACHE_KEY).catch(e => `ttl error ${e}`)
+    console.warn('[best-buys diag] entry', JSON.stringify({ at: new Date().toISOString(), hit: !!cached, buys: cached?.buys?.length ?? null, ttl, kvUrl: (process.env.KV_REST_API_URL ?? '').replace(/\/\/.*@/, '//') }))
+  }
   if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
 
   try {
