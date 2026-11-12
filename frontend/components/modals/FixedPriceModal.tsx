@@ -3,10 +3,10 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { FixedPriceStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -81,7 +81,15 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceEth = formatEther(priceWei)
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
-  const markeeEarned = Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum))
+  const issuesMarkee = !!fixedMarkee?.revNetEnabled
+  const markeeEarned = issuesMarkee ? Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum)) : 0
+  const { data: beneficiary } = useReadContract({
+    address: fixedMarkee?.strategyAddress as `0x${string}` | undefined,
+    abi: BeneficiaryAddressABI,
+    functionName: 'beneficiaryAddress',
+    chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!fixedMarkee && !issuesMarkee },
+  })
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
   const maxNameLen = 32
 
@@ -267,7 +275,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   message={newMessage}
                   amountLabel={`${priceEth} ETH`}
                   amountUsd={priceUsd != null ? formatUsd(priceUsd) : null}
-                  markeeEarnedLabel={`${markeeEarned.toLocaleString()} MARKEE`}
+                  markeeEarnedLabel={issuesMarkee ? `${markeeEarned.toLocaleString()} MARKEE` : 'No MARKEE for this sign'}
                   willWin
                   chainId={fixedMarkee.chainId}
                   markeeId={fixedMarkee.markeeAddress}
@@ -339,7 +347,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   </div>
 
                   {/* You'll receive — horizontal */}
-                  {priceEthNum > 0 && (
+                  {priceEthNum > 0 && issuesMarkee && (
                     <div style={{
                       marginTop: 12, borderRadius: 14, padding: '14px 20px',
                       background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
@@ -387,7 +395,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               ) : (
                 <>
                   <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                    100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+                    {issuesMarkee
+                      ? <>Paid into the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                      : <>100% to {typeof beneficiary === 'string' ? `${beneficiary.slice(0, 6)}…${beneficiary.slice(-4)}` : 'the sign owner'}. No MARKEE is issued.</>}
                   </div>
                   <BtnTooltip reason={btnDisabledReason}>
                     <button
