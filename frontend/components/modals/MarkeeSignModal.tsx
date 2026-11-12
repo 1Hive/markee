@@ -16,6 +16,7 @@ import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
 import { useLeaderboardDetail, type LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
+import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 
@@ -334,6 +335,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const ethPrice = useEthPrice()
 
   const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
+  const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
 
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
@@ -490,6 +492,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleBuyNew = async () => {
+    if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
@@ -509,6 +512,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   }
 
   const handleAddFunds = () => {
+    if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
     if (!target) return
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
@@ -580,8 +584,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // one condition that actually blocks submission, so it disables the button proactively instead.
   // Editing a message is free -- a leftover `amount` from a previous view shouldn't block it.
   const blocksOnBalance = insufficientBalance && view !== 'edit'
-  const btnDisabled = busy || isSuccess || blocksOnBalance
-  const btnDisabledReason = busy ? 'Transaction in progress' : blocksOnBalance ? "You don't have enough ETH for this" : null
+  const beneficiaryBlocks = view !== 'edit' && !!noBeneficiaryReason
+  const btnDisabled = busy || isSuccess || blocksOnBalance || beneficiaryBlocks
+  const btnDisabledReason = busy ? 'Transaction in progress' : beneficiaryBlocks ? noBeneficiaryReason : blocksOnBalance ? "You don't have enough ETH for this" : null
 
   const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
