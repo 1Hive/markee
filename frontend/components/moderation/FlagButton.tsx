@@ -37,7 +37,8 @@ export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compac
   const iconSize = compact ? 14 : 16
 
   const handleClick = async (e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent card click-through
+    e.preventDefault()
+    e.stopPropagation()
     if (isToggling || locked) return
 
     setIsToggling(true)

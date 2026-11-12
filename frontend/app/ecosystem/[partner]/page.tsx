@@ -283,7 +283,7 @@ export default function PartnerPage() {
           {markees.length > 0 && (
             <div>
               {/* #1 Hero */}
-              <Link href={`/markee/${markees[0].address}`} className="block">
+              <Link href={`/markee/${partner.leaderboardAddress}`} className="block">
                 <MarkeeCard 
                   markee={markees[0]} 
                   rank={1} 
@@ -302,7 +302,7 @@ export default function PartnerPage() {
               {markees.length > 1 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
-                    <Link href={`/markee/${markees[1].address}`} className="block">
+                    <Link href={`/markee/${partner.leaderboardAddress}`} className="block">
                       <MarkeeCard 
                         markee={markees[1]} 
                         rank={2} 
@@ -318,7 +318,7 @@ export default function PartnerPage() {
                     </Link>
                   )}
                   {markees[2] && (
-                    <Link href={`/markee/${markees[2].address}`} className="block">
+                    <Link href={`/markee/${partner.leaderboardAddress}`} className="block">
                       <MarkeeCard 
                         markee={markees[2]} 
                         rank={3} 
@@ -340,7 +340,7 @@ export default function PartnerPage() {
               {markees.length > 3 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   {markees.slice(3, 26).map((markee, index) => (
-                    <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
+                    <Link key={markee.address} href={`/markee/${partner.leaderboardAddress}`} className="block">
                       <MarkeeCard 
                         markee={markee} 
                         rank={index + 4} 
@@ -364,7 +364,7 @@ export default function PartnerPage() {
                   <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
                   <div className="space-y-2">
                     {markees.slice(26).map((markee, index) => (
-                      <Link key={markee.address} href={`/markee/${markee.address}`} className="block">
+                      <Link key={markee.address} href={`/markee/${partner.leaderboardAddress}`} className="block">
                         <MarkeeCard 
                           markee={markee} 
                           rank={index + 27} 
