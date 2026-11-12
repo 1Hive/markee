@@ -3,19 +3,24 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWriteContract, useReadContract, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
-import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
+import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
+import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -49,18 +54,6 @@ interface BuyMessageModalProps {
   title?: string
   messageLabel?: string
   messagePlaceholder?: string
-}
-
-// Keeps only digits and the first decimal point, capped at 9 digits on each side of the decimal —
-// matches MarkeeSignModal's sanitizeAmountInput. The amount input here had no sanitization at all
-// (relying only on inputMode="decimal", a mobile keyboard hint with no actual validation).
-function sanitizeAmountInput(raw: string): string {
-  let cleaned = raw.replace(/[^0-9.]/g, '')
-  const dot = cleaned.indexOf('.')
-  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
-  const [intPart, fracPart] = cleaned.split('.')
-  const cappedInt = (intPart ?? '').slice(0, 9)
-  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
 // M/B/T-abbreviated, NaN-safe MARKEE amount display — shows extra decimal places for sub-10 and
@@ -156,14 +149,19 @@ export function BuyMessageModal({
   const [reviewOpen, setReviewOpen] = useState(false)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
+  const trackedBoard = customStrategyAddress || V13_LEADERBOARDS.COOPERATIVE
+  const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    hash, track: { account: activeAddress, board: trackedBoard, label: 'Your Markee payment' },
+  })
+  const pendingPayments = usePendingTxsFor(activeAddress, trackedBoard).filter(p => p.hash !== hash)
+  const walletTimeout = useWalletTimeoutGuard(writeError, activeAddress)
 
   const { data: balanceData } = useBalance({
     address: activeAddress as `0x${string}` | undefined,
     chainId: CANONICAL_CHAIN.id,
   })
 
-  const strategyAddress = customStrategyAddress || '0x0590b56430426A38D0fA065b839c10D542E75CCD' as `0x${string}`
+  const strategyAddress = (customStrategyAddress || V13_LEADERBOARDS.COOPERATIVE) as `0x${string}`
   const strategyABI = customStrategyAddress ? TopDawgPartnerStrategyABI : TopDawgStrategyABI
   const { trust: boardTrust } = useBoardTrust(isOpen ? strategyAddress : undefined)
   const retiredBoardReason = boardTrust === 'trusted' ? null
@@ -302,7 +300,7 @@ export function BuyMessageModal({
         }
       } catch { /* invalid amount */ }
       setSuccessSnap(snap)
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setMessage('')
         setName('')
         setAmount('')
@@ -310,6 +308,7 @@ export function BuyMessageModal({
         onSuccess?.()
         onClose()
       }, 2000)
+      return () => clearTimeout(timer)
     }
   }, [isSuccess, onClose, isOpen, onSuccess])
 
@@ -354,6 +353,7 @@ export function BuyMessageModal({
   const handleCreateMarkee = async () => {
     if (retiredBoardReason) { setError(retiredBoardReason); return }
     if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
+    if (pendingPayments.length || walletTimeout.blocked) return
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
@@ -376,6 +376,7 @@ export function BuyMessageModal({
   const handleAddFunds = async () => {
     if (retiredBoardReason) { setError(retiredBoardReason); return }
     if (noBeneficiaryReason) { setError(noBeneficiaryReason); return }
+    if (pendingPayments.length || walletTimeout.blocked) return
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
@@ -390,6 +391,7 @@ export function BuyMessageModal({
   }
 
   const handleUpdateMessage = async () => {
+    if (walletTimeout.blocked) return
     if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
@@ -411,14 +413,17 @@ export function BuyMessageModal({
 
   const boardBlocks = activeTab !== 'updateMessage' && !!retiredBoardReason
   const beneficiaryBlocks = activeTab !== 'updateMessage' && !!noBeneficiaryReason
+  const paymentPending = activeTab !== 'updateMessage' && pendingPayments.length > 0
   const btnDisabled =
-    isPending || isConfirming || isSuccess || boardBlocks || beneficiaryBlocks ||
+    isPending || isConfirming || isSuccess || boardBlocks || beneficiaryBlocks || paymentPending || walletTimeout.blocked ||
     (activeTab !== 'updateMessage' && insufficientBalance) ||
     ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim())
   const btnDisabledReason = !btnDisabled || isSuccess ? null
     : (isPending || isConfirming) ? 'Transaction in progress'
     : boardBlocks ? retiredBoardReason
     : beneficiaryBlocks ? noBeneficiaryReason
+    : paymentPending ? PENDING_PAYMENT_REASON
+    : walletTimeout.blocked ? 'Check your wallet first'
     : (activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
@@ -518,7 +523,7 @@ export function BuyMessageModal({
             isSuccess={txStep === 'success'}
             headline={
               txStep === 'signing' ? 'Waiting for wallet…' :
-              txStep === 'pending' ? 'Confirming on Base' :
+              txStep === 'pending' ? (isUnknown ? 'Still checking' : 'Confirming on Base') :
               successSnap?.isUpdate ? 'Success! Your message is updated' :
               successSnap?.isFirstOnBoard ? 'Success! Your Markee is Activated' :
               successSnap?.tookTop ? 'Success! Your message is now featured' :
@@ -527,7 +532,7 @@ export function BuyMessageModal({
             }
             detail={
               txStep === 'signing' ? 'Sign the transaction in your wallet.' :
-              txStep === 'pending' ? 'Usually under 2 seconds on Base.' :
+              txStep === 'pending' ? (isUnknown ? 'The network is not answering. Your payment may still go through, so check Basescan before paying again.' : 'Usually under 2 seconds on Base.') :
               successSnap?.isUpdate ? 'Your message has been updated on the leaderboard.' :
               successSnap?.isFirstOnBoard ? 'You\'re the first on this leaderboard!' :
               successSnap?.tookTop ? 'Your message is now featured at #1.' :
@@ -535,6 +540,7 @@ export function BuyMessageModal({
                 ? `Add ${parseFloat(formatEther(successSnap.additionalWei)).toFixed(3)} ETH to take the #1 spot.`
                 : 'Your message has been added to the leaderboard.'
             }
+            explorerUrl={txStep === 'pending' ? explorerUrl : undefined}
           />
 
         ) : isWalletConnectionPending ? (
@@ -696,7 +702,7 @@ export function BuyMessageModal({
                         <input
                           inputMode="decimal"
                           value={amount}
-                          onChange={e => { setHasUserEdited(true); setAmount(sanitizeAmountInput(e.target.value)); setLastPreset(null) }}
+                          onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setHasUserEdited(true); setAmount(v); setLastPreset(null) }}
                           placeholder={minimumAmountFormatted}
                           disabled={isPending || isConfirming}
                           style={{
@@ -813,8 +819,11 @@ export function BuyMessageModal({
                 </div>
               )}
 
-              {/* Error */}
-              {transactionError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '0 0 14px' }}>
+                {activeTab !== 'updateMessage' && <PendingPaymentNotice pending={pendingPayments} />}
+                <WalletTimeoutNotice state={walletTimeout.state} accountUrl={walletTimeout.accountUrl} onAcknowledge={walletTimeout.acknowledge} />
+              </div>
+              {transactionError && !walletTimeout.blocked && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>
                   {transactionError}
                 </p>

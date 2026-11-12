@@ -6,12 +6,14 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 // and the Your Messages table (every message the wallet owns or has funded).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAccount, useBalance, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { type Address, type Hex } from 'viem'
 import { ChevronDown } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
-import type { DepositManagerStream } from '@/components/modals/DepositManagerModal'
+import type { DepositManagerDeposit, DepositManagerStream } from '@/components/modals/DepositManagerModal'
 import { parseEthInput, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -34,7 +36,67 @@ const TWELVE_MONTHS = SECONDS_PER_MONTH * 12n
 export interface StreamSnapshot {
   ethxBalanceRaw: string
   streams: DepositManagerStream[]
+  deposits?: DepositManagerDeposit[]
   at: number
+}
+
+function ReclaimDeposit({ deposit, onDone }: { deposit: DepositManagerDeposit; onDone: () => void }) {
+  const { chain } = useAccount()
+  const { switchChain } = useSwitchChain()
+  const { writeContractAsync, isPending } = useWriteContract()
+  const [hash, setHash] = useState<Hex | undefined>()
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
+  const reclaimable = BigInt(deposit.reclaimableRaw)
+  const held = BigInt(deposit.depositRaw)
+  const wrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
+
+  useEffect(() => {
+    if (!isSuccess) return
+    toast(`Returned ${(Number(reclaimable) / 1e18).toFixed(6)} ETHx from ${deposit.boardName}`)
+    onDone()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
+
+  useEffect(() => {
+    if (reverted && hash) setError(formatReceiptError(receiptError, 'BuyerHub.ReclaimDeposit.receipt'))
+  }, [reverted, hash, receiptError])
+
+  const go = async () => {
+    if (wrongChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
+    setError(null)
+    try {
+      setHash(await writeContractAsync({ address: deposit.boardAddress as Address, abi: StreamingLeaderboardABI, functionName: 'withdrawDeposit', chainId: CANONICAL_CHAIN.id }))
+    } catch (e) {
+      if (!isUserRejection(e)) setError(formatTransactionError(e))
+    }
+  }
+
+  const busy = isPending || confirming
+  return (
+    <div style={{ padding: '10px 18px', borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deposit.boardName}</div>
+          <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>
+            {(Number(held) / 1e18).toFixed(6)} ETHx held{reclaimable < held ? `, ${(Number(reclaimable) / 1e18).toFixed(6)} free` : ''}
+          </div>
+        </div>
+        {busy ? <WalletPending label={isPending ? 'Confirm in wallet…' : 'Confirming…'} /> : (
+          <button
+            disabled={reclaimable === 0n}
+            onClick={go}
+            title={reclaimable === 0n ? 'A live stream on this board still needs all of it' : undefined}
+            style={{ background: 'transparent', color: reclaimable === 0n ? MUTED : TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 34, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: reclaimable === 0n ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+          >
+            {wrongChain ? 'Switch to Base' : 'Reclaim'}
+          </button>
+        )}
+      </div>
+      {error && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, textAlign: 'right' }}>{error}</div>}
+    </div>
+  )
 }
 
 export function useStreamSnapshot(activeAddress: string | undefined, refreshKey: number) {
@@ -63,7 +125,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
   const { data: walletBalance } = useBalance({ address: address as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { writeContractAsync, isPending } = useWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
@@ -107,7 +169,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
             inputMode="decimal"
             disabled={busy}
             value={amount}
-            onChange={e => { setAmount(sanitizeDecimalInput(e.target.value)); setError(null) }}
+            onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setAmount(v); setError(null) }}
             onKeyDown={e => { if (e.key === 'Enter' && !bad) go(); if (e.key === 'Escape') onCancel() }}
             placeholder={mode === 'deposit' ? 'Amount to deposit' : `Up to ${(Number(balance) / 1e18).toFixed(6)}`}
             style={{ ...inputStyle, paddingRight: 48, borderColor: amount && tooMuch ? 'rgba(255,138,155,0.5)' : BORDER }}
@@ -201,6 +263,15 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
           {mode && <BalanceAction key={mode} mode={mode} balance={balance} onCancel={() => setMode(null)} onDone={() => { setMode(null); onChanged() }} />}
         </div>
       )}
+      {(data?.deposits ?? []).length > 0 && (
+        <div style={{ borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '12px 18px 2px' }}>
+            <div style={label}>Held by boards</div>
+            <div style={{ fontSize: 12, color: TEXT2, marginTop: 4, lineHeight: 1.5 }}>Each stream leaves a small safety deposit on its board. What no live stream needs can come back to your wallet.</div>
+          </div>
+          {data!.deposits!.map(d => <ReclaimDeposit key={d.boardAddress} deposit={d} onDone={onChanged} />)}
+        </div>
+      )}
       {streams.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', borderTop: `1px solid ${BORDER}` }}>
           {[
@@ -267,7 +338,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const { switchChain } = useSwitchChain()
   const { writeContractAsync, isPending } = useWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
   const messageModeration = useMessageModeration(draft.trim(), true, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)

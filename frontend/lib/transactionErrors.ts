@@ -85,6 +85,26 @@ function isDisplayableMessage(text: string): boolean {
   return !!text && text.length <= 180 && !matchesAny(text, NOISY_TRANSACTION_PATTERNS)
 }
 
+const WALLET_TIMEOUT_PATTERNS = [
+  'wallet timeout',
+  'unknown rpc error',
+  'request timed out',
+  'timed out',
+  'timeouterror',
+]
+
+export const WALLET_TIMEOUT_MESSAGE = 'Your wallet did not answer in time. If its request is still open, approving it will still send this payment, so check your wallet before trying again.'
+
+export function isWalletTimeoutError(error: unknown): boolean {
+  if (!error) return false
+  const combined = `${shortText(error)}\n${errorText(error)}`
+  return !matchesAny(combined, USER_REJECTED_PATTERNS) && matchesAny(combined, WALLET_TIMEOUT_PATTERNS)
+}
+
+export function isUserRejectedError(error: unknown): boolean {
+  return !!error && matchesAny(`${shortText(error)}\n${errorText(error)}`, USER_REJECTED_PATTERNS)
+}
+
 export function formatTransactionError(error: unknown): string {
   const known = extractKnownSelector(error)
   if (known) return known
@@ -97,6 +117,8 @@ export function formatTransactionError(error: unknown): string {
     return 'Transaction rejected'
   }
 
+  if (matchesAny(combined, WALLET_TIMEOUT_PATTERNS)) return WALLET_TIMEOUT_MESSAGE
+
   if (matchesAny(raw, NOISY_TRANSACTION_PATTERNS)) {
     if (isDisplayableMessage(short)) return short
     return 'Transaction error'
@@ -107,7 +129,7 @@ export function formatTransactionError(error: unknown): string {
   return candidate
 }
 
-// For a useWaitForTransactionReceipt error (a reverted receipt, or a wait that failed): the decoded
+// For a reverted receipt error (from useTrackedReceipt, which replays the call): the decoded
 // revert reason when there is one, else a generic on-chain failure. Logs it under `context`.
 // wagmi replays a reverted tx to read its reason; when the replay has none it throws
 // 'unknown reason', or text decoded from whatever the replay returned.
@@ -119,6 +141,6 @@ export function formatReceiptError(error: unknown, context: string): string {
 }
 
 export function logTransactionError(error: unknown, context: string): void {
-  if (!error) return
+  if (!error || isUserRejectedError(error)) return
   console.error(`[${context}] Transaction error`, error)
 }

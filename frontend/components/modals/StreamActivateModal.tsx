@@ -19,6 +19,8 @@ import { formatUsd } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { DepositManagerModal } from '@/components/modals/DepositManagerModal'
 
@@ -103,6 +105,10 @@ export function StreamActivateModal({
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
 
+  const { data: heldDeposit } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: activeAddress ? [activeAddress as Address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!activeAddress },
+  })
   const { data: minMonthlyWei } = useReadContract({
     address: board, abi: StreamingLeaderboardABI, functionName: 'minimumMonthlyRate', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen, refetchInterval: retryUntilLoaded },
@@ -140,9 +146,9 @@ export function StreamActivateModal({
     const monthlyWei = parseEthInput(monthly)
     const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
-    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n)
+    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n, (heldDeposit as bigint | undefined) ?? 0n)
     return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue, runwaySecs: auto.runwaySeconds }
-  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei])
+  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei, heldDeposit])
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
@@ -192,7 +198,10 @@ export function StreamActivateModal({
     : boardTrust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
     : boardTrust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
     : 'Checking this Markee board…'
-  const handleActivate = () => boardBlockedReason ? setError(boardBlockedReason) : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
+  const pendingStreams = usePendingTxsFor(activeAddress, board)
+  const handleActivate = () => boardBlockedReason ? setError(boardBlockedReason)
+    : phase === 'idle' && pendingStreams.length ? undefined
+    : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
 
   if (!isOpen) return null
 
@@ -235,9 +244,11 @@ export function StreamActivateModal({
   // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH", surfacing
   // as "Fund the stream for longer" even for a wallet that genuinely holds ETH).
   const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
-  const btnDisabled = !!boardBlockedReason || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
+  const streamPaymentPending = phase === 'idle' && !isPending && !isConfirming && pendingStreams.length > 0
+  const btnDisabled = !!boardBlockedReason || streamPaymentPending || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
   const btnDisabledReason = !btnDisabled ? null
     : boardBlockedReason ? boardBlockedReason
+    : streamPaymentPending ? PENDING_PAYMENT_REASON
     : !isCorrectChain ? `Switch to ${CANONICAL_CHAIN.name} to continue`
     : !minLoaded || !balancesLoaded ? 'Loading on-chain data…'
     : !message.trim() ? 'Enter a message to continue'
@@ -377,6 +388,7 @@ export function StreamActivateModal({
             </div>
           )}
 
+          {streamPaymentPending && <PendingPaymentNotice pending={pendingStreams} />}
           {error && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{error}</div>}
         </div>
       )}

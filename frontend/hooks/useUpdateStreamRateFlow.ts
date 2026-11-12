@@ -5,7 +5,9 @@
 // StreamSignModal call the same working implementation instead of two copies that can drift.
 
 import { useState, useEffect, useRef } from 'react'
-import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
 import { erc20Abi, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -31,7 +33,7 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
-    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+    useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const openRef = useRef(isOpen)
   openRef.current = isOpen
@@ -96,7 +98,7 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
           args: [board, next.depositTopUp],
           chainId: CANONICAL_CHAIN.id,
         })
-        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        const approveReceipt = await waitForStep(publicClient!, approveHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
         if (approveReceipt.status !== 'success') throw new Error('The approval transaction reverted.')
         await refetchAllowance()
         if (!openRef.current) return
@@ -123,6 +125,7 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
         value: next.depositTopUp,
         chainId: CANONICAL_CHAIN.id,
       })
+      recordSubmitted(hash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
       if (!openRef.current) return
       setTxHash(hash)
     } catch (e: unknown) {

@@ -6,7 +6,9 @@
 // working, money-moving flow instead of two copies that can drift.
 
 import { useState, useEffect, useRef } from 'react'
-import { useAccount, usePublicClient, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
 import { erc20Abi, decodeEventLog, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -15,6 +17,7 @@ import {
   CFA_FORWARDER_ABI, buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
+import { clearCreated, loadCreated, planCreateStep, saveCreated, type CreatedMarkee } from '@/lib/superfluid/createResume'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -60,7 +63,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
 
   const { writeContractAsync, isPending, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
-    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+    useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const mountedRef = useRef(isOpen)
   mountedRef.current = isOpen
@@ -68,7 +71,11 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
   // createMarkee clones unconditionally -- there is no per-owner uniqueness check on-chain. So if tx 1
   // lands and a later step fails, retrying must resume from the markee that already exists rather than
   // minting a second orphan one. Cleared with the rest of the state when the modal closes.
-  const createdRef = useRef<{ markee: Address; pool: Address } | null>(null)
+  const createdRef = useRef<CreatedMarkee | null>(null)
+
+  useEffect(() => {
+    if (isSuccess && address) clearCreated(board, address)
+  }, [isSuccess, address, board])
 
   useEffect(() => {
     if (!isOpen) {
@@ -110,6 +117,25 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
       }
 
       // ── Tx 1: Create Markee (skipped when resuming a partly-finished attempt) ──
+      const owner = address.toLowerCase()
+      if (createdRef.current?.owner !== owner) createdRef.current = loadCreated(board, owner)
+      const stepCtx = { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id }
+      const createStep = planCreateStep(createdRef.current, message)
+      if (createdRef.current && createStep === 'update') {
+        setPhase('creating')
+        const editHash = await writeContractAsync({
+          address: board,
+          abi: StreamingLeaderboardABI,
+          functionName: 'updateMessage',
+          args: [createdRef.current.markee, message],
+          chainId: CANONICAL_CHAIN.id,
+        })
+        const editReceipt = await waitForStep(publicClient, editHash, stepCtx)
+        if (editReceipt.status !== 'success') throw new Error('Updating the message reverted.')
+        createdRef.current = { ...createdRef.current, message }
+        saveCreated(board, createdRef.current)
+        if (!mountedRef.current) return
+      }
       if (!createdRef.current) {
         setPhase('creating')
         const createHash = await writeContractAsync({
@@ -119,10 +145,8 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
           args: [message, ''],
           chainId: CANONICAL_CHAIN.id,
         })
-        if (!mountedRef.current) return
-        const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash })
+        const createReceipt = await waitForStep(publicClient, createHash, stepCtx)
         if (createReceipt.status !== 'success') throw new Error('Create Markee transaction reverted.')
-        if (!mountedRef.current) return
 
         // Decode markee address from MarkeeCreated event
         let created: Address | null = null
@@ -140,30 +164,33 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
           (addr) => publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: [addr] }),
           created,
         )
+        createdRef.current = { markee: created, pool: createdPool, owner, message }
+        saveCreated(board, createdRef.current)
         if (!mountedRef.current) return
-        createdRef.current = { markee: created, pool: createdPool }
       }
       const { markee: markeeAddress, pool } = createdRef.current
 
-      const [cfaAgreement, gdaAgreement, currentAllowance] = await Promise.all([
+      const [cfaAgreement, gdaAgreement, currentAllowance, heldDeposit] = await Promise.all([
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID] }),
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID] }),
         publicClient.readContract({ address: ETHX, abi: erc20Abi, functionName: 'allowance', args: [address, board] }),
+        publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: [address] }),
       ])
+      const depositTopUp = calc.buffer > (heldDeposit as bigint) ? calc.buffer - (heldDeposit as bigint) : 0n
       if (!mountedRef.current) return
 
       // ── Tx 2: Approve (if needed) ────────────────────────────────────────
-      if ((currentAllowance as bigint) < calc.buffer) {
+      if (depositTopUp > 0n && (currentAllowance as bigint) < depositTopUp) {
         setPhase('approving')
         const approveHash = await writeContractAsync({
           address: ETHX,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [board, calc.buffer],
+          args: [board, depositTopUp],
           chainId: CANONICAL_CHAIN.id,
         })
         if (!mountedRef.current) return
-        const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        const approveReceipt = await waitForStep(publicClient, approveHash, stepCtx)
         if (approveReceipt.status !== 'success') throw new Error('Approval transaction reverted.')
         if (!mountedRef.current) return
       }
@@ -176,7 +203,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         markee: markeeAddress,
         backer: address,
         ratePerSec: calc.ratePerSec,
-        buffer: calc.buffer,
+        buffer: depositTopUp,
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: pool as Address,
@@ -190,6 +217,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         value: calc.value,
         chainId: CANONICAL_CHAIN.id,
       })
+      recordSubmitted(streamHash, stepCtx)
       if (!mountedRef.current) return
       setTxHash(streamHash)
 
