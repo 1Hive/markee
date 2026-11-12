@@ -43,6 +43,11 @@ interface ListedBoard {
 
 export async function GET() {
   const cached = await kv.get<{ buys: BestBuy[] }>(CACHE_KEY)
+  // TEMP(e2e diagnosis, PR #62): is this request answered from the KV cache, and with what?
+  if (process.env.NEXT_PUBLIC_E2E === '1') {
+    const ttl = await kv.ttl(CACHE_KEY).catch(e => `ttl error ${e}`)
+    console.warn('[best-buys diag] entry', JSON.stringify({ at: new Date().toISOString(), hit: !!cached, buys: cached?.buys?.length ?? null, ttl, kvUrl: (process.env.KV_REST_API_URL ?? '').replace(/\/\/.*@/, '//') }))
+  }
   if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
 
   try {
@@ -54,9 +59,25 @@ export async function GET() {
       })
     const boards: ListedBoard[] = (data?.leaderboards ?? []).filter((lb: ListedBoard) =>
       BigInt(lb.topFundsAddedRaw || '0') > 0n && lb.topMessage)
+    // TEMP(e2e diagnosis, PR #62): what Best Buys actually received. Remove once diagnosed.
+    const diag = process.env.NEXT_PUBLIC_E2E === '1'
+    const listed: ListedBoard[] = data?.leaderboards ?? []
+    if (diag) console.warn('[best-buys diag] listing', JSON.stringify({
+      hasData: !!data, keys: data ? Object.keys(data) : null, stale: data?.stale ?? null,
+      listed: listed.length, kept: boards.length, counts: data?.counts ?? null,
+      withViewsKeyBoards: listed.filter(lb => lb.address).length,
+    }))
     if (boards.length === 0) return NextResponse.json({ buys: [] }, { headers: NO_CACHE })
 
     const viewsByBoard = await readBoardViews(boards)
+    if (diag) {
+      const top = [...viewsByBoard.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3)
+      const detail = top.map(([address, views]) => {
+        const lb = boards.find(b => b.address.toLowerCase() === address)
+        return { address, views, topMarkeeAddress: lb?.topMarkeeAddress ?? null, totalFundsRaw: lb?.totalFundsRaw ?? null, strategy: lb?.strategy ?? null, streamedAt: lb?.streamedAt ?? null }
+      })
+      console.warn('[best-buys diag] views', JSON.stringify({ nonzero: [...viewsByBoard.values()].filter(v => v > 0).length, top: detail }))
+    }
 
     const now = Math.floor(Date.now() / 1000)
     const buys = boards
@@ -88,6 +109,7 @@ export async function GET() {
       }))
 
     const payload = { buys }
+    if (diag) console.warn('[best-buys diag] result', JSON.stringify({ buys: buys.length, minViews: MIN_VIEWS }))
     await kv.set(CACHE_KEY, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (error) {

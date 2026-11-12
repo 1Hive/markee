@@ -4,15 +4,17 @@
 // Markee Settings (contract setters) and Transfer Admin.
 
 import { useEffect, useState } from 'react'
-import { useAccount, useSignMessage } from 'wagmi'
+import { useAccount, useReadContract, useSignMessage } from 'wagmi'
 import type { Abi } from 'viem'
 import { ArrowUpRight, ExternalLink, Eye, EyeOff, Info, Link2 } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
+import { TwoStepAdminTransfer } from '@/components/leaderboard/TwoStepAdmin'
 import { beneficiaryError, isZeroAddress } from '@/lib/beneficiary'
 import { BoardModerators } from '@/components/moderation'
-import { LeaderboardV11ABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
+import { LeaderboardV11ABI, LeaderboardV14AdminABI, StreamingLeaderboardABI, TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { hasTwoStepAdmin } from '@/lib/strategy'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
 import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
@@ -269,6 +271,12 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
   // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
   const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
   const contractAddress = lb.address as `0x${string}`
+  const { data: boardVersion, isPending: versionLoading } = useReadContract({
+    address: contractAddress, abi: LeaderboardV14AdminABI, functionName: 'VERSION', chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !isStreaming && !isLegacyFixed },
+  })
+  const twoStepAdmin = !isStreaming && hasTwoStepAdmin(boardVersion)
+  const adminModeKnown = isStreaming || !versionLoading
   const { data: integrationData, reload: reloadIntegrations } = useBoardIntegrations([lb.address])
   const info = integrationData?.[lb.address.toLowerCase()]
   // Featured first, then by views, the same order as the board's public page.
@@ -391,15 +399,19 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
             )}
           </DrawerSection>
 
-          {isAdmin && !isLegacyFixed && (
+          {isAdmin && !isLegacyFixed && adminModeKnown && (
             <section style={{ padding: '18px 28px', borderTop: `1px solid ${BORDER}` }}>
-              <AdminSettingRow
-                label="Transfer Admin" contractAddress={contractAddress} abi={adminAbi} getterName="admin" setterName={settings.setAdmin} inputType="address"
-                validate={v => isZeroAddress(v) ? 'The zero address cannot be an admin. Enter a wallet you control.' : null}
-                dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it."
-                acknowledge="I understand I'll lose all admin access to this Markee"
-                onSuccess={saved('Admin transferred')}
-              />
+              {twoStepAdmin ? (
+                <TwoStepAdminTransfer board={contractAddress} onProposed={saved('Admin transfer proposed')} onCancelled={saved('Admin transfer cancelled')} />
+              ) : (
+                <AdminSettingRow
+                  label="Transfer Admin" contractAddress={contractAddress} abi={adminAbi} getterName="admin" setterName={settings.setAdmin} inputType="address"
+                  validate={v => isZeroAddress(v) ? 'The zero address cannot be an admin. Enter a wallet you control.' : null}
+                  dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it."
+                  acknowledge="I understand I'll lose all admin access to this Markee"
+                  onSuccess={saved('Admin transferred')}
+                />
+              )}
             </section>
           )}
           <div style={{ height: 24 }} />

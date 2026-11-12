@@ -47,7 +47,7 @@ import { IStreamingLeaderboard } from "../../streaming/interfaces/IStreamingLead
 contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLeaderboard {
     using SuperTokenV1Library for ISuperToken;
 
-    string public constant VERSION = "streaming-1.0.0";
+    string public constant VERSION = "streaming-1.1.0";
     uint256 private constant SECONDS_IN_MONTH = 2628000;
     uint256 private constant BASIS_POINTS_DIVISOR = 10000;
     /// @dev Superfluid liquidation (buffer) period on Base: 4h. Refund/forward flow buffers ≈ rate*this.
@@ -62,6 +62,9 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
 
     /// @notice The only SuperToken this leaderboard accepts (ETHx on Base). Implementation immutable.
     ISuperToken public immutable ETHX;
+
+    /// @notice The board migrator, the only caller allowed to register existing Markees.
+    address private immutable MIGRATOR;
 
     // ─── Initialized-once per-clone config ────────────────────────────────────
     bool public initialized;
@@ -153,6 +156,7 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
 
     // ─── Custom errors (smaller bytecode than require strings) ────────────────
     error OnlyAdmin();
+    error OnlyMigrator();
     error Reentrant();
     error AlreadyInitialized();
     error ZeroAdmin();
@@ -205,10 +209,12 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
     }
 
     /// @param host_ Superfluid host (Base). @param ethx_ ETHx SuperToken (Base).
+    /// @param migrator_ The StreamingBoardMigrator allowed to register existing Markees (zero disables it).
     /// @dev Marks the directly-deployed implementation initialized so no one can claim it as its
     ///      admin; EIP-1167 clones get fresh storage and initialize normally.
-    constructor(ISuperfluid host_, ISuperToken ethx_) CFASuperAppBase(host_) {
+    constructor(ISuperfluid host_, ISuperToken ethx_, address migrator_) CFASuperAppBase(host_) {
         ETHX = ethx_;
+        MIGRATOR = migrator_;
         initialized = true;
     }
 
@@ -287,12 +293,11 @@ contract StreamingLeaderboard is CFASuperAppBase, IPricingStrategy, IStreamingLe
         emit MarkeeCreated(markeeAddress, msg.sender, _message, _name);
     }
 
-    /// @notice Registers already-existing Markees (in-place migration), creating a pool for each.
-    /// @dev Mirrors v1.3 Leaderboard.initializeHistory. The Markee addresses (and KV view/reaction
-    ///      continuity) are preserved, migrate via the legacy Leaderboard's migratePricingStrategy first.
-    ///      Each entry deploys a GDA pool, so chunk a large migration across several calls to stay under
-    ///      the block gas limit.
-    function registerExistingMarkees(address[] calldata _markees) external onlyAdmin {
+    /// @notice Registers already-existing Markees, creating a pool for each. Migrator only.
+    /// @dev Each entry deploys a GDA pool, so the migrator pages a large migration across several calls
+    ///      to stay under the block gas limit.
+    function registerExistingMarkees(address[] calldata _markees) external {
+        if (msg.sender != MIGRATOR) revert OnlyMigrator();
         _accrueTop();
         for (uint256 i = 0; i < _markees.length; i++) {
             address m = _markees[i];

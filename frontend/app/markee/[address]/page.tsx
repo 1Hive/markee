@@ -17,6 +17,8 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { useLeaderboardDetail } from '@/lib/contracts/useLeaderboardDetail'
 import type { LeaderboardMarkee } from '@/lib/contracts/useLeaderboardDetail'
 import { StreamingBoardDetail } from '@/components/StreamingBoardDetail'
+import { AcceptAdminBanner } from '@/components/leaderboard/TwoStepAdmin'
+import { hasTwoStepAdmin } from '@/lib/strategy'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
@@ -28,7 +30,7 @@ function priceToOvertake(topFunds: bigint) {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string }) {
+function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress: string; version?: string }) {
   const ethPrice = useEthPrice()
   const { address: connectedAddress } = useAccount()
 
@@ -166,6 +168,9 @@ function FixedMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string 
   return (
     <div style={{ minHeight: '100vh', background: BG }}>
       <Header activePage="marketplace" />
+      {hasTwoStepAdmin(version) && (
+        <AcceptAdminBanner board={leaderboardAddress as `0x${string}`} onAccepted={refreshAfterTransaction} />
+      )}
 
       {isLoading ? (
         <BoardDetailSkeleton />
@@ -424,7 +429,7 @@ function BoardGateShell({ children }: { children: React.ReactNode }) {
   )
 }
 
-// A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed report "1.3.0".
+// A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed report "1.3.0" or "1.4.0".
 const VERSION_ABI = [
   { inputs: [], name: 'VERSION', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function' },
 ] as const
@@ -450,5 +455,5 @@ export default function MarkeeDetailPage() {
   if (typeof version === 'string' && version.startsWith('streaming')) {
     return <StreamingBoardDetail board={leaderboardAddress as `0x${string}`} />
   }
-  return <FixedMarkeeDetail leaderboardAddress={leaderboardAddress} />
+  return <FixedMarkeeDetail leaderboardAddress={leaderboardAddress} version={typeof version === 'string' ? version : undefined} />
 }

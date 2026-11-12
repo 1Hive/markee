@@ -121,7 +121,7 @@ contract StreamingLeaderboardTest is Test {
         assertGt(address(CFA).code.length, 0, "CFA forwarder missing");
         assertGt(address(GDA).code.length, 0, "GDA forwarder missing");
 
-        boardImplementation = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        boardImplementation = _boardImplementation();
         markeeImplementation = address(new Markee());
         factory = _deployFactory(boardImplementation, markeeImplementation);
         assertEq(factory.leaderboardImplementation(), boardImplementation, "board impl not stored");
@@ -141,6 +141,10 @@ contract StreamingLeaderboardTest is Test {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    function _boardImplementation() internal virtual returns (address) {
+        return address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
+    }
 
     function _deployFactory(address boardImpl, address markeeImpl)
         internal
@@ -1636,7 +1640,7 @@ contract StreamingLeaderboardTest is Test {
         address oldMarkeeImpl = factory.markeeImplementation();
         assertEq(_implOf(address(board)), oldBoardImpl, "seed board not on old impl");
 
-        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
         address newMarkeeImpl = address(new Markee());
         address codeless = address(uint160(uint256(keccak256("markee-codeless-probe"))));
         assertEq(codeless.code.length, 0, "probe address unexpectedly has code");
@@ -1682,7 +1686,7 @@ contract StreamingLeaderboardTest is Test {
     ///         untouched and emits nothing.
     function test_setImplementations_boardOnly() public {
         address oldMarkeeImpl = factory.markeeImplementation();
-        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
 
         vm.recordLogs();
         vm.prank(admin);
