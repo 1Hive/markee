@@ -32,8 +32,10 @@ import { SunsetTerminal } from "../contracts/upgrade/SunsetTerminal.sol";
 ///   1. StreamingLeaderboardFactory(0x37f4…7039).setImplementations(streamingForwarder, markeeImplementation)
 ///   2. acceptOwnership() on the streaming migrator and each lump-sum migrator
 ///   3. acceptFactoryAdmin() on each v1.4 factory
-/// After that the operator key can run migrate(board) per legacy board, and once a lump-sum factory is
-/// fully migrated the Coop points its revNetTerminal at that factory's SunsetTerminal.
+/// After that the operator can migrate streaming boards and small lump-sum boards. Large boards
+/// must use startMigration, importMarkees in gas-bounded pages, and finishMigration.
+/// Before migrating each lump-sum factory, the Coop points its revNetTerminal at that factory's
+/// SunsetTerminal and enables RevNet routing to prevent payments to copied legacy boards.
 contract DeployBoardBeacons is Script {
     address constant HOST = 0x4C073B3baB6d8826b8C5b229f3cfdC1eC6E47E74;
     address constant ETHX = 0x46fd5cfB4c12D87acD3a13e92BAa53240C661D93;

@@ -1,0 +1,34 @@
+{
+  "operator": "0x9fcbc092b770970a58524136ef6202ca2caa0d73",
+  "factories": {
+    "streaming": {
+      "legacyFactory": "0x37f420fdE5c98e611EB7cb9b74ef579D84697039",
+      "migrator": "",
+      "forwarder": ""
+    },
+    "superfluid": {
+      "legacyFactory": "0xC497187AAa35C26b0008B43C10A6F6300b7eBcad",
+      "migrator": "",
+      "newFactory": "",
+      "sunsetTerminal": ""
+    },
+    "openinternet": {
+      "legacyFactory": "0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c",
+      "migrator": "",
+      "newFactory": "",
+      "sunsetTerminal": ""
+    },
+    "github": {
+      "legacyFactory": "0xdF2A716452a3960619cDdDCDe4E10eACcFFDa0A2",
+      "migrator": "",
+      "newFactory": "",
+      "sunsetTerminal": ""
+    },
+    "forsale": {
+      "legacyFactory": "0x861D9897eC47421aAFB6321Ee219E88ab485121f",
+      "migrator": "",
+      "newFactory": "",
+      "sunsetTerminal": ""
+    }
+  }
+}
