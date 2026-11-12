@@ -224,10 +224,21 @@ export function MarkeeWidget() {
             : rawOwner;
           var el = document.getElementById('markee-widget');
           if (!el) return;
-          el.innerHTML =
-            '<p>' + lb.topMessage + '</p>' +
-            (owner ? '<p>' + owner + '</p>' : '') +
-            '<a href="' + BUY_URL + '" target="_blank">Change this message</a>';
+          var text = document.createElement('p');
+          text.textContent = lb.topMessage;
+          var nodes = [text];
+          if (owner) {
+            var by = document.createElement('p');
+            by.textContent = owner;
+            nodes.push(by);
+          }
+          var link = document.createElement('a');
+          link.href = BUY_URL;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Change this message';
+          nodes.push(link);
+          el.replaceChildren.apply(el, nodes);
         });
     }
 
