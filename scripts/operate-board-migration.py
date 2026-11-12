@@ -69,6 +69,26 @@ def inventory(factory, rpc):
     return boards
 
 
+def streaming_legacy_boards(boards, migrator, forwarder, rpc):
+    """The streaming factory also contains successors; migrate only approved old clones."""
+    legacy = []
+    skipped = 0
+    for board in boards:
+        code = cast("code", board, rpc=rpc).lower()
+        if len(code) != 92 or not code.startswith("0x363d3d373d3d3d363d73") or \
+                not code.endswith("5af43d82803e903d91602b57fd5bf3"):
+            raise RuntimeError(f"unexpected streaming board runtime code: {board}")
+        target = "0x" + code[22:62]
+        if read(migrator, "isSourceImplementation(address)(bool)", target, rpc=rpc):
+            legacy.append(board)
+        elif target.lower() == forwarder.lower():
+            skipped += 1
+        else:
+            raise RuntimeError(f"unapproved streaming board implementation: {board} -> {target}")
+    print(f"streaming registry: {len(legacy)} legacy, {skipped} new boards skipped", flush=True)
+    return legacy
+
+
 def checked_estimate(address, signature, args, options):
     try:
         gas = estimate(address, signature, *args, rpc=options.rpc, operator=options.operator)
@@ -168,9 +188,11 @@ def main():
         raise RuntimeError("configured wallet is not a migrator operator")
     if not read(migrator, "isSourceFactory(address)(bool)", factory, rpc=options.rpc):
         raise RuntimeError("legacy factory is not an approved source")
+    forwarder = None
     if options.factory == "streaming":
+        forwarder = require_address(entry["forwarder"], "forwarder")
         if read(factory, "leaderboardImplementation()(address)", rpc=options.rpc).lower() != \
-                require_address(entry["forwarder"], "forwarder").lower():
+                forwarder.lower():
             raise RuntimeError("streaming factory has not switched to the new forwarder")
     else:
         if read(migrator, "TARGET_FACTORY()(address)", rpc=options.rpc).lower() != \
@@ -197,7 +219,9 @@ def main():
                 raise RuntimeError("Foundry keystore address does not match operator")
 
         boards = inventory(factory, options.rpc)
-        print(f"{options.factory}: {len(boards)} registered boards; execute={options.execute}", flush=True)
+        if forwarder:
+            boards = streaming_legacy_boards(boards, migrator, forwarder, options.rpc)
+        print(f"{options.factory}: {len(boards)} legacy boards; execute={options.execute}", flush=True)
         selected = boards[:options.max_boards] if options.max_boards else boards
         for index, board in enumerate(selected, 1):
             print(f"[{index}/{len(boards)}] ", end="", flush=True)

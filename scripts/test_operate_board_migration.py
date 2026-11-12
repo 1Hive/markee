@@ -68,6 +68,19 @@ class OperatorMigrationTests(unittest.TestCase):
         self.assertTrue(all(c.args[1] != "finishMigration(address)" for c in estimate.call_args_list))
         send.assert_not_called()
 
+    def test_streaming_restart_skips_successor_clones(self):
+        old = "0x" + "4" * 40
+        forwarder = "0x" + "5" * 40
+        prefix = "0x363d3d373d3d3d363d73"
+        suffix = "5af43d82803e903d91602b57fd5bf3"
+        codes = {self.board: prefix + old[2:] + suffix,
+                 self.migrator: prefix + forwarder[2:] + suffix}
+        with mock.patch.object(migration, "cast", side_effect=lambda _, board, **kwargs: codes[board]), \
+             mock.patch.object(migration, "read", side_effect=lambda *args, **kwargs: args[2].lower() == old):
+            legacy = migration.streaming_legacy_boards(
+                [self.board, self.migrator], "0x" + "6" * 40, forwarder, "unused")
+        self.assertEqual(legacy, [self.board])
+
 
 class RolloutArtifactTests(unittest.TestCase):
     def test_unconfirmed_broadcast_is_rejected(self):
