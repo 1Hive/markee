@@ -29,6 +29,21 @@ export function clearCreated(board: string, owner: string) {
   try { window.localStorage.removeItem(resumeKey(board, owner)) } catch { /* Nothing to clear. */ }
 }
 
+// What a saved markee's already-submitted stream means for the next attempt:
+// - 'taken':     the stream confirmed, so the markee is backed. Start a new markee.
+// - 'reusable':  the stream reverted, so the markee is still unbacked. Reuse it.
+// - 'in-flight': no receipt yet and the payment is still tracked. Block until it resolves; reusing
+//                or editing the markee now could be overtaken by that stream confirming.
+// - 'abandoned': no receipt and no longer tracked (the user dismissed it as never sent, or it aged
+//                out). Start a new markee rather than editing this one, in case it lands later.
+export type PriorStream = 'taken' | 'reusable' | 'in-flight' | 'abandoned'
+
+export function classifyPriorStream(receipt: 'success' | 'reverted' | null, stillTracked: boolean): PriorStream {
+  if (receipt === 'success') return 'taken'
+  if (receipt === 'reverted') return 'reusable'
+  return stillTracked ? 'in-flight' : 'abandoned'
+}
+
 export function planCreateStep(created: CreatedMarkee | null, message: string): CreateStep {
   if (!created) return 'create'
   return created.message === message ? 'reuse' : 'update'

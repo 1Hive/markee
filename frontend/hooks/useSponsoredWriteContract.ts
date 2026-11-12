@@ -39,6 +39,7 @@ export function isEmbeddedWalletType(walletClientType: string | undefined): bool
 }
 
 const WALLETS_READY_TIMEOUT_MS = 5_000
+export const WALLET_LOADING_MESSAGE = 'Your wallet is still loading. Please try again in a moment.'
 
 type PrivyWallet = ReturnType<typeof useWallets>['wallets'][number]
 
@@ -66,6 +67,9 @@ export function useSponsoredWriteContract() {
     const chainId = params.chainId ?? accountChainId
     const deadline = Date.now() + WALLETS_READY_TIMEOUT_MS
     while (!latest.current.walletsReady && Date.now() < deadline) await new Promise(r => setTimeout(r, 100))
+    // Never fall back to the self-paid path just because Privy is slow: for an embedded wallet that
+    // means "insufficient funds for gas" (or asking a new user to pay gas). Ask them to retry.
+    if (!latest.current.walletsReady) throw new Error(WALLET_LOADING_MESSAGE)
     const signer = findEmbedded(latest.current.wallets, latest.current.address)
     if (signer && chainId === CANONICAL_CHAIN.id) {
       const data = encodeFunctionData({
@@ -94,8 +98,12 @@ export function useSponsoredWriteContract() {
     isError: mutation.isError,
     isSuccess: mutation.isSuccess,
     reset: mutation.reset,
-    // True when writes on the canonical chain will be gas-sponsored, so callers can skip reserving
-    // ETH for gas in their balance checks (the user then only needs the transaction's value).
-    sponsored: !!embedded && accountChainId === CANONICAL_CHAIN.id,
+    // True when the signer is a Privy embedded wallet, so its canonical-chain writes (every caller
+    // passes chainId: CANONICAL_CHAIN.id, which is what send() routes on) are gas-sponsored.
+    sponsored: !!embedded,
+    // Whether balance checks should hold ETH back for gas. Only once Privy's wallets have loaded and
+    // the signer is definitely not sponsored: before that, reserving gas would block a brand-new
+    // 0-ETH embedded user whose payment send() is about to sponsor.
+    needsGasReserve: walletsReady && !embedded,
   }
 }

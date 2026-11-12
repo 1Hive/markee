@@ -10,6 +10,7 @@ import { useAccount, usePublicClient } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
+import { isPendingTxTracked } from '@/lib/tx/pendingStore'
 import { erc20Abi, decodeEventLog, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -18,7 +19,7 @@ import {
   CFA_FORWARDER_ABI, buildOpenStreamOps,
 } from '@/lib/superfluid/streaming'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
-import { clearCreated, loadCreated, planCreateStep, saveCreated, type CreatedMarkee } from '@/lib/superfluid/createResume'
+import { classifyPriorStream, clearCreated, loadCreated, planCreateStep, saveCreated, type CreatedMarkee } from '@/lib/superfluid/createResume'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -121,19 +122,32 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
       const owner = address.toLowerCase()
       if (createdRef.current?.owner !== owner) createdRef.current = loadCreated(board, owner)
       // A saved markee whose stream was already submitted (e.g. the modal closed before it confirmed,
-      // so the isSuccess effect never cleared it): if that stream confirmed, the markee is taken, so
-      // start a new one. If it reverted, the markee is still unbacked and is reused. With no receipt
-      // (still pending, or never landed) it is reused as before: a still-pending stream is already
-      // guarded by the pending-payment notice, and a second stream batch to the same board reverts.
+      // so the isSuccess effect never cleared it) must be resolved before it is reused or edited.
       if (createdRef.current?.streamHash) {
-        const prior = await publicClient.getTransactionReceipt({ hash: createdRef.current.streamHash }).catch(() => null)
-        if (prior?.status === 'success') {
-          clearCreated(board, owner)
-          createdRef.current = null
-        } else if (prior) {
+        const priorHash = createdRef.current.streamHash
+        let receipt: 'success' | 'reverted' | null = null
+        try {
+          receipt = (await publicClient.getTransactionReceipt({ hash: priorHash })).status
+        } catch (e) {
+          // Only "no receipt yet" means no receipt. Any other RPC failure leaves the answer unknown,
+          // and guessing could edit a markee that is already backed.
+          if ((e as { name?: string })?.name !== 'TransactionReceiptNotFoundError') {
+            setError('Could not check your previous stream on this board. Check your connection and try again.')
+            return
+          }
+        }
+        const prior = classifyPriorStream(receipt, isPendingTxTracked(priorHash))
+        if (prior === 'in-flight') {
+          setError('Your previous stream on this board is still confirming. Wait for it to finish, or if Basescan shows it never went through, dismiss it and try again.')
+          return
+        }
+        if (prior === 'reusable') {
           const { streamHash: _reverted, ...unbacked } = createdRef.current
           createdRef.current = unbacked
           saveCreated(board, unbacked)
+        } else {
+          clearCreated(board, owner)
+          createdRef.current = null
         }
       }
       const stepCtx = { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id }

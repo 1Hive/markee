@@ -149,9 +149,9 @@ export function BuyMessageModal({
   const [successSnap, setSuccessSnap] = useState<SuccessSnap | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset, needsGasReserve } = useSponsoredWriteContract()
   // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
-  const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
+  const gasReserve = needsGasReserve ? FAST_TX_GAS_RESERVE : 0n
   const trackedBoard = customStrategyAddress || V13_LEADERBOARDS.COOPERATIVE
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
     hash, track: { account: activeAddress, board: trackedBoard, label: 'Your Markee payment' },
@@ -231,7 +231,7 @@ export function BuyMessageModal({
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
     try {
       if (balanceData.value < parseEther(amount) + gasReserve) {
-        return (sponsored ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`)
+        return (!needsGasReserve ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`)
       }
     } catch { return 'Invalid amount entered' }
     return null

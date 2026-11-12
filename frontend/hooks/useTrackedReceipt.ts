@@ -1,16 +1,23 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usePublicClient } from 'wagmi'
 import type { PublicClient, TransactionReceipt } from 'viem'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { getTxUrl } from '@/lib/explorer'
-import { addPendingTx, removePendingTx } from '@/lib/tx/pendingStore'
+import { addPendingTx, isDismissedTx, removePendingTx } from '@/lib/tx/pendingStore'
 import { nextTracking, type ReceiptPoll, type ReceiptTracking } from '@/lib/tx/receiptOutcome'
 import { createTrackedCache } from '@/lib/tx/trackedCache'
+import { useIsDismissedTx } from '@/hooks/usePendingTxs'
 
 export const REVERTED_TX_MESSAGE = 'Transaction failed on-chain. Please try again.'
+export const DISMISSED_TX_MESSAGE = 'You marked this transaction as never sent, so you can try again.'
+
+// Confirming txs are polled quickly; once tracking has no definite answer ('unknown', which can last
+// up to the pending store's 24h), poll slowly so a never-mined hash doesn't hammer the public RPC.
+const CONFIRMING_POLL_MS = 2_000
+const UNKNOWN_POLL_MS = 30_000
 
 export interface TrackedTxContext {
   account?: string
@@ -63,9 +70,15 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
 }) {
   const client = usePublicClient({ chainId })
   const key = hash ? `${chainId}:${hash.toLowerCase()}` : ''
+  // The user said this hash never went through (DismissPendingTx). Stop waiting on it so a modal
+  // tracking it isn't left spinning, and stop polling it.
+  const dismissed = useIsDismissedTx(hash)
+  const dismissedRef = useRef(dismissed)
+  dismissedRef.current = dismissed
 
   useEffect(() => {
-    if (!hash || !track) return
+    // Remounting a modal must not resurrect a payment the user already dismissed.
+    if (!hash || !track || isDismissedTx(hash)) return
     addPendingTx({ hash, chainId, account: track.account, board: track.board, label: track.label, createdAt: Date.now() })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hash, chainId])
@@ -79,8 +92,13 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
   const { data } = useQuery({
     queryKey: ['tracked-receipt', key],
     enabled: !!hash && !!client,
-    refetchInterval: query => (query.state.data && isResolved(query.state.data.tracking) ? false : 2_000),
-    refetchIntervalInBackground: true,
+    refetchInterval: query => {
+      const tracking = query.state.data?.tracking
+      if ((tracking && isResolved(tracking)) || dismissedRef.current) return false
+      return tracking?.outcome === 'unknown' ? UNKNOWN_POLL_MS : CONFIRMING_POLL_MS
+    },
+    // Background tabs pause polling and resume when focused, instead of polling every open tab.
+    refetchIntervalInBackground: false,
     retry: false,
     staleTime: Infinity,
     queryFn: async (): Promise<TrackedState> => {
@@ -93,17 +111,21 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
     },
   })
 
-  const outcome = hash ? data?.tracking.outcome ?? 'confirming' : undefined
-  const resolved = outcome === 'confirmed' || outcome === 'reverted'
+  const tracked = hash ? data?.tracking.outcome ?? 'confirming' : undefined
+  const resolved = tracked === 'confirmed' || tracked === 'reverted'
+  // Dismissal only overrides a hash that hasn't resolved; a receipt that already arrived still wins.
+  const abandoned = !!hash && dismissed && !resolved
+  const outcome = abandoned ? undefined : tracked
 
   useEffect(() => {
     if (hash && resolved) removePendingTx(hash)
   }, [hash, resolved])
 
   return useMemo(() => {
-    const error = outcome === 'reverted' ? (data?.revertError ?? new Error(REVERTED_TX_MESSAGE)) : null
+    const error = outcome === 'reverted' ? (data?.revertError ?? new Error(REVERTED_TX_MESSAGE))
+      : abandoned ? new Error(DISMISSED_TX_MESSAGE) : null
     return {
-      outcome,
+      outcome: abandoned ? 'dismissed' as const : outcome,
       data: outcome === 'confirmed' || outcome === 'reverted' ? data?.receipt : undefined,
       isLoading: outcome === 'confirming' || outcome === 'unknown',
       isUnknown: outcome === 'unknown',
@@ -112,5 +134,5 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
       error,
       explorerUrl: hash ? getTxUrl(chainId, hash) : undefined,
     }
-  }, [hash, chainId, outcome, data?.receipt, data?.revertError])
+  }, [hash, chainId, outcome, abandoned, data?.receipt, data?.revertError])
 }

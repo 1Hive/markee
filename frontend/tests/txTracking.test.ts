@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { UNSEEN_UNKNOWN_AFTER_MS, UNKNOWN_AFTER_MS, nextTracking, type ReceiptTracking } from '../lib/tx/receiptOutcome'
-import { addPendingTx, pendingFor, readPendingTxs, removePendingTx, PENDING_TX_KEY } from '../lib/tx/pendingStore'
+import { addPendingTx, dismissPendingTx, isDismissedTx, isPendingTxTracked, pendingFor, readPendingTxs, removePendingTx, PENDING_TX_KEY } from '../lib/tx/pendingStore'
 import { formatTransactionError, isWalletTimeoutError, WALLET_TIMEOUT_MESSAGE } from '../lib/transactionErrors'
 import { createTrackedCache } from '../lib/tx/trackedCache'
-import { loadCreated, planCreateStep, resumeKey, saveCreated, type CreatedMarkee } from '../lib/superfluid/createResume'
+import { classifyPriorStream, loadCreated, planCreateStep, resumeKey, saveCreated, type CreatedMarkee } from '../lib/superfluid/createResume'
 
 const start: ReceiptTracking = { outcome: 'confirming' }
 
@@ -166,4 +166,32 @@ test('a corrupt saved markee starts a fresh create', () => {
     assert.equal(planCreateStep(loadCreated(board, owner), 'first'), 'create')
   })
   assert.ok(data.has(resumeKey(board, owner)))
+})
+
+test('dismissing a pending payment untracks it and remembers it as never sent', () => {
+  withStorage(() => {
+    addPendingTx({ hash: hashA, chainId: 8453, account: '0xabc', board: '0xboard', createdAt: Date.now() })
+    assert.equal(isPendingTxTracked(hashA), true)
+    assert.equal(isDismissedTx(hashA), false)
+    dismissPendingTx(hashA.toUpperCase().replace('0X', '0x'))
+    assert.equal(isPendingTxTracked(hashA), false)
+    assert.equal(isDismissedTx(hashA), true)
+    assert.equal(isDismissedTx(hashB), false)
+    assert.equal(isDismissedTx(undefined), false)
+  })
+})
+
+test('a saved markee is only reused when its prior stream definitely did not back it', () => {
+  assert.equal(classifyPriorStream('success', false), 'taken')
+  assert.equal(classifyPriorStream('success', true), 'taken')
+  assert.equal(classifyPriorStream('reverted', true), 'reusable')
+  // No receipt yet: block while the payment is still tracked; never edit the markee meanwhile.
+  assert.equal(classifyPriorStream(null, true), 'in-flight')
+  // Dismissed as never sent, or aged out: start fresh rather than edit a markee it might still back.
+  assert.equal(classifyPriorStream(null, false), 'abandoned')
+})
+
+test('expired wallet requests count as wallet timeouts', () => {
+  assert.equal(isWalletTimeoutError(new Error('Request expired. Please try again.')), true)
+  assert.equal(isWalletTimeoutError(new Error('The request has expired')), true)
 })

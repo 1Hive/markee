@@ -85,13 +85,18 @@ function isDisplayableMessage(text: string): boolean {
   return !!text && text.length <= 180 && !matchesAny(text, NOISY_TRANSACTION_PATTERNS)
 }
 
-// Only the wallet itself reporting that its prompt timed out. A request that may still be open in
-// the wallet is the one case where "approving it will still send this payment" is true. Generic
-// RPC failures ('unknown rpc error' on its own) and HTTP timeouts (viem's TimeoutError, "request
-// timed out") happen during simulation/estimation before anything is sent, so matching them showed
-// the wallet-timeout notice and blocked payment buttons when nothing could be pending.
+// Only the wallet itself reporting that its prompt timed out or expired: a request that may still be
+// open in the wallet is the one case where "approving it will still send this payment" is true.
+// - 'wallet timeout': injected/Privy connectors ("An unknown RPC error occurred. Details: Wallet timeout").
+// - 'request expired' / 'request has expired': WalletConnect relays when the mobile wallet didn't
+//   answer before the request's expiry, while it can still be open in the wallet app.
+// Generic RPC failures ('unknown rpc error' on its own) and HTTP timeouts (viem's TimeoutError,
+// "request timed out") happen during simulation/estimation before anything is sent, so matching them
+// showed the wallet-timeout notice and blocked payment buttons when nothing could be pending.
 const WALLET_TIMEOUT_PATTERNS = [
   'wallet timeout',
+  'request expired',
+  'request has expired',
 ]
 
 export const WALLET_TIMEOUT_MESSAGE = 'Your wallet did not answer in time. If its request is still open, approving it will still send this payment, so check your wallet before trying again.'

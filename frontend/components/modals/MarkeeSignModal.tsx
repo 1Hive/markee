@@ -351,9 +351,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset, needsGasReserve } = useSponsoredWriteContract()
   // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
-  const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
+  const gasReserve = needsGasReserve ? FAST_TX_GAS_RESERVE : 0n
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
     hash, track: { account: activeAddress, board: leaderboardAddress, label: 'Your Markee payment' },
   })
@@ -453,7 +453,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
     try {
       if (balanceData.value < parseEther(amount) + gasReserve) {
-        return (sponsored ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`)
+        return (!needsGasReserve ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`)
       }
     } catch { return 'Invalid amount entered' }
     return null
@@ -552,19 +552,19 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   const handleUpdateMessage = async () => {
     if (walletTimeout.blocked) return
-    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
     if (!target) return
-    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
-    if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
-    if (!message.trim()) { setError('Please enter a message'); return }
-    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
     // Edits always go to this (registry-checked) board, never to an address read from the Markee
     // (#58). A Markee whose pricing strategy is another contract can only be edited there, so stop
-    // here instead of sending a transaction that is certain to revert.
+    // here (before the moderation call and review step) instead of sending a tx certain to revert.
     if (target.pricingStrategy && target.pricingStrategy.toLowerCase() !== strategyAddress.toLowerCase()) {
       setError('This message is managed by a different contract, so it can\'t be edited from this board.')
       return
     }
+    if (!await messageModeration.guard(message)) { setReviewOpen(false); return }
+    if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
+    if (!message.trim()) { setError('Please enter a message'); return }
+    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'updateMessage', args: [target.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
