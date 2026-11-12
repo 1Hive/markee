@@ -66,7 +66,8 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
     query: { enabled: topAddresses.length > 0 },
   })
 
-  const meta: LeaderboardMeta | null = metaData && !metaError ? {
+  const metaComplete = !!metaData && metaData.every(r => r.status === 'success')
+  const meta: LeaderboardMeta | null = metaComplete && !metaError ? {
     address: addr,
     leaderboardName:       (metaData[0]?.result as string)  ?? '',
     totalLeaderboardFunds: (metaData[1]?.result as bigint)  ?? 0n,

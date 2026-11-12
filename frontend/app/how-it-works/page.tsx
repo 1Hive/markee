@@ -42,18 +42,22 @@ function FeeReceiverSection() {
           Incoming funds from messages are split according to the Golden Ratio.
         </p>
 
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-4xl mx-auto grid gap-6 md:grid-cols-2">
           <FeeReceiverCard
-            percentage="100%"
+            percentage="62%"
             title="Your Beneficiary Address"
-            description="All funds go directly to the beneficiary address set for your Markee — your wallet, your community treasury, or any address you choose."
+            description="Goes to the beneficiary address set for your Markee: your wallet, your community treasury, or any address you choose."
             color="soft-pink"
             icon={<Users className="w-12 h-12" />}
           />
+          <FeeReceiverCard
+            percentage="38%"
+            title="The Markee Revnet"
+            description="Is paid into the Markee Revnet, which issues MARKEE to the buyer."
+            color="cool-sky-blue"
+            icon={<TrendingUp className="w-12 h-12" />}
+          />
         </div>
-        <p className="text-center text-sm text-[#8A8FBF] mt-6">
-          Revenue sharing with the Markee Cooperative via RevNet will resume when v6 is live.
-        </p>
       </div>
     </section>
   )

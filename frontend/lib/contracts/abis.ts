@@ -954,3 +954,7 @@ export const StreamingLeaderboardABI = [
   { inputs: [{ name: '_newMaxLength', type: 'uint256' }], name: 'setMaxMessageLength', outputs: [], stateMutability: 'nonpayable', type: 'function' },
   { inputs: [{ name: '_newMaxLength', type: 'uint256' }], name: 'setMaxNameLength', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const
+
+export const BeneficiaryAddressABI = [
+  { inputs: [], name: 'beneficiaryAddress', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+] as const

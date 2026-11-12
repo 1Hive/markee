@@ -153,6 +153,8 @@ contract MarkeeJuiceboxForwarder {
 
     event Credited(address indexed backer, uint256 settledRent, uint256 credit);
     event Paid(address indexed backer, uint256 amount, uint256 beneficiaryTokenCount);
+    /// @notice `amount` is the ETH this attempt tried to pay, which can be less than the backer's full
+    ///         credit when the forwarder holds less. The whole credit stays in `owedOf` for a retry.
     event PaymentFailed(address indexed backer, uint256 amount, bytes reason);
     event BackerSkipped(address indexed backer, bytes reason);
     event SurplusSwept(uint256 amount);
@@ -347,7 +349,9 @@ contract MarkeeJuiceboxForwarder {
         if (settle) {
             _noteFeeReceiver();
             (num, den) = _ratio();
-            if (num != ratioNum || den != ratioDen) {
+            // _ratio falls back to the remembered ratio while the stream is paused, so only a live
+            // nonzero ratio is ever stored here.
+            if (num > 0 && (num != ratioNum || den != ratioDen)) {
                 (ratioNum, ratioDen) = (num, den);
                 emit ShareRatioUpdated(num, den);
             }
@@ -383,21 +387,21 @@ contract MarkeeJuiceboxForwarder {
         (int256 available, uint256 deposit,,) = ETHX.realtimeBalanceOfNow(address(LEADERBOARD));
         uint256 holdings = (available > 0 ? uint256(available) : 0) + deposit + address(LEADERBOARD).balance;
         (uint256 num, uint256 den) = _ratio();
-        // A paused beneficiary stream reads as a zero ratio, but rent accrued earlier was priced at the last
-        // ratio seen, so reserve at that one.
-        if (num == 0) (num, den) = (ratioNum, ratioDen);
         if (den == 0) return holdings; // cannot price it: keep everything back
         return _share(holdings, num, den);
     }
 
     /// @dev Live share ratio from the streams: (beneficiary rate, top rate minus it), exactly what the
-    ///      leaderboard's accrual uses. With no #1 sign nothing accrues and the live ratio is undefined, so
-    ///      the last observed one is used.
+    ///      leaderboard's accrual uses. The last observed ratio is used instead when the live one is
+    ///      undefined (no #1 sign, so nothing accrues) or zero (the beneficiary stream is paused): rent a
+    ///      backer accrued before the pause was priced at that ratio, and settling it at zero would lose
+    ///      their project-token credit for good. Rent accrued during a pause brought the forwarder nothing,
+    ///      so crediting it at the last ratio can overshoot; credits stay capped by unallocated funds.
     function _ratio() internal view returns (uint256 num, uint256 den) {
         uint256 top = LEADERBOARD.topRate();
         int96 flow = CFA_FORWARDER.getFlowrate(address(ETHX), address(LEADERBOARD), address(this));
         uint256 ben = flow > 0 ? uint256(uint96(flow)) : 0;
-        if (top > ben) return (ben, top - ben);
+        if (ben > 0 && top > ben) return (ben, top - ben);
         return (ratioNum, ratioDen);
     }
 
