@@ -46,6 +46,7 @@ export const FOR_SALE_FACTORY_DEPLOY_BLOCK = 49_981_127n
 // StreamingLeaderboardFactory — deployment is gated on the Superfluid governance setAppRegistrationKey.
 // Set NEXT_PUBLIC_STREAMING_FACTORY to the deployed factory address to light up the streaming listing +
 // create flow; unset/invalid keeps the feature hidden.
+export const BASE_STREAMING_FACTORY = '0x37f420fdE5c98e611EB7cb9b74ef579D84697039' as const
 export const STREAMING_FACTORY = (process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '') as `0x${string}` | ''
 export const STREAMING_ENABLED = /^0x[0-9a-fA-F]{40}$/.test(STREAMING_FACTORY)
 
