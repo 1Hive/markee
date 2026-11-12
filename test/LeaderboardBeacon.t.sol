@@ -547,6 +547,59 @@ contract LeaderboardBeaconTest is Test {
         migrator.migrate(address(legacy));
     }
 
+    function test_factoryAdmin_isTwoStep() public {
+        address next = makeAddr("next-coop");
+        vm.prank(coop);
+        factory.setFactoryAdmin(next);
+        assertEq(factory.factoryAdmin(), coop);
+        assertEq(factory.pendingFactoryAdmin(), next);
+
+        vm.prank(coop);
+        factory.setRevNetEnabled(true);
+
+        vm.expectRevert("Only pending factory admin");
+        factory.acceptFactoryAdmin();
+
+        vm.prank(next);
+        factory.acceptFactoryAdmin();
+        assertEq(factory.factoryAdmin(), next);
+        assertEq(factory.pendingFactoryAdmin(), address(0));
+
+        vm.prank(coop);
+        vm.expectRevert("Only factory admin");
+        factory.setRevNetEnabled(false);
+    }
+
+    function test_factoryAdmin_retargetReplacesPending() public {
+        address first = makeAddr("first");
+        address second = makeAddr("second");
+        vm.startPrank(coop);
+        factory.setFactoryAdmin(first);
+        factory.setFactoryAdmin(second);
+        vm.stopPrank();
+
+        vm.prank(first);
+        vm.expectRevert("Only pending factory admin");
+        factory.acceptFactoryAdmin();
+
+        vm.prank(second);
+        factory.acceptFactoryAdmin();
+        assertEq(factory.factoryAdmin(), second);
+    }
+
+    function test_getLeaderboards_clampsPagination() public {
+        factory.createLeaderboard(address(this), "one");
+        factory.createLeaderboard(address(this), "two");
+        uint256 count = factory.leaderboardCount();
+
+        assertEq(factory.getLeaderboards(count, 10).length, 0);
+        assertEq(factory.getLeaderboards(count + 5, 10).length, 0);
+        assertEq(factory.getLeaderboards(type(uint256).max, type(uint256).max).length, 0);
+        assertEq(factory.getLeaderboards(0, type(uint256).max).length, count);
+        assertEq(factory.getLeaderboards(count - 1, type(uint256).max).length, 1);
+        assertEq(factory.getLeaderboards(0, 0).length, 0);
+    }
+
     function test_migration_ownershipIsTwoStep() public {
         address next = makeAddr("next-coop");
         vm.prank(coop);

@@ -27,10 +27,11 @@ import { SunsetTerminal } from "../contracts/upgrade/SunsetTerminal.sol";
 ///   forge script script/DeployBoardBeacons.s.sol --rpc-url base --account revnet-admin --broadcast
 ///
 /// The deployer temporarily administers the v1.4 factories and the migrators to wire them, then hands
-/// factories to the Coop directly and starts two-step ownership transfers of the migrators. The Coop
-/// Safe then runs, in one batch:
+/// factories to the Coop directly and starts two-step ownership transfers of the migrators and the v1.4
+/// factories. The Coop Safe then runs, in one batch:
 ///   1. StreamingLeaderboardFactory(0x37f4…7039).setImplementations(streamingForwarder, markeeImplementation)
 ///   2. acceptOwnership() on the streaming migrator and each lump-sum migrator
+///   3. acceptFactoryAdmin() on each v1.4 factory
 /// After that the operator key can run migrate(board) per legacy board, and once a lump-sum factory is
 /// fully migrated the Coop points its revNetTerminal at that factory's SunsetTerminal.
 contract DeployBoardBeacons is Script {

@@ -43,6 +43,9 @@ contract LeaderboardFactory is ILeaderboardFactory {
 
     address public factoryAdmin;
 
+    /// @notice Address proposed through setFactoryAdmin. factoryAdmin only changes once it calls acceptFactoryAdmin.
+    address public pendingFactoryAdmin;
+
     // ─── Leaderboard registry ─────────────────────────────────────────────────
 
     address[] public leaderboards;
@@ -58,6 +61,7 @@ contract LeaderboardFactory is ILeaderboardFactory {
         address seedMarkeeAddress
     );
     event FactoryAdminChanged(address indexed oldAdmin, address indexed newAdmin);
+    event FactoryAdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
     event MigratorChanged(address indexed oldMigrator, address indexed newMigrator);
     event RevNetTerminalChanged(address indexed oldTerminal, address indexed newTerminal);
     event RevNetProjectIdChanged(uint256 oldId, uint256 newId);
@@ -192,8 +196,9 @@ contract LeaderboardFactory is ILeaderboardFactory {
         view
         returns (address[] memory result)
     {
-        uint256 end = offset + limit;
-        if (end > leaderboards.length) end = leaderboards.length;
+        uint256 length = leaderboards.length;
+        if (offset >= length) return result;
+        uint256 end = limit > length - offset ? length : offset + limit;
         result = new address[](end - offset);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = leaderboards[i];
@@ -250,11 +255,20 @@ contract LeaderboardFactory is ILeaderboardFactory {
         emit PercentToPlatformFeeReceiverChanged(old, _newPercent);
     }
 
+    /// @notice Proposes a new factory admin. The current admin keeps control until _newAdmin calls
+    ///         acceptFactoryAdmin. Calling again replaces the pending proposal.
     function setFactoryAdmin(address _newAdmin) external onlyFactoryAdmin {
         require(_newAdmin != address(0), "Admin cannot be zero address");
-        address old = factoryAdmin;
-        factoryAdmin = _newAdmin;
-        emit FactoryAdminChanged(old, _newAdmin);
+        pendingFactoryAdmin = _newAdmin;
+        emit FactoryAdminTransferStarted(factoryAdmin, _newAdmin);
+    }
+
+    /// @notice Completes a transfer started with setFactoryAdmin. Pending factory admin only.
+    function acceptFactoryAdmin() external {
+        require(msg.sender == pendingFactoryAdmin, "Only pending factory admin");
+        emit FactoryAdminChanged(factoryAdmin, msg.sender);
+        factoryAdmin = msg.sender;
+        pendingFactoryAdmin = address(0);
     }
 
     function setMigrator(address _newMigrator) external onlyFactoryAdmin {

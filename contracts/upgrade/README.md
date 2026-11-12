@@ -37,7 +37,7 @@ Streaming forwarders accept plain ETH without asking the beacon, because `ETHx.d
 ## Rollout
 
 1. Deploy with `script/DeployBoardBeacons.s.sol` (`GUARDIAN`, `OPERATOR` env).
-2. Coop Safe batch. `setImplementations(streamingForwarder, markeeImplementation)` on the streaming factory 0x37f420fdE5c98e611EB7cb9b74ef579D84697039, then `acceptOwnership()` on every migrator. The streaming factory keeps its Superfluid registration, so no new governance request is needed.
+2. Coop Safe batch. `setImplementations(streamingForwarder, markeeImplementation)` on the streaming factory 0x37f420fdE5c98e611EB7cb9b74ef579D84697039, then `acceptOwnership()` on every migrator and `acceptFactoryAdmin()` on every v1.4 factory. The streaming factory keeps its Superfluid registration, so no new governance request is needed.
 3. Point the frontend's create flow at the four v1.4 factories.
 4. For each v1.3 factory, the Coop first sets its `revNetTerminal` to that factory's `SunsetTerminal` with `revNetEnabled` true, so no payment lands on a legacy board after it has been copied. Migration only reads, so it still works on a frozen factory.
 5. Operator migrates every legacy board, with `migrate(board)` for small boards and `startMigration`, `importMarkees(board, offset, limit)` pages, then `finishMigration` for any board whose one-shot migration would exceed the per-transaction gas budget. The heaviest live boards take about 28.2M gas (lump-sum) and 12.9M gas (streaming) in one shot.
