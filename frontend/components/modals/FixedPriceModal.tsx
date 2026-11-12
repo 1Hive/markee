@@ -3,7 +3,8 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
+import { useAccount, useBalance, useWaitForTransactionReceipt, useSwitchChain, useReadContract } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { formatEther, parseEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { FixedPriceStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
@@ -74,7 +75,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
+  // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
+  const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
@@ -132,10 +135,10 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   const canAfford = () => {
     if (!balanceData || priceWei === 0n) return false
-    return balanceData.value >= priceWei + FAST_TX_GAS_RESERVE
+    return balanceData.value >= priceWei + gasReserve
   }
   const insufficientBalance = priceWei > 0n && !canAfford()
-  const balanceWarning = insufficientBalance ? `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.` : null
+  const balanceWarning = insufficientBalance ? (sponsored ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`) : null
 
   const handleChangeMessage = async () => {
     if (!await messageModeration.guard(newMessage)) { setReviewOpen(false); return }

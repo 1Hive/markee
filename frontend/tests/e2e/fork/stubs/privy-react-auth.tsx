@@ -39,3 +39,13 @@ export function useConnectWallet() {
 export function useFundWallet(_opts?: unknown) {
   return { fundWallet: async () => {} }
 }
+
+// The mock connector's wallets report walletClientType 'e2e', so useSponsoredWriteContract never
+// routes through Privy here; this only has to exist for the import.
+export function useSendTransaction() {
+  return {
+    sendTransaction: async (): Promise<{ hash: `0x${string}` }> => {
+      throw new Error('useSendTransaction is not available in the E2E Privy stub')
+    },
+  }
+}

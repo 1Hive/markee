@@ -49,7 +49,9 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
       config={{
-        loginMethods: ['email', 'wallet', 'google', 'apple', 'farcaster'],
+        // No `loginMethods` here on purpose: the Privy dashboard is the source of truth for which
+        // sign-in options appear. A list in code overrides the dashboard toggles (that's how Apple and
+        // Farcaster kept showing after being switched off there).
         embeddedWallets: {
           ethereum: {
             createOnLogin: 'all-users',

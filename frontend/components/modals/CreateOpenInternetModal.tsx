@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
@@ -43,7 +44,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const [newAddress, setNewAddress] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
 
-  const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, error: writeError, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   useEffect(() => {

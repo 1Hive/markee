@@ -1,12 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import {
-  useAccount,
-  useWriteContract,
-  useWaitForTransactionReceipt,
-  useSwitchChain,
-} from 'wagmi'
+import { useAccount, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { formatEther, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -37,7 +33,7 @@ export function ClaimModal({ isOpen, onClose, board, onSuccess }: ClaimModalProp
 
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const pending = usePendingMarkee(isOpen ? board : undefined, enabled ? address : undefined)

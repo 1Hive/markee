@@ -6,7 +6,8 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 // and the Your Messages table (every message the wallet owns or has funded).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAccount, useBalance, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useWaitForTransactionReceipt } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { type Address, type Hex } from 'viem'
 import { ChevronDown } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -61,7 +62,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
   const { address, chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const { data: walletBalance } = useBalance({ address: address as Address | undefined, chainId: CANONICAL_CHAIN.id })
-  const { writeContractAsync, isPending } = useWriteContract()
+  const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [amount, setAmount] = useState('')
@@ -265,7 +266,7 @@ function SortTh({ k, label: text, sort, onSort }: { k: MsgSortKey; label: string
 function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void; onCancel: () => void }) {
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
-  const { writeContractAsync, isPending } = useWriteContract()
+  const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)

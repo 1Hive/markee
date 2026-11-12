@@ -10,7 +10,8 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 // since there's no message-text-edit capability for streaming markees.
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useAccount, useReadContract, useSwitchChain, useBalance, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract, useSwitchChain, useBalance, useWaitForTransactionReceipt } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { formatEther, erc20Abi, type Address, type Hex } from 'viem'
 import { Eye, Pencil } from 'lucide-react'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -485,7 +486,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // cancel tx confirms, instead of waiting on rateFlow/managePending's own refetch to catch up.
   const [cancelTxHash, setCancelTxHash] = useState<Hex | undefined>(undefined)
   const [cancelError, setCancelError] = useState<string | null>(null)
-  const { writeContractAsync: writeCancel, isPending: cancelPending } = useWriteContract()
+  const { writeContractAsync: writeCancel, isPending: cancelPending } = useSponsoredWriteContract()
   const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useWaitForTransactionReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
   async function handleCancel() {
     setCancelError(null)
@@ -566,7 +567,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [editMessageText, setEditMessageText] = useState('')
   const editModeration = useMessageModeration(editMessageText, isOpen, { checkWhileTyping: false })
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
-  const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useWriteContract()
+  const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useSponsoredWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
   const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useWaitForTransactionReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
   const editMessageBusy = editModeration.checking || editMessagePending || editMessageConfirming

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import Link from 'next/link'
 import { Check } from 'lucide-react'
@@ -307,7 +308,7 @@ function CreateWizardInner() {
   const [txError, setTxError] = useState<string | null>(null)
   const [setupTouched, setSetupTouched] = useState(false)
 
-  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
+  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   // Restore activate step after clicking the Basescan tx link: normally that opens in a new tab and

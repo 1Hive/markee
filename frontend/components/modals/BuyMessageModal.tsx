@@ -3,7 +3,8 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { parseEther, formatEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { TopDawgStrategyABI, TopDawgPartnerStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
@@ -155,7 +156,9 @@ export function BuyMessageModal({
   const [successSnap, setSuccessSnap] = useState<SuccessSnap | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
+  // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
+  const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
 
   const { data: balanceData } = useBalance({
@@ -222,15 +225,15 @@ export function BuyMessageModal({
   const canAffordTransaction = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return false
     try {
-      return balanceData.value >= parseEther(amount) + FAST_TX_GAS_RESERVE
+      return balanceData.value >= parseEther(amount) + gasReserve
     } catch { return false }
   }
 
   const getInsufficientBalanceMessage = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
     try {
-      if (balanceData.value < parseEther(amount) + FAST_TX_GAS_RESERVE) {
-        return `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.`
+      if (balanceData.value < parseEther(amount) + gasReserve) {
+        return (sponsored ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`)
       }
     } catch { return 'Invalid amount entered' }
     return null
@@ -238,8 +241,8 @@ export function BuyMessageModal({
 
   const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
   const balanceWarning = getInsufficientBalanceMessage()
-  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE
-    ? balanceData.value - FAST_TX_GAS_RESERVE
+  const spendableBalance = balanceData && balanceData.value > gasReserve
+    ? balanceData.value - gasReserve
     : 0n
   const maxSpendableEth = Number(formatEther(spendableBalance))
   const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001
