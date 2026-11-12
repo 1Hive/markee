@@ -6,7 +6,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
 import { formatEther, zeroAddress, type Address, type Hex } from 'viem'
-import { useAccount, useReadContract, useWriteContract } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -434,7 +435,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const [message, setMessage] = useState('')
   const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)
-  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
   const MAX_LEN = 222

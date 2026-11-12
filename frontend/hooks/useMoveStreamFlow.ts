@@ -7,7 +7,8 @@
 // backer, not a second full buffer.
 
 import { useState, useEffect, useRef } from 'react'
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
+import { useAccount, usePublicClient, useReadContract } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
 import { erc20Abi, type Address, type Hex } from 'viem'
@@ -35,7 +36,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
-  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
     useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 

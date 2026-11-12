@@ -6,7 +6,8 @@ import { useMessageModeration } from '@/hooks/useMessageModeration'
 // and the Your Messages table (every message the wallet owns or has funded).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { type Address, type Hex } from 'viem'
@@ -43,7 +44,7 @@ export interface StreamSnapshot {
 function ReclaimDeposit({ deposit, onDone }: { deposit: DepositManagerDeposit; onDone: () => void }) {
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
-  const { writeContractAsync, isPending } = useWriteContract()
+  const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [error, setError] = useState<string | null>(null)
@@ -123,7 +124,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
   const { address, chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const { data: walletBalance } = useBalance({ address: address as Address | undefined, chainId: CANONICAL_CHAIN.id })
-  const { writeContractAsync, isPending } = useWriteContract()
+  const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [amount, setAmount] = useState('')
@@ -336,7 +337,7 @@ function SortTh({ k, label: text, sort, onSort }: { k: MsgSortKey; label: string
 function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void; onCancel: () => void }) {
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
-  const { writeContractAsync, isPending } = useWriteContract()
+  const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)

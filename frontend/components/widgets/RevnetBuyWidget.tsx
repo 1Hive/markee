@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react'
 import { parseEther } from 'viem'
 import { base } from 'viem/chains'
-import { useWriteContract, useAccount, useSwitchChain } from 'wagmi'
+import { useAccount, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
@@ -64,7 +65,7 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   const { address, chain } = useAccount()
   const { switchChain } = useSwitchChain()
 
-  const { writeContract, data: txHash, isPending, reset } = useWriteContract()
+  const { writeContract, data: txHash, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash })
 
   const parsedEth  = parseFloat(amount)

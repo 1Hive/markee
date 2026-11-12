@@ -6,7 +6,8 @@
 // working, money-moving flow instead of two copies that can drift.
 
 import { useState, useEffect, useRef } from 'react'
-import { useAccount, usePublicClient, useWriteContract } from 'wagmi'
+import { useAccount, usePublicClient } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
 import { erc20Abi, decodeEventLog, type Address, type Hex } from 'viem'
@@ -61,7 +62,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
-  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
     useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 

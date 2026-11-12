@@ -3,7 +3,8 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useAccount, useBalance, useWriteContract, useReadContract, useSwitchChain, usePublicClient } from 'wagmi'
+import { useAccount, useBalance, useReadContract, useSwitchChain, usePublicClient } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { parseEther, formatEther } from 'viem'
 import { Eye } from 'lucide-react'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
@@ -350,7 +351,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [lastPreset, setLastPreset] = useState<'min' | 'max' | 'win' | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset, sponsored } = useSponsoredWriteContract()
+  // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
+  const gasReserve = sponsored ? 0n : FAST_TX_GAS_RESERVE
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
     hash, track: { account: activeAddress, board: leaderboardAddress, label: 'Your Markee payment' },
   })
@@ -444,19 +447,19 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // ── Balance / affordability ─────────────────────────────────────────────────
   const canAffordTransaction = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return false
-    try { return balanceData.value >= parseEther(amount) + FAST_TX_GAS_RESERVE } catch { return false }
+    try { return balanceData.value >= parseEther(amount) + gasReserve } catch { return false }
   }
   const getInsufficientBalanceMessage = () => {
     if (!amount || !balanceData || parseFloat(amount) <= 0) return null
     try {
-      if (balanceData.value < parseEther(amount) + FAST_TX_GAS_RESERVE) {
-        return `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.`
+      if (balanceData.value < parseEther(amount) + gasReserve) {
+        return (sponsored ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`)
       }
     } catch { return 'Invalid amount entered' }
     return null
   }
   const insufficientBalance = !!(amount && parseFloat(amount) > 0 && !canAffordTransaction())
-  const spendableBalance = balanceData && balanceData.value > FAST_TX_GAS_RESERVE ? balanceData.value - FAST_TX_GAS_RESERVE : 0n
+  const spendableBalance = balanceData && balanceData.value > gasReserve ? balanceData.value - gasReserve : 0n
   const maxSpendableEth = Number(formatEther(spendableBalance))
   const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001 ? maxSpendableEth.toFixed(6) : maxSpendableEth.toFixed(3)
 

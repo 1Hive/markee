@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useWriteContract, useAccount, useSwitchChain, useReadContract } from 'wagmi'
+import { useAccount, useSwitchChain, useReadContract } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { parseAbi } from 'viem'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePendingTxsFor } from '@/hooks/usePendingTxs'
@@ -313,7 +314,7 @@ function CreateWizardInner() {
   const [txError, setTxError] = useState<string | null>(null)
   const [setupTouched, setSetupTouched] = useState(false)
 
-  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
+  const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useSponsoredWriteContract()
   const deployFactory = strategy === 'streaming' ? STREAMING_FACTORY_ADDR : FACTORIES['fixed']['openinternet']
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, data: receipt, explorerUrl } = useTrackedReceipt({
     hash, track: { account: address, board: deployFactory, label: 'Your Markee deployment' },

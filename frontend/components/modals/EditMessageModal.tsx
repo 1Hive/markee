@@ -3,7 +3,8 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useWriteContract, useSwitchChain } from 'wagmi'
+import { useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { useAccount } from 'wagmi'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
@@ -40,7 +41,7 @@ export function EditMessageModal({
   const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash })
 
   useEffect(() => {

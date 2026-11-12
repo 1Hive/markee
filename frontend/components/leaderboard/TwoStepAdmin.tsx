@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
+import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionReceipt } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { zeroAddress } from 'viem'
 import { AdminSettingRow } from '@/components/leaderboard/AdminSettingRow'
 import { WalletPending, fmtAddr, isUserRejection } from '@/components/account/primitives'
@@ -23,7 +24,7 @@ function usePendingAdmin(board: `0x${string}`) {
 function useAdminCall(board: `0x${string}`, onDone: () => void) {
   const { chain } = useAccount()
   const { switchChain, isPending: switching } = useSwitchChain()
-  const { writeContractAsync, data: hash, isPending, reset } = useWriteContract()
+  const { writeContractAsync, data: hash, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: reverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [error, setError] = useState<string | null>(null)
   const isWrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id

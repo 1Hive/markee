@@ -1,0 +1,86 @@
+'use client'
+
+import { useCallback, useMemo } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { useAccount, useWriteContract } from 'wagmi'
+import { useSendTransaction, useWallets } from '@privy-io/react-auth'
+import { encodeFunctionData, type Abi, type Address, type Hex } from 'viem'
+import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+
+// Drop-in replacement for wagmi's useWriteContract that has Privy pay the gas for embedded wallets.
+//
+// Privy's dashboard "Sponsor gas fees" toggle only makes sponsorship *available*. It applies only
+// when a transaction goes through Privy's own sendTransaction with `sponsor: true`. A wagmi
+// writeContract sent through the embedded-wallet connector is an ordinary self-paid transaction, so
+// a fresh email/Google/Apple/passkey account (0 ETH) fails with "insufficient funds for gas".
+//
+// Routing:
+// - Active wagmi account is a Privy embedded wallet on the canonical chain -> encode the call and
+//   send it with Privy's sendTransaction({ sponsor: true }).
+// - Anything else (external wallets like MetaMask/Rabby, the E2E mock connector) -> wagmi's own
+//   writeContractAsync, unchanged. Privy cannot sponsor wallets it doesn't control.
+//
+// A failed sponsored send is never retried as a self-paid send: a failure after broadcast would
+// otherwise duplicate the transaction (see AGENTS.md "never automatically resubmit").
+
+type WagmiWrite = ReturnType<typeof useWriteContract>
+
+type LooseWriteParams = {
+  address: Address
+  abi: Abi | readonly unknown[]
+  functionName: string
+  args?: readonly unknown[]
+  value?: bigint
+  chainId?: number
+}
+
+export function isEmbeddedWalletType(walletClientType: string | undefined): boolean {
+  return walletClientType === 'privy' || walletClientType === 'privy-v2'
+}
+
+export function useSponsoredWriteContract() {
+  const { address, chainId: accountChainId } = useAccount()
+  const { wallets } = useWallets()
+  const { sendTransaction } = useSendTransaction()
+  const { writeContractAsync: wagmiWriteContractAsync } = useWriteContract()
+
+  // The Privy embedded wallet wagmi is signing with, if any. External wallets resolve to undefined.
+  const embedded = useMemo(() => {
+    const active = address ? wallets.find(w => w.address.toLowerCase() === address.toLowerCase()) : undefined
+    return active && isEmbeddedWalletType(active.walletClientType) ? active : undefined
+  }, [address, wallets])
+
+  const send = useCallback(async (params: LooseWriteParams): Promise<Hex> => {
+    const chainId = params.chainId ?? accountChainId
+    if (embedded && chainId === CANONICAL_CHAIN.id) {
+      const data = encodeFunctionData({
+        abi: params.abi as Abi,
+        functionName: params.functionName,
+        args: params.args as unknown[] | undefined,
+      })
+      const { hash } = await sendTransaction(
+        { to: params.address, data, value: params.value ?? 0n, chainId },
+        { address: embedded.address, sponsor: true, uiOptions: { showWalletUIs: true } },
+      )
+      return hash
+    }
+    return wagmiWriteContractAsync(params as Parameters<WagmiWrite['writeContractAsync']>[0])
+  }, [embedded, accountChainId, sendTransaction, wagmiWriteContractAsync])
+
+  const mutation = useMutation<Hex, Error, LooseWriteParams>({ mutationFn: send })
+
+  return {
+    // Cast back to wagmi's signatures so call sites keep ABI-typed functionName/args checking.
+    writeContract: mutation.mutate as unknown as WagmiWrite['writeContract'],
+    writeContractAsync: mutation.mutateAsync as unknown as WagmiWrite['writeContractAsync'],
+    data: mutation.data,
+    error: mutation.error,
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    reset: mutation.reset,
+    // True when writes on the canonical chain will be gas-sponsored, so callers can skip reserving
+    // ETH for gas in their balance checks (the user then only needs the transaction's value).
+    sponsored: !!embedded,
+  }
+}

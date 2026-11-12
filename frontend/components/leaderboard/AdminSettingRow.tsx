@@ -10,7 +10,8 @@
 // that page delegates to a dedicated modal), so it's a standalone component rather than inlined.
 
 import { useEffect, useState } from 'react'
-import { useAccount, useReadContract, useSwitchChain, useWriteContract } from 'wagmi'
+import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { formatEther, isAddress, type Abi } from 'viem'
 import { Check, Copy } from 'lucide-react'
@@ -76,7 +77,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
   const [acknowledged, setAcknowledged] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  const { writeContractAsync, data: hash, isPending, reset } = useWriteContract()
+  const { writeContractAsync, data: hash, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
 
   useEffect(() => {
