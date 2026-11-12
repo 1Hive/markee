@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAccount, useBalance, useSwitchChain, useWriteContract } from 'wagmi'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { erc20Abi, formatEther, type Address, type Hex } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -24,10 +25,13 @@ import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
+import type { DepositManagerDeposit } from '@/app/api/streaming/deposit-manager/route'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
 const RED = '#FF8E8E'
+
+export type { DepositManagerDeposit }
 
 export interface DepositManagerStream {
   boardAddress: string
@@ -49,14 +53,15 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
-  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[] } | null>(null)
+  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; deposits?: DepositManagerDeposit[] } | null>(null)
   const [loading, setLoading] = useState(false)
-  const [action, setAction] = useState<'deposit' | 'withdraw' | null>(null)
+  const [action, setAction] = useState<'deposit' | 'withdraw' | 'reclaim' | null>(null)
+  const [reclaimingBoard, setReclaimingBoard] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [depositPct, setDepositPct] = useState(50)
   const [withdrawPct, setWithdrawPct] = useState(50)
-  const [lastTx, setLastTx] = useState<{ hash: Hex; type: 'deposit' | 'withdraw' } | null>(null)
+  const [lastTx, setLastTx] = useState<{ hash: Hex; type: 'deposit' | 'withdraw' | 'reclaim' } | null>(null)
 
   const refresh = useCallback((bust = false) => {
     if (!activeAddress) return
@@ -87,7 +92,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   useEffect(() => {
     if (isSuccess && txHash && action) {
       setLastTx({ hash: txHash, type: action })
-      setTxHash(undefined); resetWrite(); setAction(null); setAmount('')
+      setTxHash(undefined); resetWrite(); setAction(null); setAmount(''); setReclaimingBoard(null)
       // bust=1 -- the KV cache backing this endpoint can otherwise serve the pre-deposit/withdraw
       // balance for up to its TTL, so a normal refresh() right after a tx confirms can silently show
       // stale data until the cache naturally expires.
@@ -98,7 +103,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
 
   // A reverted deposit/withdraw otherwise just re-enables the button with no error.
   useEffect(() => {
-    if (txReverted && txHash) setActionError(formatReceiptError(receiptError, 'DepositManagerModal.receipt'))
+    if (txReverted && txHash) { setActionError(formatReceiptError(receiptError, 'DepositManagerModal.receipt')); setReclaimingBoard(null) }
   }, [txReverted, txHash, receiptError])
 
   const initialLoading = loading && !data
@@ -182,6 +187,22 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
       setActionError(formatTransactionError(e))
     }
   }
+
+  async function handleReclaim(board: string) {
+    setActionError(null)
+    if (!isCorrectChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
+    try {
+      setAction('reclaim'); setReclaimingBoard(board.toLowerCase())
+      const hash = await writeContractAsync({ address: board as Address, abi: StreamingLeaderboardABI, functionName: 'withdrawDeposit', chainId: CANONICAL_CHAIN.id })
+      setTxHash(hash)
+    } catch (e: unknown) {
+      setAction(null); setReclaimingBoard(null)
+      logTransactionError(e, 'DepositManagerModal.reclaim')
+      setActionError(formatTransactionError(e))
+    }
+  }
+
+  const heldDeposits = (data?.deposits ?? []).filter(d => BigInt(d.depositRaw) > 0n)
 
   if (!isOpen) return null
 
@@ -285,7 +306,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
               )}
               {lastTx && !refreshingBalance && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontFamily: MONO, fontSize: 11.5 }}>
-                  <span style={{ color: GREEN }}>✓ {lastTx.type === 'deposit' ? 'Deposit' : 'Withdrawal'} confirmed</span>
+                  <span style={{ color: GREEN }}>✓ {lastTx.type === 'deposit' ? 'Deposit' : lastTx.type === 'reclaim' ? 'Board deposit returned' : 'Withdrawal'} confirmed</span>
                   <a
                     href={getTxUrl(CANONICAL_CHAIN.id, lastTx.hash)}
                     target="_blank"
@@ -339,7 +360,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                     <input
                       inputMode="decimal"
                       value={amount}
-                      onChange={e => { setAmount(sanitizeDecimalInput(e.target.value)); if (actionError) setActionError(null) }}
+                      onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setAmount(v); if (actionError) setActionError(null) }}
                       placeholder={action === 'deposit' ? 'Amount to deposit (ETH)' : 'Amount to withdraw (ETHx)'}
                       disabled={busy}
                       style={{
@@ -430,6 +451,40 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 )}
               </div>
             </div>
+
+            {heldDeposits.length > 0 && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Held by boards</div>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>
+                Each stream leaves a small safety deposit on its board. Anything not needed by a live stream can come back to your wallet.
+              </p>
+              <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+                {heldDeposits.map((d, i) => {
+                  const reclaimable = BigInt(d.reclaimableRaw)
+                  const reclaiming = reclaimingBoard === d.boardAddress.toLowerCase()
+                  return (
+                    <div key={d.boardAddress} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: i === heldDeposits.length - 1 ? 'none' : `1px solid ${BORDER}` }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.boardName}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>
+                          {formatEther(BigInt(d.depositRaw))} ETHx held{reclaimable < BigInt(d.depositRaw) ? `, ${formatEther(reclaimable)} free` : ''}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleReclaim(d.boardAddress)}
+                        disabled={busy || reclaimable === 0n}
+                        title={reclaimable === 0n ? 'A live stream on this board still needs all of it' : undefined}
+                        style={{ background: 'transparent', border: `1px solid ${BORDER}`, color: reclaimable === 0n ? MUTED : PINK, borderRadius: 6, padding: '6px 12px', fontFamily: MONO, fontSize: 11.5, fontWeight: 700, cursor: busy || reclaimable === 0n ? 'not-allowed' : 'pointer', opacity: busy && !reclaiming ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                      >
+                        {reclaiming ? (isPending ? 'Confirm…' : 'Pending…') : 'Reclaim'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+              {actionError && action === null && <p style={{ margin: '8px 0 0', fontFamily: MONO, fontSize: 11, color: RED }}>{actionError}</p>}
+            </div>
+            )}
 
             {/* ── Your streams (hidden entirely once we know there's nothing to show) ── */}
             {(initialLoading || streams.length > 0) && (

@@ -103,7 +103,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
     query: { enabled: !!address },
   })
-  const hasPosition = (!!backedMarkee && backedMarkee !== zeroAddress) || (myDeposit ?? 0n) > 0n
+  const { data: mySettlement, refetch: refetchSettlement } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'pendingSettlement', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !!address },
+  })
+  const hasPosition = (!!backedMarkee && backedMarkee !== zeroAddress) || (myDeposit ?? 0n) > 0n || (mySettlement ?? 0n) > 0n
 
   const pending = usePendingMarkee(hasPosition ? board : undefined, address)
   // Decimal count is derived from the actual accrual rate (not a fixed guess) so the last digit
@@ -122,8 +126,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 
   const { refetch: refetchPending } = pending
   const refetchAll = useCallback(() => {
-    refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); refetchPending()
-  }, [refetch, refetchBacked, refetchMyRate, refetchDeposit, refetchPending])
+    refetch(); refetchBacked(); refetchMyRate(); refetchDeposit(); refetchSettlement(); refetchPending()
+  }, [refetch, refetchBacked, refetchMyRate, refetchDeposit, refetchSettlement, refetchPending])
 
   // ── Views ───────────────────────────────────────────────────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())

@@ -156,7 +156,7 @@ function RateCard({
             <input
               inputMode="decimal"
               value={monthly}
-              onChange={e => { setHasUserEdited(true); setMonthly(sanitizeDecimalInput(e.target.value)); setLastPreset(null) }}
+              onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setHasUserEdited(true); setMonthly(v); setLastPreset(null) }}
               placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
               disabled={busy}
               style={{
@@ -414,6 +414,10 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const { data: balanceData } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
 
+  const { data: heldDeposit } = useReadContract({
+    address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: activeAddress ? [activeAddress as Address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!activeAddress },
+  })
   const { data: minMonthlyWeiFetched } = useReadContract({
     address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'minimumMonthlyRate', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen, refetchInterval: retryUntilLoaded },
@@ -623,9 +627,10 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     const monthlyWei = parseEthInput(monthly)
     const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
-    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n)
+    // A move wraps its deposit top-up separately (fundTotalValue below), so it ignores the held deposit here.
+    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n, view === 'fund' && backsOther ? 0n : (heldDeposit as bigint | undefined) ?? 0n)
     return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue }
-  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei])
+  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei, view, backsOther, heldDeposit])
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
   const runway = runwaySeconds(calc.prefund, calc.ratePerSec)
@@ -830,7 +835,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     { label: 'Approve Deposit', done: (flow.submitting && !flow.approving) || flow.isSuccess, active: flow.approving },
     { label: actionLabel, done: flow.isSuccess, active: flow.submitting && !flow.approving && !flow.isSuccess },
   ]
-  const fundStreamLabel = (calc.value > DISPLAY_DUST_WEI ? 'Deposit ETH & ' : '') + (backsOther ? 'Move Stream' : 'Start Stream')
+  const fundStreamLabel = (fundTotalValue > DISPLAY_DUST_WEI ? 'Deposit ETH & ' : '') + (backsOther ? 'Move Stream' : 'Start Stream')
   const fundSteps = view === 'fund' ? fundFlowSteps(backsOther ? moveFlow : openFlow, fundStreamLabel) : undefined
   const manageSteps = view === 'manage' ? fundFlowSteps(rateFlow, 'Update Stream') : undefined
 
@@ -1059,7 +1064,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     message={target.message || ''}
                     amountLabel={`${monthly || '0'} ETH/mo`}
                     amountUsd={ethPrice && parseFloat(monthly || '0') > 0 ? formatUsd(parseFloat(monthly) * ethPrice) : null}
-                    depositLabel={calc.value > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
+                    depositLabel={fundTotalValue > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(fundTotalValue)).toFixed(4)} ETH` : null}
                     runwayLabel={formatRunwayShort(runway)}
                     markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
@@ -1137,7 +1142,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       minMonthlyWei={minMonthlyWei} minMonthlyEth={minMonthlyEth} minLoaded={minLoaded}
                       topMonthlyWei={topMonthlyWei}
                       isAlreadyTop={fundTargetIsTop} twoXMonthlyEth={fundTwoXMonthlyEth}
-                      ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={calc}
+                      ethPrice={ethPrice} ethxBalance={ethxBalance} walletEthBalance={balanceData?.value} busy={busy} calc={{ ...calc, value: fundTotalValue }}
                       runwaySecs={runway} onOpenDepositManager={() => setDepositManagerOpen(true)}
                     />
                     <ReceiveCard monthly={monthly} compact={false} />
@@ -1321,11 +1326,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
               <div style={{ fontFamily: MONO, fontSize: 12.5, color: MUTED, lineHeight: 1.5, flex: 1 }}>
                 {view === 'manage'
                   ? (manageStatus === 'cancelled' && (rateFlow.deposit ?? 0n) > 0n ? (
-                      // No inline "Withdraw Deposit" here on purpose -- that balance is still usable
-                      // ETHx for any other message, and we don't want cancelling a stream to nudge
-                      // people toward draining it. The Deposit Manager already covers withdrawals.
                       <span>
-                        Your deposit stays as ETHx, usable for any other message.{' '}
+                        This board still holds your {parseFloat(formatEther(rateFlow.deposit ?? 0n)).toFixed(6)} ETHx safety deposit. A new stream here reuses it, or reclaim it in the{' '}
                         <button
                           type="button"
                           onClick={() => setDepositManagerOpen(true)}

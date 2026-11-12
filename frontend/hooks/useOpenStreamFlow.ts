@@ -58,8 +58,13 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     query: { enabled, refetchInterval: retryUntilLoaded },
   })
 
+  const { data: deposit } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled, refetchInterval: retryUntilLoaded },
+  })
+
   const poolReady = !!refundPool && refundPool !== ZERO_ADDRESS
-  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && !!publicClient
+  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && deposit !== undefined && !!publicClient
 
   useEffect(() => {
     if (!isOpen) {
@@ -88,13 +93,14 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     try {
       setSubmitting(true)
 
-      if ((allowance ?? 0n) < calc.buffer) {
+      const depositTopUp = calc.buffer > (deposit ?? 0n) ? calc.buffer - (deposit ?? 0n) : 0n
+      if (depositTopUp > 0n && (allowance ?? 0n) < depositTopUp) {
         setApproving(true)
         const approveHash = await writeContractAsync({
           address: ETHX,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [board, calc.buffer],
+          args: [board, depositTopUp],
           chainId: CANONICAL_CHAIN.id,
         })
         const approveReceipt = await waitForStep(publicClient!, approveHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
@@ -110,7 +116,7 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
         markee: markeeAddress,
         backer: address,
         ratePerSec: calc.ratePerSec,
-        buffer: calc.buffer,
+        buffer: depositTopUp,
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: refundPool as Address,
@@ -137,5 +143,5 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     }
   }
 
-  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, openStream }
+  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, deposit, openStream }
 }

@@ -105,6 +105,10 @@ export function StreamActivateModal({
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
 
+  const { data: heldDeposit } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: activeAddress ? [activeAddress as Address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!activeAddress },
+  })
   const { data: minMonthlyWei } = useReadContract({
     address: board, abi: StreamingLeaderboardABI, functionName: 'minimumMonthlyRate', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen, refetchInterval: retryUntilLoaded },
@@ -142,9 +146,9 @@ export function StreamActivateModal({
     const monthlyWei = parseEthInput(monthly)
     const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
-    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n)
+    const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n, (heldDeposit as bigint | undefined) ?? 0n)
     return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue, runwaySecs: auto.runwaySeconds }
-  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei])
+  }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei, heldDeposit])
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
   const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
