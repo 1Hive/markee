@@ -9,6 +9,7 @@
     "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
     "test:keeper": "tsx --test tests/keeper.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
+    "test:amount-input": "tsx --test tests/amountInput.test.ts",
     "test:eth-amount": "tsx --test tests/ethAmount.test.ts",
     "test:billboard": "tsx --test tests/billboardText.test.ts tests/githubBillboard.test.ts tests/concurrency.test.ts",
     "test:beneficiary": "tsx --test tests/beneficiary.test.ts",

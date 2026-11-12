@@ -14,7 +14,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePendingTxsFor } from '@/hooks/usePendingTxs'
 import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
@@ -45,16 +45,6 @@ function formatViewsShort(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
   return `${(n / 1_000_000).toFixed(1)}M`
-}
-
-// Caps each side of the decimal at 9 digits so a pasted/huge value can't blow out the layout.
-function sanitizeAmountInput(raw: string): string {
-  let cleaned = raw.replace(/[^0-9.]/g, '')
-  const dot = cleaned.indexOf('.')
-  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
-  const [intPart, fracPart] = cleaned.split('.')
-  const cappedInt = (intPart ?? '').slice(0, 9)
-  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
 
@@ -141,7 +131,7 @@ function AmountCard({
             <input
               inputMode="decimal"
               value={amount}
-              onChange={e => { setHasUserEdited(true); setAmount(sanitizeAmountInput(e.target.value)); setLastPreset(null) }}
+              onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setHasUserEdited(true); setAmount(v); setLastPreset(null) }}
               placeholder={minimumAmountFormatted}
               disabled={busy}
               style={{

@@ -156,7 +156,7 @@ function RateCard({
             <input
               inputMode="decimal"
               value={monthly}
-              onChange={e => { setHasUserEdited(true); setMonthly(sanitizeDecimalInput(e.target.value)); setLastPreset(null) }}
+              onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setHasUserEdited(true); setMonthly(v); setLastPreset(null) }}
               placeholder={minLoaded && minMonthlyWei ? minMonthlyEth : '0.001'}
               disabled={busy}
               style={{

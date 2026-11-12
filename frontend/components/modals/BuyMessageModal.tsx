@@ -13,7 +13,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
-import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading } from '@/components/modals/StreamUI'
+import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
@@ -54,18 +54,6 @@ interface BuyMessageModalProps {
   title?: string
   messageLabel?: string
   messagePlaceholder?: string
-}
-
-// Keeps only digits and the first decimal point, capped at 9 digits on each side of the decimal —
-// matches MarkeeSignModal's sanitizeAmountInput. The amount input here had no sanitization at all
-// (relying only on inputMode="decimal", a mobile keyboard hint with no actual validation).
-function sanitizeAmountInput(raw: string): string {
-  let cleaned = raw.replace(/[^0-9.]/g, '')
-  const dot = cleaned.indexOf('.')
-  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
-  const [intPart, fracPart] = cleaned.split('.')
-  const cappedInt = (intPart ?? '').slice(0, 9)
-  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
 }
 
 // M/B/T-abbreviated, NaN-safe MARKEE amount display — shows extra decimal places for sub-10 and
@@ -714,7 +702,7 @@ export function BuyMessageModal({
                         <input
                           inputMode="decimal"
                           value={amount}
-                          onChange={e => { setHasUserEdited(true); setAmount(sanitizeAmountInput(e.target.value)); setLastPreset(null) }}
+                          onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setHasUserEdited(true); setAmount(v); setLastPreset(null) }}
                           placeholder={minimumAmountFormatted}
                           disabled={isPending || isConfirming}
                           style={{

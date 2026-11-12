@@ -169,7 +169,7 @@ function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 
             inputMode="decimal"
             disabled={busy}
             value={amount}
-            onChange={e => { setAmount(sanitizeDecimalInput(e.target.value)); setError(null) }}
+            onChange={e => { const v = sanitizeDecimalInput(e.target.value); if (v === null) return; setAmount(v); setError(null) }}
             onKeyDown={e => { if (e.key === 'Enter' && !bad) go(); if (e.key === 'Escape') onCancel() }}
             placeholder={mode === 'deposit' ? 'Amount to deposit' : `Up to ${(Number(balance) / 1e18).toFixed(6)}`}
             style={{ ...inputStyle, paddingRight: 48, borderColor: amount && tooMuch ? 'rgba(255,138,155,0.5)' : BORDER }}
