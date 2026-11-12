@@ -243,13 +243,13 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
               <div style={label}>Balance</div>
               {data
                 ? <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: TEXT, marginTop: 4 }}>{(Number(balance) / 1e18).toFixed(6)} <span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}>ETHx</span></div>
-                : <div style={{ width: 140, height: 24, marginTop: 6, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />}
+                : <div className="skeleton" style={{ width: 140, height: 24, marginTop: 6, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />}
             </div>
             <div style={{ flex: '1 1 160px' }}>
               <div style={label}>Runs Out In</div>
               {data
                 ? <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: low ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{liveRate > 0n ? formatRunway(runway) : 'Not streaming'}</div>
-                : <div style={{ width: 120, height: 18, marginTop: 8, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />}
+                : <div className="skeleton" style={{ width: 120, height: 18, marginTop: 8, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />}
             </div>
             {!mode && (
               <div style={{ display: 'flex', gap: 8 }}>
@@ -498,7 +498,7 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
           </div>
           {loading && [1, 2, 3, 4].map(i => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: MSG_COLS, gap: 14, padding: '16px 18px', borderTop: `1px solid ${BORDER}` }}>
-              {[1, 2, 3, 4, 5].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+              {[1, 2, 3, 4, 5].map(j => <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
             </div>
           ))}
           {!loading && list.length === 0 && (

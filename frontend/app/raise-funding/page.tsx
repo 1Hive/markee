@@ -132,7 +132,7 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
                     {stats[p.key].markees.toLocaleString()}
                   </div>
                 ) : (
-                  <div style={{ width: 36, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', animation: 'shimmer 1.4s ease-in-out infinite', margin: '0 auto' }} />
+                  <div className="skeleton" style={{ width: 36, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', margin: '0 auto' }} />
                 )}
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>active signs</div>
               </div>
@@ -142,7 +142,7 @@ function PlatformPicker({ stats }: { stats: Record<string, PlatStats> }) {
                     {fmtUsd(stats[p.key].usd)}
                   </div>
                 ) : (
-                  <div style={{ width: 44, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', animation: 'shimmer 1.4s ease-in-out infinite', margin: '0 auto' }} />
+                  <div className="skeleton" style={{ width: 44, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.07)', margin: '0 auto' }} />
                 )}
                 <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>raised</div>
               </div>

@@ -64,7 +64,7 @@ function slotToMarkee(slot: MarkeeSlot): Markee {
 
 function SkeletonBar({ className = '' }: { className?: string }) {
   return (
-    <div className={`bg-[#1A1F4D] rounded animate-pulse ${className}`} />
+    <div className={`bg-[#1A1F4D] rounded skeleton ${className}`} />
   )
 }
 

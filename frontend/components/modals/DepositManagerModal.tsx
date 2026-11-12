@@ -494,7 +494,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
               {initialLoading ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {[...Array(2)].map((_, i) => (
-                    <div key={i} style={{ height: 52, borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(138,143,191,0.06)' }} />
+                    <div className="skeleton" key={i} style={{ height: 52, borderRadius: 10, border: `1px solid ${BORDER}`, background: 'rgba(138,143,191,0.06)' }} />
                   ))}
                 </div>
               ) : (

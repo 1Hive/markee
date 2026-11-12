@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { MONO, PINK, BG, TEXT, MUTED } from '@/lib/design-tokens'
+import { MessageSkeleton } from '@/components/moderation/ModeratedContent'
 
 const SANS = "Manrope,system-ui,sans-serif"
 
@@ -85,9 +86,11 @@ export default function EmbedPage() {
                 </span>
               )}
             </>
+          ) : !data ? (
+            <span role="status" aria-label="Loading message"><MessageSkeleton lines={1} /></span>
           ) : (
             <span style={{ fontFamily: MONO, fontSize: 13, color: MUTED }}>
-              {data?.flagged ? 'Content unavailable' : data ? 'No message yet — be the first.' : 'Loading…'}
+              {data.flagged ? 'Content unavailable' : 'No message yet — be the first.'}
             </span>
           )}
         </div>

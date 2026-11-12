@@ -341,7 +341,7 @@ function SignRow({
         {rank}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
+        <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0">
           <div style={{ color: TEXT, fontWeight: 700, fontSize: 14, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {markee.message || '—'}
           </div>

@@ -257,7 +257,7 @@ export function RewardsModal({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 min-h-0">
           {isLoading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-14 bg-[#0A0F3D] rounded-xl border border-[#8A8FBF]/10 animate-pulse" />
+              <div key={i} className="h-14 bg-[#0A0F3D] rounded-xl border border-[#8A8FBF]/10 skeleton" />
             ))
           ) : error ? (
             <div className="py-12 text-center">

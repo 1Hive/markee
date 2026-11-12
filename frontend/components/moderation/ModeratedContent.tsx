@@ -35,6 +35,18 @@ interface ModeratedContentProps {
   allowReveal?: boolean
   /** Additional class names for the wrapper */
   className?: string
+  /** Placeholder bars shown while the moderation check runs: 1 for single-line rows, 2 (default) for cards */
+  placeholderLines?: 1 | 2
+}
+
+/** Message-shaped loading bars, shown instead of the message until its moderation check is done. */
+export function MessageSkeleton({ lines = 2 }: { lines?: 1 | 2 }) {
+  return (
+    <span className="skeleton-lines" aria-hidden="true">
+      <span className="skeleton skeleton-line" />
+      {lines === 2 && <span className="skeleton skeleton-line skeleton-line--short" />}
+    </span>
+  )
 }
 
 export function ModeratedContent({
@@ -48,6 +60,7 @@ export function ModeratedContent({
   overlayText = MODERATION_DEFAULTS.overlayText,
   allowReveal = MODERATION_DEFAULTS.allowReveal,
   className = '',
+  placeholderLines = 2,
 }: ModeratedContentProps) {
   const { isFlagged, canModerate } = useModeration()
   const [revealed, setRevealed] = useState<string | null>(null)
@@ -60,9 +73,7 @@ export function ModeratedContent({
   const flagged = manuallyFlagged || autoFlagged
   if (automatic.unavailable) return (
     <div role="status" aria-label="Loading message" className={className}>
-      <span className="font-jetbrains text-[#8A8FBF]">
-        This is a sign<span className="sign-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-      </span>
+      <MessageSkeleton lines={placeholderLines} />
     </div>
   )
   const isAdmin = canModerate(boardAdmin, boardCreator)

@@ -630,7 +630,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
               <Pencil size={11} />
             </button>
           )}
-          <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+          <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {markee.message || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>No message</span>}
             </p>

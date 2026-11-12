@@ -211,7 +211,7 @@ export function ModerationQueue() {
       </PanelHead>
       {isLoading ? (
         <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[1, 2].map(i => <div key={i} style={{ height: 64, background: 'rgba(138,143,191,0.08)', borderRadius: 14 }} />)}
+          {[1, 2].map(i => <div className="skeleton" key={i} style={{ height: 64, background: 'rgba(138,143,191,0.08)', borderRadius: 14 }} />)}
         </div>
       ) : error ? (
         <div style={{ padding: '18px', fontSize: 13, color: DANGER }}>Could not load the moderation queue. It retries every minute.</div>

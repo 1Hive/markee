@@ -142,10 +142,10 @@ function SkeletonStatCell() {
   return (
     <div className="metric-cell">
       <span className="metric-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
-        <div style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
+        <span className="skeleton" style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
+        <div className="skeleton" style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
       </span>
-      <div style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+      <div className="skeleton" style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
     </div>
   )
 }
@@ -521,7 +521,7 @@ export default function Home() {
                     borderBottom: '1px solid rgba(138,143,191,0.2)',
                   }}>
                     {[1, 2, 3, 4, 5].map(j => (
-                      <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4, animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4 }} />
                     ))}
                     <div />
                   </div>
@@ -600,7 +600,7 @@ export default function Home() {
                             FlagButton's handler only stopPropagation()s, not preventDefault()s, so
                             nesting it here would still navigate on click. The target page has a
                             working FlagButton already. */}
-                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+                        <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
                           <div style={{
                             fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

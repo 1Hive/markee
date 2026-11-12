@@ -93,10 +93,10 @@ export function ConnectButton() {
     return (
       <div
         aria-hidden
+        className="skeleton"
         style={{
           width: 92, height: 33, borderRadius: 8,
           background: 'rgba(138,143,191,0.12)',
-          animation: 'shimmer 1.4s ease-in-out infinite',
           flexShrink: 0,
         }}
       />

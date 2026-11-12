@@ -322,7 +322,7 @@ export function MarkeeCard({
   if (size === 'list') {
     return (
       <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 last:border-0 hover:bg-[#0A0F3D]">
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address}>
+        <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address}>
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <p className="font-jetbrains text-sm text-[#B8B6D9] truncate flex-1">
               {markee.message}
