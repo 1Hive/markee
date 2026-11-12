@@ -42,6 +42,7 @@ import { useLifetimeStreamed } from '@/hooks/useLifetimeStreamed'
 import { formatDuration, decimalsForRate, decimalsForWeiRate, streamStatusOf, StreamStatusIcon, STREAM_STATUS_META } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { formatLiveEth } from '@/hooks/useLiveBalance'
+import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -726,11 +727,17 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   }, [isOpen, onClose])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleBuyNew = async () => { if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim()) }
-  const handleFund = () => backsOther
+  const { trust: boardTrust } = useBoardTrust(isOpen ? board : undefined)
+  const boardBlockedReason = boardTrust === 'trusted' ? null
+    : boardTrust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
+    : boardTrust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
+    : 'Checking this Markee board…'
+  const handleBuyNew = async () => { if (boardBlockedReason) return; if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim()) }
+  const handleFund = () => boardBlockedReason ? undefined : backsOther
     ? moveFlow.moveStream(calc, { belowMin, minMonthlyEth })
     : openFlow.openStream(calc, { belowMin, minMonthlyEth })
-  const handleUpdateRate = () => rateFlow.updateRate(
+  const rateIncreaseBlocked = !!boardBlockedReason && live.nextRate > live.rate
+  const handleUpdateRate = () => rateIncreaseBlocked ? rateFlow.setError(boardBlockedReason) : rateFlow.updateRate(
     { nextRate: live.nextRate, depositTopUp: live.depositTopUp },
     { nextBelowMin, minMonthlyEth, balanceValue: balanceData?.value },
   )
@@ -790,8 +797,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
 
   const blocksOnBalance = view === 'fund' ? insufficientBalance : view === 'list' ? insufficientBalance : false
   const fundReadsLoading = view === 'fund' && !(backsOther ? moveFlow.readsReady : openFlow.readsReady)
-  const btnDisabled = busy || activeIsSuccess || blocksOnBalance || fundReadsLoading
+  const btnDisabled = busy || activeIsSuccess || blocksOnBalance || fundReadsLoading || !!boardBlockedReason
   const btnDisabledReason = busy ? 'Transaction in progress'
+    : boardBlockedReason ? boardBlockedReason
     : fundReadsLoading ? 'Loading on-chain data…'
     : blocksOnBalance ? "You don't have enough ETH for this"
     : null
@@ -1332,15 +1340,15 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       </InfoTip>
                     </span>}
               </div>
-              <BtnTooltip reason={view === 'manage' ? (rateFlow.approving || rateFlow.submitting ? 'Transaction in progress' : manageStreamGone ? 'This stream is cancelled' : !live.changed ? 'Enter a different rate' : nextBelowMin ? `Minimum is ${minMonthlyEth} ETH/mo` : null) : btnDisabledReason}>
+              <BtnTooltip reason={view === 'manage' ? (rateFlow.approving || rateFlow.submitting ? 'Transaction in progress' : manageStreamGone ? 'This stream is cancelled' : !live.changed ? 'Enter a different rate' : nextBelowMin ? `Minimum is ${minMonthlyEth} ETH/mo` : rateIncreaseBlocked ? `${boardBlockedReason} You can still lower or cancel your stream.` : null) : btnDisabledReason}>
                 <button
                   onClick={() => setReviewOpen(true)}
-                  disabled={view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone) : btnDisabled}
+                  disabled={view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone || rateIncreaseBlocked) : btnDisabled}
                   style={{
                     background: PINK, color: BG, border: 'none', borderRadius: 8,
                     padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14,
                     cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                    opacity: (view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone) : btnDisabled) ? 0.4 : 1,
+                    opacity: (view === 'manage' ? (busy || !live.changed || nextBelowMin || manageStreamGone || rateIncreaseBlocked) : btnDisabled) ? 0.4 : 1,
                     transition: 'opacity 140ms',
                   }}
                 >
