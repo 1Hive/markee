@@ -80,6 +80,8 @@ export interface MyMessage {
   markeeRateRaw?: string
   // Streaming boards only: the current #1's rate in wei/sec.
   topRateRaw?: string
+  // Streaming boards only: net ETH this wallet streamed to its own message, null when unavailable.
+  rentSpent?: bigint | null
   // From the board's #1 history (lib/leaderboard/topHistory.ts): since when this message has been
   // #1 (unix seconds, while it is), and its total time at #1. null where the board has no history.
   winningSince?: number | null

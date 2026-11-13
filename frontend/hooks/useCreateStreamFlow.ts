@@ -20,6 +20,7 @@ import {
 } from '@/lib/superfluid/streaming'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { classifyPriorStream, clearCreated, loadCreated, planCreateStep, saveCreated, type CreatedMarkee } from '@/lib/superfluid/createResume'
+import { textLimitError } from '@/lib/leaderboard/textBytes'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const HOST = STREAMING_BASE.host as Address
@@ -95,13 +96,14 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
   async function activate(
     message: string,
     calc: CreateStreamCalc,
-    opts: { maxLen: number; belowMin: boolean; minMonthlyEth: string },
+    opts: { maxLen: number; maxNameLen: number; belowMin: boolean; minMonthlyEth: string },
     name = '',
   ) {
     setError(null)
     if (!address || !publicClient) return
     if (!message.trim()) { setError('Enter a message.'); return }
-    if (message.length > opts.maxLen) { setError(`Message must be ${opts.maxLen} characters or less.`); return }
+    const textError = textLimitError('Message', message, opts.maxLen) ?? textLimitError('Name', name, opts.maxNameLen)
+    if (textError) { setError(textError); return }
     if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
     if (opts.belowMin) { setError(`The minimum on this board is ${opts.minMonthlyEth} ETH / month.`); return }
     if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }

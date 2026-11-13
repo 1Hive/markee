@@ -36,6 +36,7 @@ import { formatUsd } from '@/lib/utils'
 import { ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { buyerBoards, walletSpend } from '@/lib/account/spend'
 
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -1107,6 +1108,7 @@ function AccountDashboard() {
           winningSince: m.winningSince ?? null,
           wonSeconds: m.wonSeconds ?? null,
           topRateRaw: m.topRateRaw ?? '0',
+          rentSpent: typeof m.rentSpentRaw === 'string' ? BigInt(m.rentSpentRaw) : null,
           isLegacy: false,
           platform: m.platform ?? null,
           admin: m.admin ?? null,
@@ -1287,11 +1289,8 @@ function AccountDashboard() {
   }, [])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
-  const totalContribWei = useMemo(() => {
-    const bought = myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n)
-    const funded = fundedMessages.reduce((s, m) => s + BigInt(m.totalContributed), 0n)
-    return bought + funded
-  }, [myMessages, fundedMessages])
+  const totalContribWei = useMemo(() => walletSpend(myMessages, fundedMessages), [myMessages, fundedMessages])
+  const buyerBoardAddrs = useMemo(() => buyerBoards(myMessages, fundedMessages), [myMessages, fundedMessages])
 
   // Fetch markee.xyz view counts for CPM calculations, per board by the shared rule (lib/views/boards.ts:
   // board key + its top message's key). Includes the boards the wallet's messages sit on, not just its
@@ -1320,23 +1319,20 @@ function AccountDashboard() {
     return (raisedUsd / totalViews) * 1000
   }, [ethPrice, totalRaisedWei, activeBoards, boardViews])
 
-  const buyerViews = useMemo(() => {
-    const addrs = new Set(myMessages.map(m => m.strategyId.toLowerCase()))
-    return [...addrs].reduce((s, a) => s + (boardViews[a] ?? 0), 0)
-  }, [myMessages, boardViews])
+  const buyerViews = useMemo(() => buyerBoardAddrs.reduce((s, a) => s + (boardViews[a] ?? 0), 0), [buyerBoardAddrs, boardViews])
 
   const buyerCpm = useMemo(() => {
-    if (!ethPrice) return null
+    if (!ethPrice || totalContribWei === null) return null
     const contribUsd = Number(totalContribWei) / 1e18 * ethPrice
     if (!contribUsd || !buyerViews) return null
     return (contribUsd / buyerViews) * 1000
   }, [ethPrice, totalContribWei, buyerViews])
 
   // Day-by-day history for the hub charts. Creator: the wallet's live boards. Buyer: the boards its
-  // own messages are on (the same sets the headline Views figures use).
+  // own and funded messages are on (the same sets the headline Views figures use).
   const [stats, setStats] = useState<AccountStats | null>(null)
   const statsCreator = useMemo(() => activeBoards.map(b => b.address.toLowerCase()).slice(0, 100), [activeBoards])
-  const statsBuyer = useMemo(() => [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].slice(0, 100), [myMessages])
+  const statsBuyer = useMemo(() => buyerBoardAddrs.slice(0, 100), [buyerBoardAddrs])
   const statsKey = `${activeAddress ?? ''}|${fingerprintAddresses(statsCreator)}|${fingerprintAddresses(statsBuyer)}`
   useEffect(() => {
     if (!activeAddress || isLoading || isLoadingMessages) return
@@ -1548,7 +1544,7 @@ function AccountDashboard() {
                     days={stats?.days ?? []}
                     loading={!stats}
                     metrics={[
-                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, format: formatUsd },
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages && totalContribWei !== null ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, format: formatUsd },
                       { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', daily: stats?.buyer.views, since: stats?.buyer.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
                       { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), format: v => `$${v.toFixed(2)}` },
                     ]}
@@ -1563,7 +1559,6 @@ function AccountDashboard() {
 
                   {isLoadingMessages || isLoadingFunded || myMessages.length > 0 || fundedMessages.length > 0 ? (
                     <YourMessages
-                      owner={activeAddress}
                       bought={myMessages}
                       funded={fundedMessages}
                       loading={isLoadingMessages || isLoadingFunded}
