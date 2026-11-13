@@ -170,6 +170,7 @@ test('EMAIL_FREQUENCIES contains every valid value', () => {
 function memoryEmailIndex() {
   const index = new Map<string, { wallet: string; ttl: number | null }>()
   const emails = new Map<string, string>()
+  const inFlight = new Set<string>()
   const store: EmailIndexStore = {
     claim: async (key, wallet, ttl) => {
       const cur = index.get(key)
@@ -178,9 +179,16 @@ function memoryEmailIndex() {
       return wallet
     },
     releaseIfHeld: async (key, wallet) => { if (index.get(key)?.wallet === wallet) index.delete(key) },
-    currentEmail: async wallet => emails.get(wallet) ?? null,
+    evictIfStale: async (key, holder, email) => {
+      if (index.get(key)?.wallet !== holder) return true
+      if (inFlight.has(holder) || emails.get(holder) === email) return false
+      index.delete(key)
+      return true
+    },
+    markInFlight: async wallet => { inFlight.add(wallet) },
+    clearInFlight: async wallet => { inFlight.delete(wallet) },
   }
-  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const tick = async () => { for (let i = Math.floor(Math.random() * 3); i >= 0; i--) await new Promise(resolve => setImmediate(resolve)) }
   const save = async (wallet: string, email: string) => {
     const previous = emails.get(wallet)
     const claim = await assignNotifyEmail(store, email, wallet, {
@@ -200,6 +208,22 @@ function memoryEmailIndex() {
 
 const ALICE = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const BOB = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+const CAROL = '0xcccccccccccccccccccccccccccccccccccccccc'
+
+test('a failed email switch keeps its old email from a concurrent claimant', async () => {
+  for (let round = 0; round < 50; round++) {
+    const m = memoryEmailIndex()
+    await m.save(ALICE, 'old@example.com')
+    await m.save(BOB, 'taken@example.com')
+    const [switched, stolen] = await Promise.all([m.save(ALICE, 'taken@example.com'), m.save(CAROL, 'old@example.com')])
+    assert.equal(switched.ok, false)
+    assert.equal(stolen.ok, false)
+    assert.equal(m.emails.get(ALICE), 'old@example.com')
+    assert.equal(m.emails.get(CAROL), undefined)
+    assert.equal(m.index.get(notifyEmailIndexKey('old@example.com'))?.wallet, ALICE)
+  }
+})
 
 test('concurrent saves of the same email leave exactly one holder', async () => {
   for (let round = 0; round < 50; round++) {

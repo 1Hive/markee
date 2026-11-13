@@ -4,10 +4,15 @@ export const UNVERIFIED_CLAIM_TTL = 60 * 60 * 24 * 7
 export const normalizeNotifyEmail = (email: string) => email.trim().toLowerCase()
 export const notifyEmailIndexKey = (email: string) => `moderation:notify-email:${normalizeNotifyEmail(email)}`
 
+export const IN_FLIGHT_TTL = 30
+
 export interface EmailIndexStore {
   claim(key: string, wallet: string, ttlSeconds: number | null): Promise<string>
   releaseIfHeld(key: string, wallet: string): Promise<void>
-  currentEmail(wallet: string): Promise<string | null>
+  /** Atomically drops `holder`'s claim on `email` unless the holder is mid-change or its state still names the email. */
+  evictIfStale(key: string, holder: string, email: string): Promise<boolean>
+  markInFlight(wallet: string): Promise<void>
+  clearInFlight(wallet: string): Promise<void>
 }
 
 export type ClaimResult = { ok: true } | { ok: false; holder: string }
@@ -25,25 +30,28 @@ export async function claimNotifyEmail(
   for (let attempt = 0; attempt < 2; attempt++) {
     const holder = await store.claim(key, wallet, ttl)
     if (holder === wallet) return { ok: true }
-    const holderEmail = await store.currentEmail(holder)
-    if (holderEmail && normalizeNotifyEmail(holderEmail) === normalized) return { ok: false, holder }
-    await store.releaseIfHeld(key, holder)
+    if (!await store.evictIfStale(key, holder, normalized)) return { ok: false, holder }
   }
   return { ok: false, holder: '' }
 }
 
-// The wallet's state must name the email before the claim: claimNotifyEmail treats a holder whose
-// state lacks the email as stale, so claiming first lets a concurrent claimant evict the new claim.
+// While the wallet's state and its index entries disagree (old email kept, new one being claimed),
+// the in-flight marker stops concurrent claimants from evicting either of its claims as stale.
 export async function assignNotifyEmail(
   store: EmailIndexStore,
   email: string,
   wallet: string,
   { writeState, restoreState }: { writeState: () => Promise<unknown>; restoreState: () => Promise<unknown> },
 ): Promise<ClaimResult> {
-  await writeState()
-  const claim = await claimNotifyEmail(store, email, wallet, { verified: false })
-  if (!claim.ok) await restoreState()
-  return claim
+  await store.markInFlight(wallet)
+  try {
+    await writeState()
+    const claim = await claimNotifyEmail(store, email, wallet, { verified: false })
+    if (!claim.ok) await restoreState()
+    return claim
+  } finally {
+    await store.clearInFlight(wallet)
+  }
 }
 
 export async function releaseNotifyEmail(
