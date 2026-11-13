@@ -134,6 +134,26 @@ export function calculateNetDeltas(
   return deltas
 }
 
+export type BoardControllers = Map<string, ReadonlySet<string>>
+
+export function deltaBoards(deltas: Map<string, bigint>): string[] {
+  return [...new Set([...deltas.keys()].map((key) => splitSnapshotKey(key).board))]
+}
+
+export function excludeBoardControllerDeltas(
+  deltas: Map<string, bigint>,
+  controllers: BoardControllers,
+): Map<string, bigint> {
+  const eligible = new Map<string, bigint>()
+  for (const [key, netWei] of deltas) {
+    const { account, board } = splitSnapshotKey(key)
+    const boardControllers = controllers.get(board)
+    if (!boardControllers) throw new Error(`Missing controllers for ${board}`)
+    if (!boardControllers.has(account)) eligible.set(key, netWei)
+  }
+  return eligible
+}
+
 export function multiplierForBoard(
   board: string,
   multipliers: Record<string, number>,
