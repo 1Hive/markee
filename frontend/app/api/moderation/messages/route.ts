@@ -9,6 +9,7 @@ import { parseAbi, type Address } from 'viem'
 import { ADDRESS_PATTERN, type VisibleMessage } from '@/lib/moderation/queue'
 import { flagKey, getModerationClient, listModeratedBoards, readAllFlagged } from '@/lib/moderation/server'
 import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
+import { readRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,10 @@ export async function GET(req: NextRequest) {
   if (!moderator || !ADDRESS_PATTERN.test(moderator)) {
     return NextResponse.json({ error: 'Missing or invalid moderator address' }, { status: 400 })
   }
-  const page = Math.max(0, Math.floor(Number(req.nextUrl.searchParams.get('page')) || 0))
+  const page = Math.min(1_000, Math.max(0, Math.floor(Number(req.nextUrl.searchParams.get('page')) || 0)))
+  if (await readRateLimited(req, 'moderation-messages', 60)) {
+    return NextResponse.json({ error: 'Too many requests, try again shortly' }, { status: 429 })
+  }
 
   try {
     const [boards, flags] = await Promise.all([listModeratedBoards(), readAllFlagged()])
