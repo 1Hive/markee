@@ -13,8 +13,9 @@ import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
-import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { formatUsd, FAST_TX_GAS_RESERVE } from '@/lib/utils'
+import { formatMarkeeEstimate, markeeEstimateHeadline, type MarkeeEstimate } from '@/lib/markee/quote'
+import { useMarkeePurchaseQuote } from '@/hooks/useMarkeeQuote'
 import { beatsTop, formatEthCeil, shortfallToWin, winAmountWei } from '@/lib/leaderboard/winAmount'
 import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
@@ -200,10 +201,8 @@ function AmountCard({
 }
 
 // Compact 2-line layout: line 1 is [label | MARKEE amount], line 2 is the 62/38 split note.
-function ReceiveCard({ amount, compact = true }: { amount: string; compact?: boolean }) {
-  const parsed = parseFloat(amount || '0')
-  const bidNum = Number.isFinite(parsed) ? parsed : 0
-  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, bidNum))
+function ReceiveCard({ estimate, compact = true }: { estimate: MarkeeEstimate & { loading?: boolean }; compact?: boolean }) {
+  const { headline, note } = markeeEstimateHeadline(estimate)
   return (
     <div style={{
       boxSizing: 'border-box',
@@ -212,10 +211,11 @@ function ReceiveCard({ amount, compact = true }: { amount: string; compact?: boo
       border: '1px solid rgba(248,151,254,0.35)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
     }}>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
         <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
-          {formatMarkeeAmount(markeeEarned)}
+          {headline}
         </span>
+        {note && <span style={{ color: PINK, fontSize: 11, fontFamily: 'Manrope, system-ui, sans-serif', opacity: 0.8, whiteSpace: 'nowrap' }}>{note}</span>}
       </div>
       {compact ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.1, flexShrink: 0 }}>
@@ -489,7 +489,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     : isAlreadyTop || topFundsAdded === 0n || beatsTop(reviewAmountWei, reviewOwnTotal, topFundsAdded)
   const reviewShortfallWei = reviewWillWin ? 0n : shortfallToWin(reviewAmountWei, reviewOwnTotal, topFundsAdded)
   const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${formatEthCeil(reviewShortfallWei)} ETH` : null
-  const reviewMarkeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, parseFloat(amount || '0')))
+  const markeeQuote = useMarkeePurchaseQuote(strategyAddress, reviewAmountWei, activeAddress as `0x${string}` | undefined, isOpen && view !== 'edit')
+  const reviewMarkeeEarnedLabel = formatMarkeeEstimate(markeeQuote) ?? (markeeQuote.loading ? 'Estimating MARKEE…' : 'MARKEE estimate unavailable')
 
   // Default the "buy a new message" amount to whatever it takes to win #1, falling back to the
   // floor price when there's no competition yet. Only runs while the user hasn't touched the field
@@ -750,7 +751,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     message={message}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
+                    markeeEarnedLabel={reviewMarkeeEarnedLabel}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                   />
@@ -849,7 +850,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
-                      <ReceiveCard amount={amount} />
+                      <ReceiveCard estimate={markeeQuote} />
                       <BtnTooltip reason={btnDisabledReason}>
                         <button
                           onClick={() => setReviewOpen(true)}
@@ -889,7 +890,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     message={target.message || ''}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
+                    markeeEarnedLabel={reviewMarkeeEarnedLabel}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                     chainId={CANONICAL_CHAIN_ID}
@@ -918,7 +919,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       winAmountFormatted={winAmountFormatted} twoXAmountFormatted={twoXAmountFormatted} isAlreadyTop={isAlreadyTop} ethPrice={ethPrice}
                       balanceData={balanceData} busy={busy} showMin={false}
                     />
-                    <ReceiveCard amount={amount} compact={false} />
+                    <ReceiveCard estimate={markeeQuote} compact={false} />
                   </div>
                 </div>
                 )

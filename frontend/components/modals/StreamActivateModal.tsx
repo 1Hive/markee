@@ -328,7 +328,7 @@ export function StreamActivateModal({
             amountUsd={ethPrice && calc.monthlyWei > 0n ? formatUsd(Number(formatEther(calc.monthlyWei)) * ethPrice) : null}
             depositLabel={calc.value > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(calc.value)).toFixed(4)} ETH` : null}
             runwayLabel={formatRunwayShort(calc.runwaySecs)}
-            markeeEarnedLabel={`${markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE/mo`}
+            markeeEarnedLabel={`at least ${markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })} MARKEE/mo`}
             willWin={willWin}
             minToWinLabel={minToWinLabel}
           />
@@ -382,7 +382,7 @@ export function StreamActivateModal({
               <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                 <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
-                  {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  ≥ {markeeEarned.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </span>
                 <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE/mo</span>
               </div>

@@ -273,7 +273,7 @@ function ReceiveCard({ monthly, compact = true }: { monthly: string; compact?: b
     }}>
       <div style={{ overflowX: 'auto' }}>
         <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
-          {formatMarkeeAmount(markeeEarned)}
+          ≥ {formatMarkeeAmount(markeeEarned)}
         </span>
       </div>
       {compact ? (
@@ -1068,7 +1068,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     amountUsd={ethPrice && parseFloat(monthly || '0') > 0 ? formatUsd(parseFloat(monthly) * ethPrice) : null}
                     depositLabel={fundTotalValue > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(fundTotalValue)).toFixed(4)} ETH` : null}
                     runwayLabel={formatRunwayShort(runway)}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
+                    markeeEarnedLabel={`at least ${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                     chainId={CANONICAL_CHAIN_ID}
@@ -1162,7 +1162,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     amountUsd={ethPrice && live.nextMonthlyWei > 0n ? formatUsd(Number(formatEther(live.nextMonthlyWei)) * ethPrice) : null}
                     depositLabel={live.depositTopUp > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(live.depositTopUp)).toFixed(4)} ETH` : null}
                     runwayLabel={formatRunwayShort(runwaySeconds(ethxBalance ?? 0n, live.nextRate))}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
+                    markeeEarnedLabel={`at least ${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                     chainId={CANONICAL_CHAIN_ID}
