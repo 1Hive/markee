@@ -11,6 +11,7 @@
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "test:amount-input": "tsx --test tests/amountInput.test.ts",
     "test:eth-amount": "tsx --test tests/ethAmount.test.ts",
+    "test:numbers": "tsx --test tests/textBytes.test.ts tests/winAmount.test.ts tests/accountSpend.test.ts tests/markeeQuote.test.ts",
     "test:billboard": "tsx --test tests/billboardText.test.ts tests/githubBillboard.test.ts tests/concurrency.test.ts",
     "test:beneficiary": "tsx --test tests/beneficiary.test.ts",
     "test:board-registry": "tsx --test tests/boardRegistry.test.ts",
