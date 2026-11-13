@@ -1,12 +1,13 @@
 import { kv } from '@vercel/kv'
 import { NextRequest, NextResponse } from 'next/server'
-import { isAddress, verifyMessage } from 'viem'
+import { isAddress } from 'viem'
 import { base } from 'viem/chains'
 import { featuredIntegrationMessage } from '@/lib/integrations/featured'
 import { featuredKvKey, readBoardIntegrations } from '@/lib/integrations/server'
 import { ADDRESS_PATTERN } from '@/lib/moderation/queue'
 import { readBoardOwners } from '@/lib/moderation/server'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,8 +31,8 @@ export async function GET(req: NextRequest) {
 }
 
 // PUT body { board, key, owner, signature, timestamp }: a board owner picks the featured integration
-// (key) or goes back to the most viewed one (key: null). Signed with featuredIntegrationMessage,
-// good for 5 minutes.
+// (key) or goes back to the most viewed one (key: null). Authorized by a Privy session for the owner
+// wallet or a featuredIntegrationMessage signature, good for 5 minutes.
 export async function PUT(req: NextRequest) {
   const { board: rawBoard, key, owner: rawOwner, signature, timestamp } = await req.json().catch(() => ({})) as {
     board?: string
@@ -46,16 +47,12 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'Missing or invalid board or owner address' }, { status: 400 })
   if (key !== null && (typeof key !== 'string' || key.length > 600))
     return NextResponse.json({ error: 'Missing or invalid key' }, { status: 400 })
-  if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp))
+  if (typeof timestamp !== 'number' || !Number.isInteger(timestamp))
     return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
   if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300)
     return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
-  const valid = await verifyMessage({
-    address: owner as `0x${string}`,
-    message: featuredIntegrationMessage(base.id, board, key, timestamp),
-    signature,
-  }).catch(() => false)
-  if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+  const auth = await authorizeWallet(req, owner, signature, () => featuredIntegrationMessage(base.id, board, key, timestamp))
+  if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
   const [owners] = await readBoardOwners([board])
   if (!owners?.includes(owner))
     return NextResponse.json({ error: "Only this board's owner can choose its featured integration" }, { status: 403 })
