@@ -5,6 +5,7 @@ import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '../lib/contracts/address
 import { trustedMembership, membershipDeps } from '../lib/moderation/membership'
 import { automaticDeps, checkPublished, evaluateObserved, softRecords, softKey, SOFT_INDEX, AUTO_POLICY, contentHash } from '../lib/moderation/automatic'
 import { queueDeps } from '../lib/moderation/queue-deps'
+import { flagKey } from '../lib/moderation/server'
 import { GET as queue } from '../app/api/moderation/queue/route'
 import { POST as view } from '../app/api/views/route'
 import { viewsWriteDeps } from '../lib/views/write-deps'
@@ -131,6 +132,20 @@ test('queue does not surface previously injected ordinary or automatic entries',
   t.mock.method(queueDeps, 'softRecords', async () => [{ markee: fake, board, state: 'soft-flagged', siteState: 'soft-flagged', contentHash: contentHash('shit'), policyVersion: AUTO_POLICY }])
   const result = await (await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))).json()
   assert.deepEqual(result.items.map((r: any) => r.markee), [markee])
+  assert.deepEqual(result.flagged, [])
+})
+
+test('queue never lists a blank seed Markee, even one carrying a flag', async t => {
+  setup(t)
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [flagKey(markee)], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [[markee]] } }; return p })
+  const flaggedReview = { status: 'flagged', reviewedBy: null, reviewedAt: null }
+  t.mock.method(queueDeps, 'readItems', async () => [{ markee, board, message: '', name: '', author: '', kind: 'created', previousMessage: null, blockNumber: '1', at: 1, reviews: { board: flaggedReview, site: flaggedReview } }])
+  t.mock.method(queueDeps, 'softRecords', async () => [])
+  t.mock.method(automaticDeps, 'read', async () => [{ markee, board, message: '', blockNumber: '2' }])
+  const result = await (await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))).json()
+  assert.deepEqual(result.items, [])
   assert.deepEqual(result.flagged, [])
 })
 
