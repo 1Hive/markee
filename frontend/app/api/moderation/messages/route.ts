@@ -19,6 +19,7 @@ const MARKEE_ABI = parseAbi([
   'function message() view returns (string)',
   'function name() view returns (string)',
   'function owner() view returns (address)',
+  'function totalFundsAdded() view returns (uint256)',
 ])
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -46,14 +47,19 @@ export async function GET(req: NextRequest) {
         .map((m, j) => ({ markee: m.toLowerCase(), board: b.address, boardName: b.name, rank: j + 1, value: values[j] ?? 0n }))
         .filter(m => m.markee !== ZERO_ADDRESS)
     })
-    // Unfunded entries are read up front so the board's empty seed Markee never takes a page slot.
+    // Entries ranked at zero are read up front so the board's empty seed Markee never takes a page slot.
+    // On streaming boards the ranked value is the current rate, so a funded Markee whose stream stopped
+    // also ranks at zero: lifetime funds tell it apart from the seed.
     const unfunded = listed.filter(m => m.value === 0n)
-    const unfundedMessages = unfunded.length
-      ? await client.multicall({ contracts: unfunded.map(m => ({ address: m.markee as Address, abi: MARKEE_ABI, functionName: 'message' as const })) })
+    const unfundedReads = unfunded.length
+      ? await client.multicall({
+          contracts: unfunded.flatMap(m => (['message', 'totalFundsAdded'] as const).map(fn => ({ address: m.markee as Address, abi: MARKEE_ABI, functionName: fn }))),
+        })
       : []
     const placeholders = new Set(unfunded.filter((m, i) => {
-      const read = unfundedMessages[i]
-      return read?.status === 'success' && isPlaceholderMarkee({ message: String(read.result), totalFunds: 0n })
+      const [message, funds] = [unfundedReads[i * 2], unfundedReads[i * 2 + 1]]
+      return message?.status === 'success' && funds?.status === 'success'
+        && isPlaceholderMarkee({ message: String(message.result), totalFunds: funds.result as bigint })
     }).map(m => m.markee))
     const boardRank = new Map<string, number>()
     const ranked = listed

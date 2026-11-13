@@ -8,8 +8,10 @@
  *                                    siteFlagged -- markee.xyz-only flags, set by global admins.
  * POST /api/moderation          → Flag, unflag, or approve markees. Applies in every scope the
  *                                  moderator holds for each markee (see authorizedScopes).
- *                                  Flag and unflag require a wallet signature; approval also
- *                                  accepts a Privy session for the moderator wallet.
+ *                                  Every action requires a wallet signature, including approval.
+ *                                  The site approves through /api/moderation/false-positive,
+ *                                  which binds the approval to the reviewed text and accepts a
+ *                                  Privy session.
  *
  * Markee keys use the format: `{chainId}:{lowercase markeeId}` to support multi-chain.
  *
@@ -35,9 +37,8 @@ const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
 const APPROVE_RATE_MAX = 60
 
 // Public flag reads are consumed by third-party embeds; browser credentials are never used.
-// CORS is not authorization: every mutation verifies a signed, timestamped wallet action (or, for
-// approval, a Privy session sent as a header, which CORS does not allow cross-origin) and
-// server-derived moderator permissions. Keep those checks when adding POST actions.
+// CORS is not authorization: every mutation verifies a signed, timestamped wallet action
+// and server-derived moderator permissions. Keep those checks when adding POST actions.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     }
     const ids = markeeIds ?? (markeeId ? [markeeId] : [])
 
-    if (ids.length === 0 || !chainId || !action || !adminAddress || !timestamp || (action !== 'approve' && !signature)) {
+    if (ids.length === 0 || !chainId || !action || !adminAddress || !signature || !timestamp) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: CORS })
     }
     if (!ACTIONS.includes(action)) {
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
     }
 
     const message = reviewMessage(action, chainId, ids, timestamp)
-    const auth = await authorizeWallet(req, adminAddress, signature, () => message, { allowSession: action === 'approve' })
+    const auth = await authorizeWallet(req, adminAddress, signature, () => message, { allowSession: false })
     if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status, headers: CORS })
     if (action === 'approve' && !await moderationWriteDeps.underRateLimit('moderation:approve', clientIp(req), APPROVE_RATE_MAX, 60)) {
       return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...CORS, 'Retry-After': '60' } })

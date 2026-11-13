@@ -5,7 +5,7 @@ import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '../lib/contracts/address
 import { trustedMembership, membershipDeps } from '../lib/moderation/membership'
 import { automaticDeps, checkPublished, evaluateObserved, softRecords, softKey, SOFT_INDEX, AUTO_POLICY, contentHash } from '../lib/moderation/automatic'
 import { queueDeps } from '../lib/moderation/queue-deps'
-import { flagKey } from '../lib/moderation/server'
+import { boardOwners, flagKey } from '../lib/moderation/server'
 import { GET as queue } from '../app/api/moderation/queue/route'
 import { POST as view } from '../app/api/views/route'
 import { viewsWriteDeps } from '../lib/views/write-deps'
@@ -260,4 +260,32 @@ test('cached embed text is withheld on moderation outage, new manual flag, auto 
   assert.equal((await moderateEmbed(payload)).message, '')
   t.mock.method(embedModerationDeps, 'checkPublished', async () => [{ markee, board, state: 'visible', siteState: 'visible', contentHash: contentHash('Hello'), policyVersion: AUTO_POLICY }])
   assert.equal((await moderateEmbed(payload)).message, 'Hello')
+})
+
+test('transferring admin removes the creator from the board owners', () => {
+  const creator = '0xC000000000000000000000000000000000000001'
+  const admin = '0xa000000000000000000000000000000000000002'
+  const next = '0xb000000000000000000000000000000000000003'
+  // Superfluid-style board: admin is the beneficiary, so the creator still co-owns it.
+  assert.deepEqual(boardOwners(admin, [creator], [admin]), [admin, creator.toLowerCase()])
+  // Origin not resolved yet: keep the creator rather than lock them out.
+  assert.deepEqual(boardOwners(admin, [creator], [null]), [admin, creator.toLowerCase()])
+  // Admin handed to another wallet: only the new admin owns it.
+  assert.deepEqual(boardOwners(next, [creator], [null, admin]), [next])
+  assert.deepEqual(boardOwners(next.toUpperCase().replace('0X', '0x'), [creator], [admin]), [next])
+})
+
+test('queue keeps a flagged message listed after its text is cleared, so it can be unflagged', async t => {
+  setup(t)
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [flagKey(markee)], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [[markee]] } }; return p })
+  const flaggedReview = { status: 'flagged', reviewedBy: moderator, reviewedAt: 1 }
+  t.mock.method(queueDeps, 'readItems', async () => [{ markee, board, message: 'rude', name: '', author: '', kind: 'created', previousMessage: null, blockNumber: '1', at: 1, reviews: { board: flaggedReview, site: flaggedReview } }])
+  t.mock.method(queueDeps, 'softRecords', async () => [])
+  // The owner cleared the message with a direct contract call.
+  t.mock.method(automaticDeps, 'read', async () => [{ markee, board, message: '', blockNumber: '2' }])
+  const result = await (await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))).json()
+  assert.deepEqual(result.items, [])
+  assert.deepEqual(result.flagged.map((r: any) => [r.markee, r.message, r.previousMessage]), [[markee, '', 'rude']])
 })

@@ -10,8 +10,9 @@
 //   signature. Signature covers notifyEmailMessage(8453, wallet, email, timestamp).
 //   { wallet, resend: true, signature?, timestamp } re-sends verification to the stored email instead
 //   (the client only ever sees it masked). Signature covers notifyResendMessage(8453, wallet, timestamp).
-//   Emails are unique across wallets (trimmed, lowercased). 409 { error: 'Email already in use' } if
-//   another wallet holds it. Re-saving the wallet's own email succeeds.
+//   Emails are unique across wallets (trimmed, lowercased) once verified: any wallet can save an
+//   address that is pending elsewhere, and the first to verify it takes it. 409 { code: 'EMAIL_IN_USE' }
+//   if another wallet has already verified it. Re-saving the wallet's own email succeeds.
 //
 // PATCH /api/moderation/notify
 //   { wallet, frequency, events?, signature, timestamp }
@@ -43,7 +44,7 @@ import {
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
 import { authorizeWallet } from '@/lib/auth/wallet-session'
-import { assignNotifyEmail, releaseNotifyEmail, EMAIL_IN_USE_ERROR } from '@/lib/moderation/emailIndex'
+import { releaseNotifyEmail, setNotifyEmail, EMAIL_IN_USE_ERROR } from '@/lib/moderation/emailIndex'
 import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
@@ -110,13 +111,12 @@ export async function POST(req: NextRequest) {
     let notifyState: ModeratorNotifyState
     if (email) {
       const next: ModeratorNotifyState = { email, verified: false, frequency: existing?.frequency ?? 'every', setAt: now }
-      const claim = await assignNotifyEmail(emailIndex, email, wallet, {
+      const saved = await setNotifyEmail(emailIndex, email, wallet, {
+        previous: existing?.email,
         writeState: () => kv.set(notifyStateKey(wallet), next),
-        restoreState: () => existing ? kv.set(notifyStateKey(wallet), existing) : kv.del(notifyStateKey(wallet)),
       })
-      if (!claim.ok) return NextResponse.json({ error: EMAIL_IN_USE_ERROR, code: 'EMAIL_IN_USE' }, { status: 409 })
+      if (!saved.ok) return NextResponse.json({ error: EMAIL_IN_USE_ERROR, code: 'EMAIL_IN_USE' }, { status: 409 })
       notifyState = next
-      await releaseNotifyEmail(emailIndex, existing?.email, wallet, email)
     } else if (!existing?.email) {
       return NextResponse.json({ error: 'No notification email is saved for this wallet' }, { status: 404 })
     } else if (existing.verified) {

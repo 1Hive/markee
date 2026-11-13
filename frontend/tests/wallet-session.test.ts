@@ -113,7 +113,7 @@ test('signature-only actions ignore the session', async t => {
   assert.deepEqual(auth, { ok: false, status: 400, body: { error: 'Missing signature or timestamp' } })
 })
 
-test('moderation approves with a session but flag and unflag still need a signature', async t => {
+test('moderation POST ignores the session and needs a signature for every action', async t => {
   mockPrivy(t)
   t.mock.method(moderationWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(moderationWriteDeps, 'authorizedScopes', async (address: string) => ({ scopes: new Map(address.toLowerCase() === owner.address.toLowerCase() ? [[board, ['board']]] : []), boardMap: new Map() }))
@@ -127,18 +127,14 @@ test('moderation approves with a session but flag and unflag still need a signat
   const body = (action: string, adminAddress = owner.address) => ({ markeeIds: [board], chainId: 8453, action, adminAddress, timestamp: now() })
   const post = (headers: Record<string, string>, payload: unknown) => moderationPost(request(headers, 'http://localhost/api/moderation', payload))
 
-  assert.equal((await post(session, body('approve'))).status, 200)
-  assert.equal(writes, 1)
-  assert.equal((await post({}, body('approve'))).status, 400)
-  assert.equal((await post(session, body('approve', stranger.address))).status, 401)
-  assert.equal((await post({ [ID_TOKEN_HEADER]: idToken(stranger.address) }, body('approve', stranger.address))).status, 403)
+  assert.equal((await post(session, body('approve'))).status, 400)
   assert.equal((await post(session, body('flag'))).status, 400)
   assert.equal((await post(session, body('unflag'))).status, 400)
-  assert.equal(writes, 1)
+  assert.equal(writes, 0)
   const timestamp = now()
   const signature = await owner.signMessage({ message: reviewMessage('flag', 8453, [board], timestamp) })
   assert.equal((await post({}, { ...body('flag'), timestamp, signature })).status, 200)
-  assert.equal(writes, 2)
+  assert.equal(writes, 1)
 })
 
 test('board policy saves with an owner session and rejects non-owners', async t => {

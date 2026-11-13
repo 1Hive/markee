@@ -1,9 +1,9 @@
 import 'server-only'
 import { createPublicKey, verify, type JsonWebKey } from 'node:crypto'
 import { verifyMessage } from 'viem'
+import { ID_TOKEN_HEADER, SESSION_REQUIRED } from './wallet-session-protocol'
 
-export const ID_TOKEN_HEADER = 'privy-id-token'
-export const SESSION_REQUIRED = 'SESSION_REQUIRED'
+export { ID_TOKEN_HEADER, SESSION_REQUIRED }
 
 const ISSUER = 'privy.io'
 const CLOCK_SKEW = 30

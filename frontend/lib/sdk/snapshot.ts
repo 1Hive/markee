@@ -109,6 +109,23 @@ export async function walletState(c: BoardContext, account: Address): Promise<Wa
   };
 }
 
+// The first page is the top 20 by rank, so a single Markee left off it may be the board's empty seed,
+// which the snapshot never lists. Read that one Markee rather than assume: pre-v1.2 boards have no
+// seed, and a seed that was written on or funded is a real entry.
+async function onlyPlaceholderLeftOff(c: BoardContext, firstPage: readonly Address[]): Promise<boolean> {
+  if (c.count - firstPage.length !== 1) return false;
+  const shown = new Set(firstPage.map(a => getAddress(a)));
+  const all = await c.r<Address[]>('getMarkees', [0n, BigInt(c.count)]);
+  const leftOff = all.map(a => getAddress(a)).filter(a => !shown.has(a));
+  if (leftOff.length !== 1) return false;
+  const [message, totalFunds, rate] = await Promise.all([
+    read<string>(c.client, leftOff[0], messageABI, 'message', [], c.blockNumber),
+    read<bigint>(c.client, leftOff[0], messageABI, 'totalFundsAdded', [], c.blockNumber),
+    c.strategy === 'rent' ? c.r<bigint>('aggregateRate', [leftOff[0]]) : 0n,
+  ]);
+  return isPlaceholderMarkee({ message, totalFunds, rate });
+}
+
 async function loadSnapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
   const resolved = await resolvePlacement(p);
   const warnings: string[] = [];
@@ -142,8 +159,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
   }));
   const placeholders = new Set(readEntries.filter(entry => isPlaceholderMarkee({ message: entry.message, totalFunds: BigInt(entry.totalFunds), rate: BigInt(entry.aggregateRate) })).map(entry => entry.address));
   const entries = readEntries.filter(entry => !placeholders.has(entry.address));
-  const seedOffFirstPage = !addresses.some(a => placeholders.has(getAddress(a)));
-  const firstPageNext = c.count - addresses.length > (seedOffFirstPage ? 1 : 0) ? 0 : null;
+  const firstPageNext = offset === undefined && c.count > addresses.length && !(await onlyPlaceholderLeftOff(c, addresses)) ? 0 : null;
   return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? firstPageNext : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
 }
 

@@ -3,6 +3,7 @@
 import { useCallback, useRef } from 'react'
 import { useIdentityToken, usePrivy } from '@privy-io/react-auth'
 import { useSignMessage } from 'wagmi'
+import { ID_TOKEN_HEADER, SESSION_REQUIRED } from '@/lib/auth/wallet-session-protocol'
 
 export type WalletAuthRequest = {
   method: string
@@ -10,9 +11,6 @@ export type WalletAuthRequest = {
   body: Record<string, unknown>
   message: () => string
 }
-
-const ID_TOKEN_HEADER = 'privy-id-token'
-const SESSION_REQUIRED = 'SESSION_REQUIRED'
 
 /**
  * Sends an account action authorized by the Privy session when `address` is a wallet linked to it,

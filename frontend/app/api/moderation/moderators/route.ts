@@ -34,7 +34,7 @@ import {
   type VerifyToken,
 } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
-import { assignNotifyEmail, releaseNotifyEmail } from '@/lib/moderation/emailIndex'
+import { setNotifyEmail } from '@/lib/moderation/emailIndex'
 import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 export const dynamic = 'force-dynamic'
@@ -203,15 +203,14 @@ export async function POST(req: NextRequest) {
             frequency: existing?.frequency ?? 'every',
             setAt: now,
           }
-          const claim = await assignNotifyEmail(emailIndex, email, m.wallet, {
+          const saved = await setNotifyEmail(emailIndex, email, m.wallet, {
+            previous: existing?.email,
             writeState: () => kv.set(notifyStateKey(m.wallet), notifyState),
-            restoreState: () => existing ? kv.set(notifyStateKey(m.wallet), existing) : kv.del(notifyStateKey(m.wallet)),
           })
-          if (!claim.ok) {
+          if (!saved.ok) {
             emailInUse.push(m.wallet)
             return
           }
-          await releaseNotifyEmail(emailIndex, existing?.email, m.wallet, email)
         }
         await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })
         await sendVerificationEmail(email, boardName, verifyUrl).catch(e => {

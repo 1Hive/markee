@@ -442,7 +442,7 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
               <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>Awaiting verification. Check your inbox for the link.</div>
             )}
             {emailInUse && (
-              <div role="alert" style={{ fontSize: 12, color: DANGER, marginTop: 3 }}>Email already in use. Use a different address.</div>
+              <div role="alert" style={{ fontSize: 12, color: DANGER, marginTop: 3 }}>This email has already been verified by another user. Use a different address.</div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
@@ -1221,13 +1221,22 @@ function AccountDashboard() {
     }
   }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
 
-  // The message routes read the shared listings, so they run once the busted listings are republished.
+  // A purchase can add a Markee, and the message routes find boards through the shared listings, so
+  // they run once the busted listings are republished.
   const refreshAfterTx = useCallback(async () => {
     if (!activeAddress) return
     await fetchAll(activeAddress, true)
     fetchMyMessages(activeAddress)
     fetchFundedMessages(activeAddress)
   }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
+
+  // Editing, topping up or re-rating an existing message changes no listing, and the message routes
+  // read its text and funds from chain, so only they refetch.
+  const refreshMessages = useCallback(() => {
+    if (!activeAddress) return
+    fetchMyMessages(activeAddress)
+    fetchFundedMessages(activeAddress)
+  }, [activeAddress, fetchMyMessages, fetchFundedMessages])
 
   const handleAdminTransferred = useCallback((board: string, newAdmin: string) => {
     if (!activeAddress) return
@@ -1776,7 +1785,7 @@ function AccountDashboard() {
           strategyAddress={editMessageTarget.strategyId as `0x${string}`}
           markeeAddress={editMessageTarget.address as `0x${string}`}
           currentMessage={editMessageTarget.message}
-          onSuccess={() => { setEditMessageTarget(null); refreshAfterTx() }}
+          onSuccess={() => { setEditMessageTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1789,7 +1798,7 @@ function AccountDashboard() {
           userMarkee={{ address: addFundsTarget.markeeAddress, owner: activeAddress ?? '', message: addFundsTarget.message, totalFundsAdded: addFundsTarget.totalFundsAdded }}
           initialMode="addFunds"
           topFundsAdded={addFundsTarget.topFunds}
-          onSuccess={() => { setAddFundsTarget(null); refreshAfterTx() }}
+          onSuccess={() => { setAddFundsTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1801,7 +1810,7 @@ function AccountDashboard() {
           leaderboardAddress={addFundsTarget.strategyId}
           initialView="addFunds"
           initialTargetAddress={addFundsTarget.markeeAddress}
-          onSuccess={() => { setAddFundsTarget(null); refreshAfterTx() }}
+          onSuccess={() => { setAddFundsTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1813,7 +1822,7 @@ function AccountDashboard() {
           initialView="fund"
           initialTargetAddress={addFundsTarget.markeeAddress}
           onClose={() => setAddFundsTarget(null)}
-          onSuccess={() => { setAddFundsTarget(null); refreshAfterTx() }}
+          onSuccess={() => { setAddFundsTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1825,7 +1834,7 @@ function AccountDashboard() {
           initialView="manage"
           initialTargetAddress={streamEditTarget.address}
           onClose={() => setStreamEditTarget(null)}
-          onSuccess={() => { setStreamEditTarget(null); refreshAfterTx() }}
+          onSuccess={() => { setStreamEditTarget(null); refreshMessages() }}
         />
       )}
 

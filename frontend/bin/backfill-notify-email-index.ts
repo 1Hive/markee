@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv'
-import { claimNotifyEmail, normalizeNotifyEmail, UNVERIFIED_CLAIM_TTL } from '../lib/moderation/emailIndex'
+import { claimNotifyEmail, normalizeNotifyEmail } from '../lib/moderation/emailIndex'
 import { kvEmailIndexStore } from '../lib/moderation/emailIndexStore'
 
 interface NotifyRow { wallet: string; email: string; verified: boolean; verifiedAt?: number; setAt: number }
@@ -40,22 +40,22 @@ const byPriority = (a: NotifyRow, b: NotifyRow) =>
 
 async function main() {
   const store = kvEmailIndexStore(notifyKey)
-  const now = Math.floor(Date.now() / 1000)
   const byEmail = new Map<string, NotifyRow[]>()
   for (const row of await readRows()) byEmail.set(row.email, [...byEmail.get(row.email) ?? [], row])
 
   let claimed = 0
-  let expired = 0
+  let pending = 0
   for (const [email, rows] of byEmail) {
     const [winner, ...others] = rows.sort(byPriority)
     if (others.length) console.log(`duplicate ${email}: index goes to ${winner.wallet}, also set on ${others.map(o => o.wallet).join(', ')}`)
-    if (!winner.verified && now - winner.setAt > UNVERIFIED_CLAIM_TTL) { expired++; continue }
+    // The index holds verified emails only; pending ones are claimed when they verify.
+    if (!winner.verified) { pending++; continue }
     if (!apply) { claimed++; continue }
-    const result = await claimNotifyEmail(store, email, winner.wallet, { verified: winner.verified })
+    const result = await claimNotifyEmail(store, email, winner.wallet)
     if (result.ok) claimed++
     else console.log(`${email} already held by ${result.holder}, left as is`)
   }
-  console.log(`${apply ? 'claimed' : 'would claim'} ${claimed}, skipped ${expired} expired unverified, ${byEmail.size} distinct emails`)
+  console.log(`${apply ? 'claimed' : 'would claim'} ${claimed}, skipped ${pending} unverified, ${byEmail.size} distinct emails`)
   if (!apply) console.log('dry run, pass --apply to write')
 }
 

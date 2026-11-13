@@ -221,10 +221,17 @@ test('the first snapshot page only asks for more when a real Markee is left off'
       return ({ owner: seed, message: target === seed ? '' : 'gm', name: '', totalFundsAdded: funds } as Record<string, unknown>)[functionName];
     }
     return ({ VERSION: '1.3.0', factory: zeroAddress, leaderboardName: 'Test', minimumPrice: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 21n,
-      getTopMarkees: [top, top.map(() => 1n)], beneficiaryAddress: seed } as Record<string, unknown>)[functionName];
+      getTopMarkees: [top, top.map(() => 1n)], getMarkees: all, beneficiaryAddress: seed } as Record<string, unknown>)[functionName];
   });
+  let all = [seed, ...real];
   top = real;
   assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, null);
   top = [...real.slice(0, 19), seed];
+  assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, 0);
+  // A board with no seed (pre-v1.2) still pages to its 21st real Markee.
+  const extra = addr(21);
+  real.push(extra);
+  all = real.slice();
+  top = real.slice(0, 20);
   assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, 0);
 });

@@ -137,20 +137,31 @@ export async function readBoardModerators(boards: string[]): Promise<BoardModera
   return rows.map(r => r ? normalizeBoardModerators(r) : { moderators: [], updatedAt: 0, updatedBy: '' })
 }
 
-// A board's owners are its on-chain admin() and its KV-cached creator. They always moderate the
-// board and are the only wallets that can change its moderator list.
+// A board's owners are its on-chain admin() and its creator. Once the admin differs from the one the
+// board was created with, the admin was transferred and the creator no longer owns it: transferring
+// admin hands over the moderator list, moderation policy, site meta, linked files and integrations
+// too. Owners always moderate the board and are the only wallets that can change its moderator list.
+export function boardOwners(admin: string | null | undefined, creators: readonly (string | null | undefined)[], initialAdmins: readonly (string | null | undefined)[] = []): string[] {
+  const norm = (a: string | null | undefined) => (a && a !== ZERO_ADDRESS ? a.toLowerCase() : null)
+  const current = norm(admin)
+  const transferred = !!current && initialAdmins.some(a => { const initial = norm(a); return !!initial && initial !== current })
+  const owners = transferred ? [current] : [current, ...creators.map(norm)]
+  return [...new Set(owners.filter((a): a is string => !!a))]
+}
+
 export async function readBoardOwners(boards: string[]): Promise<string[][]> {
   if (boards.length === 0) return []
-  const [adminReads, creators] = await Promise.all([
+  const n = CREATOR_PLATFORMS.length
+  const [adminReads, origins] = await Promise.all([
     getModerationClient().multicall({
       contracts: boards.map(b => ({ address: b as `0x${string}`, abi: ADMIN_ABI, functionName: 'admin' as const })),
     }),
-    kv.mget<(string | null)[]>(...boards.flatMap(b => CREATOR_PLATFORMS.map(p => `creator:${p}:${b.toLowerCase()}`))),
+    kv.mget<(string | null)[]>(...boards.flatMap(b => CREATOR_PLATFORMS.flatMap(p => [`creator:${p}:${b.toLowerCase()}`, `initial-admin:${p}:${b.toLowerCase()}`]))),
   ])
   return boards.map((_, i) => {
     const admin = adminReads[i]?.status === 'success' ? (adminReads[i].result as string) : null
-    const boardCreators = creators.slice(i * CREATOR_PLATFORMS.length, (i + 1) * CREATOR_PLATFORMS.length)
-    return [...new Set([admin, ...boardCreators].filter((a): a is string => !!a && a !== ZERO_ADDRESS).map(a => a.toLowerCase()))]
+    const row = origins.slice(i * n * 2, (i + 1) * n * 2)
+    return boardOwners(admin, row.filter((_, j) => j % 2 === 0), row.filter((_, j) => j % 2 === 1))
   })
 }
 
@@ -195,7 +206,7 @@ export interface ModeratedBoard {
   moderators: string[]
 }
 
-type ListedBoard = LabelledBoard & { address: string; name?: string; platform?: string; admin?: string | null; creator?: string | null; isLegacy?: boolean }
+type ListedBoard = LabelledBoard & { address: string; name?: string; platform?: string; admin?: string | null; creator?: string | null; initialAdmin?: string | null; isLegacy?: boolean }
 
 // Every v1.x fixed and streaming board, from the same listing routes /account reads, with added
 // moderators merged in. Cached for a minute since every connected wallet polls the queue, and
@@ -241,7 +252,7 @@ async function listBoardsUncached(): Promise<ModeratedBoard[]> {
   const add = (lb: ListedBoard, platform: string | null, strategy: ModeratedBoard['strategy']) => {
     if (lb.isLegacy || !lb.address) return
     const address = lb.address.toLowerCase()
-    const moderators = [lb.admin, lb.creator].filter((a): a is string => !!a).map(a => a.toLowerCase())
+    const moderators = boardOwners(lb.admin, [lb.creator], [lb.initialAdmin])
     const existing = boards.get(address)
     if (existing) {
       existing.moderators = [...new Set([...existing.moderators, ...moderators])]

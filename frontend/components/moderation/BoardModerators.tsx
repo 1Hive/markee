@@ -144,7 +144,7 @@ export function BoardModerators({ board }: { board: string }) {
       setDraft((body.moderators ?? []).map((m: { wallet: string }) => m.wallet))
       setJustSaved(true)
       if (Array.isArray(body.emailInUse) && body.emailInUse.length > 0) {
-        setSaveWarning(`The email for ${body.emailInUse.map((w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`).join(', ')} is already in use by another wallet, so no notifications will be sent to it.`)
+        setSaveWarning(`The email for ${body.emailInUse.map((w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`).join(', ')} has already been verified by another user, so no notifications will be sent to it.`)
       }
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(me) })
     } catch (err) {
