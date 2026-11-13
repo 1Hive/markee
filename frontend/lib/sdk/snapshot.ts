@@ -140,8 +140,11 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
     ]);
     return { address: addr, owner, message, name, score: (c.strategy === 'rent' ? score : totalFunds).toString(), totalFunds: totalFunds.toString(), aggregateRate: aggregateRate.toString(), legacyFloor: legacyFloor.toString(), moderated: flags === null ? null : flags.some(k => k.toLowerCase() === `${c.chainId}:${addr.toLowerCase()}`), views: flags === null ? null : views[i] ?? 0 };
   }));
-  const entries = readEntries.filter(entry => !isPlaceholderMarkee({ message: entry.message, totalFunds: BigInt(entry.totalFunds), rate: BigInt(entry.aggregateRate) }));
-  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? (c.count > 20 ? 0 : null) : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
+  const placeholders = new Set(readEntries.filter(entry => isPlaceholderMarkee({ message: entry.message, totalFunds: BigInt(entry.totalFunds), rate: BigInt(entry.aggregateRate) })).map(entry => entry.address));
+  const entries = readEntries.filter(entry => !placeholders.has(entry.address));
+  const seedOffFirstPage = !addresses.some(a => placeholders.has(getAddress(a)));
+  const firstPageNext = c.count - addresses.length > (seedOffFirstPage ? 1 : 0) ? 0 : null;
+  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? firstPageNext : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
 }
 
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {

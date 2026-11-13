@@ -198,3 +198,33 @@ test('snapshots drop the empty seed Markee but keep funded or written ones', asy
   assert.deepEqual(result.entries.map(entry => entry.address), [funded, written]);
   assert.equal(result.count, 3);
 });
+
+test('the first snapshot page only asks for more when a real Markee is left off', async t => {
+  const flag = process.env.FLAG_AUTO_MODERATION;
+  process.env.FLAG_AUTO_MODERATION = 'false';
+  t.after(() => flag === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = flag);
+  const { snapshot, snapshotReaders } = await import('../lib/sdk/snapshot');
+  const { getEnvPublicClient } = await import('../lib/sdk/chains');
+  const { zeroAddress, getAddress } = await import('viem');
+  t.mock.method(snapshotReaders, 'presentation', async () => ({ flags: [], views: [], metadata: null }));
+  const client = getEnvPublicClient(8453);
+  const addr = (i: number) => getAddress(`0x${(i + 1).toString(16).padStart(40, '0')}`);
+  const seed = addr(0);
+  const real = Array.from({ length: 20 }, (_, i) => addr(i + 1));
+  const unfundedReal = real[19];
+  let top: string[] = [];
+  t.mock.method(client, 'getBlockNumber', async () => 100n);
+  t.mock.method(client, 'readContract', async ({ address, functionName }: { address: string; functionName: string }) => {
+    const target = getAddress(address);
+    if (target === seed || real.includes(target)) {
+      const funds = target === seed || target === unfundedReal ? 0n : 1n;
+      return ({ owner: seed, message: target === seed ? '' : 'gm', name: '', totalFundsAdded: funds } as Record<string, unknown>)[functionName];
+    }
+    return ({ VERSION: '1.3.0', factory: zeroAddress, leaderboardName: 'Test', minimumPrice: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 21n,
+      getTopMarkees: [top, top.map(() => 1n)], beneficiaryAddress: seed } as Record<string, unknown>)[functionName];
+  });
+  top = real;
+  assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, null);
+  top = [...real.slice(0, 19), seed];
+  assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, 0);
+});
