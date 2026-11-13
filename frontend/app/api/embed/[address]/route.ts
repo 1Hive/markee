@@ -55,9 +55,9 @@ export async function OPTIONS() {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { address: string } },
+  { params }: { params: Promise<{ address: string }> },
 ) {
-  const address = params.address.toLowerCase()
+  const address = (await params).address.toLowerCase()
   if (!/^0x[0-9a-f]{40}$/.test(address)) {
     return NextResponse.json({ error: 'Invalid address' }, { status: 400, headers: CORS })
   }

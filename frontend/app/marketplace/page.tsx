@@ -135,6 +135,9 @@ function useCountUp(target: number, started: boolean, duration = 1600) {
   return val
 }
 
+const TABLE_COLS = '190px 110px 1fr 74px 64px 120px 100px'
+const TABLE_MIN_WIDTH = 940
+
 function useNarrow() {
   const [narrow, setNarrow] = useState(false)
   useEffect(() => {
@@ -167,7 +170,7 @@ function SkeletonStatCell() {
         <span className="skeleton" style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
         <div className="skeleton" style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
       </span>
-      <div className="skeleton" style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+      <div className="skeleton" style={{ width: 110, maxWidth: 'calc(100% - 17px)', height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
     </div>
   )
 }
@@ -559,7 +562,7 @@ function TableRow({ lb, featured, views, viewsLoading, ethPrice, position, onBuy
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px',
+        display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH,
         gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
         background: isTop
@@ -900,9 +903,9 @@ export default function MarketplacePage() {
         </div>
 
         {/* table */}
-        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
@@ -917,7 +920,7 @@ export default function MarketplacePage() {
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5, 6].map(j => (
                   <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
