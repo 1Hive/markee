@@ -34,7 +34,7 @@ import {
   type VerifyToken,
 } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
-import { claimNotifyEmail, releaseNotifyEmail } from '@/lib/moderation/emailIndex'
+import { assignNotifyEmail, releaseNotifyEmail } from '@/lib/moderation/emailIndex'
 import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 export const dynamic = 'force-dynamic'
@@ -197,18 +197,20 @@ export async function POST(req: NextRequest) {
         // Upsert notify state (verified=false, frequency='every') if not already set.
         const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(m.wallet)).catch(() => null)
         if (!existing || existing.email !== email) {
-          const claim = await claimNotifyEmail(emailIndex, email, m.wallet, { verified: false })
-          if (!claim.ok) {
-            emailInUse.push(m.wallet)
-            return
-          }
           const notifyState: ModeratorNotifyState = {
             email,
             verified: false,
             frequency: existing?.frequency ?? 'every',
             setAt: now,
           }
-          await kv.set(notifyStateKey(m.wallet), notifyState)
+          const claim = await assignNotifyEmail(emailIndex, email, m.wallet, {
+            writeState: () => kv.set(notifyStateKey(m.wallet), notifyState),
+            restoreState: () => existing ? kv.set(notifyStateKey(m.wallet), existing) : kv.del(notifyStateKey(m.wallet)),
+          })
+          if (!claim.ok) {
+            emailInUse.push(m.wallet)
+            return
+          }
           await releaseNotifyEmail(emailIndex, existing?.email, m.wallet, email)
         }
         await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })

@@ -10,6 +10,7 @@ import {
   type ModeratorEntry,
 } from '../lib/moderation/queue'
 import {
+  assignNotifyEmail,
   claimNotifyEmail,
   releaseNotifyEmail,
   normalizeNotifyEmail,
@@ -179,16 +180,14 @@ function memoryEmailIndex() {
     releaseIfHeld: async (key, wallet) => { if (index.get(key)?.wallet === wallet) index.delete(key) },
     currentEmail: async wallet => emails.get(wallet) ?? null,
   }
-  const save = async (wallet: string, email: string, verified = false) => {
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const save = async (wallet: string, email: string) => {
     const previous = emails.get(wallet)
-    emails.set(wallet, normalizeNotifyEmail(email))
-    const claim = await claimNotifyEmail(store, email, wallet, { verified })
-    if (!claim.ok) {
-      if (previous) emails.set(wallet, previous)
-      else emails.delete(wallet)
-      return claim
-    }
-    await releaseNotifyEmail(store, previous, wallet, email)
+    const claim = await assignNotifyEmail(store, email, wallet, {
+      writeState: async () => { await tick(); emails.set(wallet, normalizeNotifyEmail(email)) },
+      restoreState: async () => { await tick(); if (previous) emails.set(wallet, previous); else emails.delete(wallet) },
+    })
+    if (claim.ok) await releaseNotifyEmail(store, previous, wallet, email)
     return claim
   }
   const remove = async (wallet: string) => {
@@ -201,6 +200,17 @@ function memoryEmailIndex() {
 
 const ALICE = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const BOB = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+test('concurrent saves of the same email leave exactly one holder', async () => {
+  for (let round = 0; round < 50; round++) {
+    const m = memoryEmailIndex()
+    const results = await Promise.all([m.save(ALICE, 'race@example.com'), m.save(BOB, 'race@example.com')])
+    const winners = results.filter(r => r.ok).length
+    const holders = [ALICE, BOB].filter(w => m.emails.get(w) === 'race@example.com')
+    assert.equal(winners, 1)
+    assert.deepEqual(holders, [m.index.get(notifyEmailIndexKey('race@example.com'))?.wallet])
+  }
+})
 
 test('a second wallet cannot save an email another wallet holds', async () => {
   const m = memoryEmailIndex()

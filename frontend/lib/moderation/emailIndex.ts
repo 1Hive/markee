@@ -32,6 +32,20 @@ export async function claimNotifyEmail(
   return { ok: false, holder: '' }
 }
 
+// The wallet's state must name the email before the claim: claimNotifyEmail treats a holder whose
+// state lacks the email as stale, so claiming first lets a concurrent claimant evict the new claim.
+export async function assignNotifyEmail(
+  store: EmailIndexStore,
+  email: string,
+  wallet: string,
+  { writeState, restoreState }: { writeState: () => Promise<unknown>; restoreState: () => Promise<unknown> },
+): Promise<ClaimResult> {
+  await writeState()
+  const claim = await claimNotifyEmail(store, email, wallet, { verified: false })
+  if (!claim.ok) await restoreState()
+  return claim
+}
+
 export async function releaseNotifyEmail(
   store: EmailIndexStore,
   email: string | null | undefined,

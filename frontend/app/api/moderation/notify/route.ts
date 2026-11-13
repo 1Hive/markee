@@ -43,7 +43,7 @@ import {
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
 import { authorizeWallet } from '@/lib/auth/wallet-session'
-import { claimNotifyEmail, releaseNotifyEmail, EMAIL_IN_USE_ERROR } from '@/lib/moderation/emailIndex'
+import { assignNotifyEmail, releaseNotifyEmail, EMAIL_IN_USE_ERROR } from '@/lib/moderation/emailIndex'
 import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
@@ -109,10 +109,13 @@ export async function POST(req: NextRequest) {
     const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
     let notifyState: ModeratorNotifyState
     if (email) {
-      const claim = await claimNotifyEmail(emailIndex, email, wallet, { verified: false })
+      const next: ModeratorNotifyState = { email, verified: false, frequency: existing?.frequency ?? 'every', setAt: now }
+      const claim = await assignNotifyEmail(emailIndex, email, wallet, {
+        writeState: () => kv.set(notifyStateKey(wallet), next),
+        restoreState: () => existing ? kv.set(notifyStateKey(wallet), existing) : kv.del(notifyStateKey(wallet)),
+      })
       if (!claim.ok) return NextResponse.json({ error: EMAIL_IN_USE_ERROR, code: 'EMAIL_IN_USE' }, { status: 409 })
-      notifyState = { email, verified: false, frequency: existing?.frequency ?? 'every', setAt: now }
-      await kv.set(notifyStateKey(wallet), notifyState)
+      notifyState = next
       await releaseNotifyEmail(emailIndex, existing?.email, wallet, email)
     } else if (!existing?.email) {
       return NextResponse.json({ error: 'No notification email is saved for this wallet' }, { status: 404 })
