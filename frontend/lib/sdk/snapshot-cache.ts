@@ -8,6 +8,7 @@ export interface SnapshotStore {
 
 export type Snapshot<T> = {
   data: T
+  loadedAt?: number
   updatedAt: number
   freshUntil: number
   staleUntil: number
@@ -42,14 +43,18 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
     load: () => Promise<T>,
     freshSeconds = 30,
     staleSeconds = 300,
-    forceRefresh = false,
+    forceRefresh: boolean | number = false,
   ): Promise<Snapshot<T>> {
     const snapshotKey = `sdk:snapshots:v1:${key}`
     const lockKey = `${snapshotKey}:lock`
     const retryKey = `${snapshotKey}:retry`
     const cached = await store.get<Omit<Snapshot<T>, 'stale' | 'refreshing'>>(snapshotKey)
     const lastGood = cached && cached.staleUntil > now() ? cached : null
-    const fresh = (value: { freshUntil: number }) => !forceRefresh && value.freshUntil > now()
+    // A forced read must not be answered by a load that began before the
+    // request, since that load may predate the transaction being reflected.
+    const loadedAfter = forceRefresh === true ? now() : forceRefresh === false ? null : forceRefresh
+    const fresh = (value: { freshUntil: number; loadedAt?: number }) =>
+      loadedAfter === null ? value.freshUntil > now() : (value.loadedAt ?? 0) >= loadedAfter
     if (lastGood && fresh(lastGood)) {
       return { ...lastGood, stale: false, refreshing: false }
     }
@@ -62,7 +67,7 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
     // expires automatically; there is no process-local cache or detached work.
     const acquired = await store.set(lockKey, token, { nx: true, ex: 65 })
     if (acquired !== 'OK') {
-      if (lastGood) return { ...lastGood, stale: true, refreshing: true }
+      if (lastGood && loadedAfter === null) return { ...lastGood, stale: true, refreshing: true }
       throw new SnapshotUnavailable(2)
     }
     try {
@@ -71,10 +76,12 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
       if (latest && fresh(latest)) {
         return { ...latest, stale: false, refreshing: false }
       }
+      const loadedAt = now()
       const data = await load()
       const updatedAt = now()
       const snapshot = {
         data,
+        loadedAt,
         updatedAt,
         freshUntil: updatedAt + freshSeconds * 1000,
         staleUntil: updatedAt + (freshSeconds + staleSeconds) * 1000,

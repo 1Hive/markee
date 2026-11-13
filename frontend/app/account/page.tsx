@@ -635,6 +635,10 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
   )
 }
 
+type Owned = { admin?: string | null; creator?: string | null }
+const ownedByCreator = (lb: Owned, addr: string) => (lb.creator ?? lb.admin ?? '').toLowerCase() === addr.toLowerCase()
+const ownedByAdmin = (lb: Owned, addr: string) => !!lb.admin && lb.admin.toLowerCase() === addr.toLowerCase()
+
 // Cheap FNV-1a fingerprint of a board-address list, used only as a useEffect dependency -- avoids
 // allocating an ~8.4KB comma-joined string of every address (up to 200 boards) on every render just
 // to compare it for change.
@@ -1017,6 +1021,17 @@ function AccountDashboard() {
     isLegacy?: boolean
   } | null>(null)
 
+  // Admin transfers confirmed in this session, applied over listing responses until the
+  // listing itself reports the new admin.
+  const confirmedAdminsRef = useRef(new Map<string, string>())
+  const withConfirmedAdmin = useCallback(<T extends { address: string; admin?: string | null }>(lb: T): T => {
+    const key = lb.address.toLowerCase()
+    const admin = confirmedAdminsRef.current.get(key)
+    if (!admin) return lb
+    if (lb.admin?.toLowerCase() === admin) { confirmedAdminsRef.current.delete(key); return lb }
+    return { ...lb, admin }
+  }, [])
+
   const fetchAll = useCallback(async (addr: string, refresh = false) => {
     const suffix = refresh ? '?bust=1' : ''
     setIsLoading(true)
@@ -1032,7 +1047,8 @@ function AccountDashboard() {
         const data = await sfRes.json()
         setSuperfluidBoards(
           (data.leaderboards ?? [])
-            .filter((lb: BaseLeaderboard & { creator?: string | null }) => (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase())
+            .map(withConfirmedAdmin)
+            .filter((lb: BaseLeaderboard) => ownedByCreator(lb, addr))
             .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
         )
       }
@@ -1040,28 +1056,26 @@ function AccountDashboard() {
         const data = await ghRes.json()
         setGithubBoards(
           (data.leaderboards ?? [])
-            .filter((lb: any) => (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase())
+            .map(withConfirmedAdmin)
+            .filter((lb: any) => ownedByCreator(lb, addr))
             .map((lb: any) => ({ ...lb, platform: 'github' as const, linkedFiles: lb.linkedFiles ?? [] }))
         )
       }
       if (oiRes.ok || fsRes.ok) {
         const oiData = oiRes.ok ? await oiRes.json() : { leaderboards: [] }
         const fsData = fsRes.ok ? await fsRes.json() : { leaderboards: [] }
-        const byCreator = (lb: any) => {
-          if (lb.isLegacy) return false
-          const c = lb.creator ?? lb.admin
-          return c && c.toLowerCase() === addr.toLowerCase()
-        }
+        const byCreator = (lb: any) => !lb.isLegacy && ownedByCreator(lb, addr)
         setWebsiteBoards([
-          ...(oiData.leaderboards ?? []).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
-          ...(fsData.leaderboards ?? []).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(oiData.leaderboards ?? []).map(withConfirmedAdmin).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(fsData.leaderboards ?? []).map(withConfirmedAdmin).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
         ])
       }
       if (strRes.ok) {
         const data = await strRes.json()
         setStreamingBoards(
           (data.leaderboards ?? [])
-            .filter((lb: any) => lb.admin && lb.admin.toLowerCase() === addr.toLowerCase())
+            .map(withConfirmedAdmin)
+            .filter((lb: any) => ownedByAdmin(lb, addr))
             .map((lb: any): AnyLeaderboard => {
               if (lb.platform === 'github') {
                 return { ...lb, platform: 'github', repoFullName: null, repoAvatarUrl: null, repoHtmlUrl: null, filePath: null, linkedFiles: [] }
@@ -1079,7 +1093,7 @@ function AccountDashboard() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [withConfirmedAdmin])
 
   const fetchMyMessages = useCallback(async (addr: string) => {
     setIsLoadingMessages(true)
@@ -1171,6 +1185,25 @@ function AccountDashboard() {
       fetchFundedMessages(activeAddress)
     }
   }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
+
+  // The message routes read the shared listings, so they run once the busted listings are republished.
+  const refreshAfterTx = useCallback(async () => {
+    if (!activeAddress) return
+    await fetchAll(activeAddress, true)
+    fetchMyMessages(activeAddress)
+    fetchFundedMessages(activeAddress)
+  }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
+
+  const handleAdminTransferred = useCallback((board: string, newAdmin: string) => {
+    if (!activeAddress) return
+    confirmedAdminsRef.current.set(board.toLowerCase(), newAdmin.toLowerCase())
+    const keepIf = (owns: (lb: Owned, addr: string) => boolean) => <T extends AnyLeaderboard>(prev: T[]) =>
+      prev.map(withConfirmedAdmin).filter(lb => owns(lb, activeAddress))
+    setSuperfluidBoards(keepIf(ownedByCreator))
+    setGithubBoards(keepIf(ownedByCreator))
+    setWebsiteBoards(keepIf(ownedByCreator))
+    setStreamingBoards(keepIf(ownedByAdmin))
+  }, [activeAddress, withConfirmedAdmin])
 
   // Derived board lists
   const allBoards = useMemo(() =>
@@ -1622,7 +1655,7 @@ function AccountDashboard() {
           isOpen
           board={priceButtonTarget.address}
           onClose={() => setPriceButtonTarget(null)}
-          onSuccess={() => { if (activeAddress) { fetchAll(activeAddress, true); fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={refreshAfterTx}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy && (
@@ -1630,7 +1663,7 @@ function AccountDashboard() {
           isOpen
           onClose={() => setPriceButtonTarget(null)}
           strategyAddress={priceButtonTarget.address as `0x${string}`}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress, true) }}
+          onSuccess={refreshAfterTx}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && !(priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy) && (
@@ -1638,7 +1671,7 @@ function AccountDashboard() {
           isOpen
           onClose={() => setPriceButtonTarget(null)}
           leaderboardAddress={priceButtonTarget.address}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress, true) }}
+          onSuccess={refreshAfterTx}
         />
       )}
 
@@ -1651,6 +1684,7 @@ function AccountDashboard() {
           onClose={() => setManageTarget(null)}
           onAddToSite={() => handleOpenAddToSite(manageBoard)}
           onSuccess={() => activeAddress && fetchAll(activeAddress, true)}
+          onAdminTransferred={newAdmin => handleAdminTransferred(manageBoard.address, newAdmin)}
         />
       )}
 
@@ -1701,7 +1735,7 @@ function AccountDashboard() {
           strategyAddress={editMessageTarget.strategyId as `0x${string}`}
           markeeAddress={editMessageTarget.address as `0x${string}`}
           currentMessage={editMessageTarget.message}
-          onSuccess={() => { setEditMessageTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+          onSuccess={() => { setEditMessageTarget(null); refreshAfterTx() }}
         />
       )}
 
@@ -1714,7 +1748,7 @@ function AccountDashboard() {
           userMarkee={{ address: addFundsTarget.markeeAddress, owner: activeAddress ?? '', message: addFundsTarget.message, totalFundsAdded: addFundsTarget.totalFundsAdded }}
           initialMode="addFunds"
           topFundsAdded={addFundsTarget.topFunds}
-          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) { fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={() => { setAddFundsTarget(null); refreshAfterTx() }}
         />
       )}
 
@@ -1726,7 +1760,7 @@ function AccountDashboard() {
           leaderboardAddress={addFundsTarget.strategyId}
           initialView="addFunds"
           initialTargetAddress={addFundsTarget.markeeAddress}
-          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) { fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={() => { setAddFundsTarget(null); refreshAfterTx() }}
         />
       )}
 
@@ -1738,7 +1772,7 @@ function AccountDashboard() {
           initialView="fund"
           initialTargetAddress={addFundsTarget.markeeAddress}
           onClose={() => setAddFundsTarget(null)}
-          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+          onSuccess={() => { setAddFundsTarget(null); refreshAfterTx() }}
         />
       )}
 
@@ -1750,7 +1784,7 @@ function AccountDashboard() {
           initialView="manage"
           initialTargetAddress={streamEditTarget.address}
           onClose={() => setStreamEditTarget(null)}
-          onSuccess={() => { setStreamEditTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+          onSuccess={() => { setStreamEditTarget(null); refreshAfterTx() }}
         />
       )}
 
