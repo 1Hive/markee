@@ -39,7 +39,8 @@ export interface AdminSettingRowProps {
   warnIf?: (current: bigint) => string | null
   /** Label of the acknowledgement checkbox for dangerous="confirm". */
   acknowledge?: string
-  onSuccess?: () => void
+  /** Receives the value just confirmed on-chain. */
+  onSuccess?: (value: string) => void
 }
 
 function fmtAddr(a: string) {
@@ -82,12 +83,13 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
 
   useEffect(() => {
     if (!isSuccess) return
+    const confirmed = value.trim()
     refetch()
     setEditing(false)
     setValue('')
     setAcknowledged(false)
     reset()
-    onSuccess?.()
+    onSuccess?.(confirmed)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess])
 

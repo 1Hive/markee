@@ -252,7 +252,7 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
   )
 }
 
-export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite, onSuccess }: {
+export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite, onSuccess, onAdminTransferred }: {
   lb: AnyLeaderboard
   views: number
   ethPrice: number | null
@@ -260,6 +260,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
   onClose: () => void
   onAddToSite: () => void
   onSuccess: () => void
+  onAdminTransferred?: (newAdmin: string) => void
 }) {
   const toast = useToast()
   const me = activeAddress?.toLowerCase()
@@ -409,7 +410,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                   validate={v => isZeroAddress(v) ? 'The zero address cannot be an admin. Enter a wallet you control.' : null}
                   dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it."
                   acknowledge="I understand I'll lose all admin access to this Markee"
-                  onSuccess={saved('Admin transferred')}
+                  onSuccess={newAdmin => { onAdminTransferred?.(newAdmin); saved('Admin transferred')() }}
                 />
               )}
             </section>
