@@ -5,7 +5,7 @@ import { parseAction, placement, assertTextLength } from '../lib/sdk/validation'
 import { signEnvelope, verifyEnvelope } from '../lib/sdk/transactions';
 import { lifiStatus } from '../lib/sdk/bridge';
 import { buildMarkeeOpenStreamOperations, getMarkeeStreamAmounts, getMarkeeAutoFunding } from '../lib/sdk/gardens/streaming';
-import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests } from '../lib/sdk/gardens/challenge-store';
+import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests, reserveMarkeeActivation, MarkeeChallengeRateLimitError } from '../lib/sdk/gardens/challenge-store';
 import { executeAdmin, operationStatus } from '../lib/sdk/operations';
 import { NextRequest } from 'next/server';
 import { GET, POST, OPTIONS } from '../app/api/sdk/v1/[...path]/route';
@@ -77,6 +77,17 @@ test('authorization nonce can be consumed exactly once', async () => {
   const results = await Promise.all([1, 2].map(() => consumeMarkeeChallenge<{ amount: bigint }>({ namespace: 'sdk-test', nonce: '123' })));
   assert.equal(results.filter(Boolean).length, 1);
   assert.equal(results.find(Boolean)!.amount, 123n);
+});
+test('community activations stop at each daily limit without counting refused requests', async () => {
+  clearMarkeeChallengesForTests();
+  const reserve = (requester: string) => reserveMarkeeActivation({ namespace: 'sdk-test', limits: [{ subject: 'global', max: 3 }, { subject: requester, max: 2 }] });
+  await reserve('a');
+  await reserve('a');
+  await assert.rejects(reserve('a'), MarkeeChallengeRateLimitError);
+  await reserve('b');
+  await assert.rejects(reserve('c'), MarkeeChallengeRateLimitError);
+  clearMarkeeChallengesForTests();
+  await reserve('a');
 });
 test('replaying an admin request returns its saved result without executing a second time', async () => {
   let calls = 0;
