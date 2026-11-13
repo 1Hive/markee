@@ -666,6 +666,7 @@ interface ChartMetric {
   // First day with real history, or null when there's none yet.
   since: string | null
   format: (v: number) => string
+  pending?: boolean
 }
 
 const RANGES: ChartRange[] = [7, 30, 90]
@@ -686,17 +687,29 @@ function shortDay(day: string): string {
   return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
 
-function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: string[]; loading: boolean }) {
+function StatsChart({ metrics, days, loading, failed }: { metrics: ChartMetric[]; days: string[]; loading: boolean; failed?: boolean }) {
   const [chartType, setChartType] = useState<ChartType>('bar')
   const [range, setRange]         = useState<ChartRange>(30)
   const [activeIdx, setActiveIdx] = useState(0)
+  const [W, setW] = useState(560)
+  const plotRef = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    const el = plotRef.current
+    if (!el) return
+    const measure = () => { const w = el.getBoundingClientRect().width; if (w > 0) setW(w) }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
-  const W = 560, H = 160
+  const H = 180
   const PAD = { t: 10, b: 28, l: 52, r: 12 }
   const innerW = W - PAD.l - PAD.r
   const innerH = H - PAD.t - PAD.b
 
   const metric = metrics[activeIdx]
+  const busy = loading || !!metric.pending
   const since = metric.since
   // Days of real history, counting today.
   const tracked = since ? days.filter(d => d >= since).length : 0
@@ -757,14 +770,9 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
   const yOf   = (v: number) => PAD.t + innerH - (v / scaleMax) * innerH
 
   const linePts = shown.map((v, i) => v === null ? null : [xMid(i), yOf(v)] as [number, number]).filter((p): p is [number, number] => p !== null)
-  let linePath = ''
-  if (linePts.length >= 2) {
-    linePath = `M ${linePts[0][0].toFixed(1)} ${linePts[0][1].toFixed(1)}`
-    for (let i = 1; i < linePts.length; i++) {
-      const cpx = ((linePts[i - 1][0] + linePts[i][0]) / 2).toFixed(1)
-      linePath += ` C ${cpx} ${linePts[i - 1][1].toFixed(1)}, ${cpx} ${linePts[i][1].toFixed(1)}, ${linePts[i][0].toFixed(1)} ${linePts[i][1].toFixed(1)}`
-    }
-  }
+  const linePath = linePts.length >= 2
+    ? linePts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ')
+    : ''
   const areaPath = linePts.length >= 2
     ? `${linePath} L ${linePts[linePts.length - 1][0].toFixed(1)} ${(PAD.t + innerH).toFixed(1)} L ${linePts[0][0].toFixed(1)} ${(PAD.t + innerH).toFixed(1)} Z`
     : ''
@@ -780,7 +788,7 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const }}>
         {metrics.map((m, i) => {
           const on = i === activeIdx
-          const delta = loading ? null : deltaFor(m)
+          const delta = loading || m.pending ? null : deltaFor(m)
           return (
             <button
               key={m.label}
@@ -843,7 +851,7 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
       </div>
 
       {/* SVG chart */}
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+      <svg ref={plotRef} width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"   stopColor={PINK} stopOpacity="0.3"/>
@@ -857,34 +865,34 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
         <line x1={PAD.l} y1={PAD.t + innerH} x2={PAD.l + innerW} y2={PAD.t + innerH} stroke={BORDER} strokeWidth="1"/>
 
         {/* Y-axis labels, only once there's something to scale against */}
-        {dMax > 0 && <>
-          <text x={PAD.l - 5} y={yTick1} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.67)}</text>
-          <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.33)}</text>
+        {!busy && dMax > 0 && <>
+          <text x={PAD.l - 5} y={yTick1} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="11" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.67)}</text>
+          <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="11" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.33)}</text>
         </>}
 
-        {loading && (
-          <text x={PAD.l + innerW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">Loading…</text>
+        {busy && (
+          <text x={PAD.l + innerW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="11.5" fontFamily="JetBrains Mono,monospace">{failed && loading ? 'Could not load history' : 'Loading…'}</text>
         )}
 
         {/* Days before tracking began */}
-        {!loading && untrackedW > 0 && (
+        {!busy && untrackedW > 0 && (
           <>
             <rect x={PAD.l} y={PAD.t} width={untrackedW} height={innerH} fill="rgba(138,143,191,0.05)" />
-            {untrackedW > 90 && (
-              <text x={PAD.l + untrackedW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">
+            {untrackedW > 150 && (
+              <text x={PAD.l + untrackedW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="11.5" fontFamily="JetBrains Mono,monospace">
                 {hasData ? `Tracking began ${shortDay(since!)}` : 'Collecting daily history'}
               </text>
             )}
           </>
         )}
-        {!loading && hasData && dMax === 0 && (
-          <text x={PAD.l + untrackedW + (innerW - untrackedW) / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">
+        {!busy && hasData && dMax === 0 && (
+          <text x={PAD.l + untrackedW + (innerW - untrackedW) / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="11.5" fontFamily="JetBrains Mono,monospace">
             Nothing yet in this period
           </text>
         )}
 
         {/* Chart body */}
-        {!loading && (chartType === 'bar'
+        {!busy && (chartType === 'bar'
           ? series.map((v, i) => {
               if (v === null || v <= 0) return null
               const y = yOf(v)
@@ -903,11 +911,11 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
         )}
 
         {/* X-axis labels */}
-        <text x={PAD.l + innerW / 2} y={H - 3} textAnchor="middle" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">
+        <text x={PAD.l + innerW / 2} y={H - 3} textAnchor="middle" fill={MUTED} fontSize="10.5" fontFamily="JetBrains Mono,monospace">
           {chartType === 'bar' ? 'Daily' : metric.ratio ? 'Over the period' : 'Running total'}
         </text>
-        <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">{slotDays[0] ? shortDay(slotDays[0]) : ''}</text>
-        <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">Today</text>
+        <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="10.5" fontFamily="JetBrains Mono,monospace">{slotDays[0] ? shortDay(slotDays[0]) : ''}</text>
+        <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="10.5" fontFamily="JetBrains Mono,monospace">Today</text>
       </svg>
     </div>
   )
@@ -1334,16 +1342,18 @@ function AccountDashboard() {
   // Day-by-day history for the hub charts. Creator: the wallet's live boards. Buyer: the boards its
   // own messages are on (the same sets the headline Views figures use).
   const [stats, setStats] = useState<AccountStats | null>(null)
+  const [statsFailed, setStatsFailed] = useState(false)
   const statsCreator = useMemo(() => activeBoards.map(b => b.address.toLowerCase()).slice(0, 100), [activeBoards])
   const statsBuyer = useMemo(() => [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].slice(0, 100), [myMessages])
   const statsKey = `${activeAddress ?? ''}|${fingerprintAddresses(statsCreator)}|${fingerprintAddresses(statsBuyer)}`
   useEffect(() => {
     if (!activeAddress || isLoading || isLoadingMessages) return
     let cancelled = false
+    setStatsFailed(false)
     fetch(`/api/account/stats?${new URLSearchParams({ wallet: activeAddress, creator: statsCreator.join(','), buyer: statsBuyer.join(','), days: '90' })}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() as Promise<AccountStats> : null)
+      .then(r => r.ok ? r.json() as Promise<AccountStats> : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(d => { if (!cancelled) setStats(d) })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setStatsFailed(true) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statsKey, isLoading, isLoadingMessages])
@@ -1513,10 +1523,11 @@ function AccountDashboard() {
                   <StatsChart
                     days={stats?.days ?? []}
                     loading={!stats}
+                    failed={statsFailed}
                     metrics={[
-                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', daily: stats?.creator.raised.map(weiToChart), since: stats?.creator.raisedSince ?? null, format: formatUsd },
+                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', daily: stats?.creator.raised.map(weiToChart), since: stats?.creator.raisedSince ?? null, pending: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '-', daily: stats?.creator.views, since: stats?.creator.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
-                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.creator.raised.map(weiToChart), den: stats.creator.views, per: 1000 } : undefined, since: laterDay(stats?.creator.raisedSince, stats?.creator.viewsSince), format: v => `$${v.toFixed(2)}` },
+                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.creator.raised.map(weiToChart), den: stats.creator.views, per: 1000 } : undefined, since: laterDay(stats?.creator.raisedSince, stats?.creator.viewsSince), pending: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
                   />
                   <YourMarkees
@@ -1546,10 +1557,11 @@ function AccountDashboard() {
                   <StatsChart
                     days={stats?.days ?? []}
                     loading={!stats}
+                    failed={statsFailed}
                     metrics={[
-                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, format: formatUsd },
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, pending: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', daily: stats?.buyer.views, since: stats?.buyer.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
-                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), format: v => `$${v.toFixed(2)}` },
+                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), pending: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
                   />
                   <StreamBalanceCard
