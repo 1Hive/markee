@@ -12,6 +12,9 @@ import { listBoardMessages } from '@/lib/streaming/messages'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
 import { boughtSnapshotKey, rentSpentSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
 import { netStreamedWei, readLifetimeStreamed } from '@/lib/streaming/lifetime'
+import { mapSettled } from '@/lib/concurrency'
+
+const RENT_SPEND_CONCURRENCY = 4
 
 export const dynamic = 'force-dynamic'
 
@@ -115,12 +118,13 @@ async function fetchStreamingOwned(
   ])
 
   const nowSec = Math.floor(Date.now() / 1000)
-  const spent = await Promise.all(owned.map(({ lb, m }) => readLifetimeStreamed(lb.address, m.address, owner)
-    .then(l => netStreamedWei(l, nowSec).toString())
-    .catch(e => {
-      console.warn('[account/messages] rent spend read failed', lb.address, m.address, e)
+  const spent = (await mapSettled(owned, RENT_SPEND_CONCURRENCY, ({ lb, m }) => readLifetimeStreamed(lb.address, m.address, owner)
+    .then(l => netStreamedWei(l, nowSec).toString())))
+    .map((r, i) => {
+      if (r.status === 'fulfilled') return r.value
+      console.warn('[account/messages] rent spend read failed', owned[i].lb.address, owned[i].m.address, r.reason)
       return null
-    })))
+    })
 
   const backsThis = (board: string) =>
     (backed[ownedBoards.indexOf(board.toLowerCase())]?.result as string | undefined)?.toLowerCase()

@@ -24,7 +24,7 @@ const now = () => Math.floor(Date.now() / 1000)
 const message = (ts: number) => `test:${board}:${ts}`
 
 function adminIs(t: any, wallet: string) {
-  t.mock.method(boardAdminDeps, 'readBoardOwners', async () => [[wallet.toLowerCase()]])
+  t.mock.method(boardAdminDeps, 'readBoardAdmin', async () => wallet.toLowerCase())
   t.mock.method(boardAdminDeps, 'contractSignatureValid', async () => false)
 }
 
@@ -88,9 +88,17 @@ test('board admin signatures are checked for signer, freshness and current admin
   assert.equal((await boardAdminDenial(board, await proof(formerAdmin), message, 'act'))?.status, 403)
 })
 
+test('a failed admin read asks the caller to retry instead of refusing them', async t => {
+  t.mock.method(boardAdminDeps, 'readBoardAdmin', async () => { throw new Error('rpc down') })
+  t.mock.method(boardAdminDeps, 'contractSignatureValid', async () => false)
+  const timestamp = now()
+  const signature = await admin.signMessage({ message: message(timestamp) })
+  assert.equal((await boardAdminDenial(board, { owner: admin.address, timestamp, signature }, message, 'act'))?.status, 503)
+})
+
 test('a smart-contract admin can authorize through ERC-1271', async t => {
   const multisig = '0x4444444444444444444444444444444444444444'
-  t.mock.method(boardAdminDeps, 'readBoardOwners', async () => [[multisig]])
+  t.mock.method(boardAdminDeps, 'readBoardAdmin', async () => multisig)
   t.mock.method(boardAdminDeps, 'contractSignatureValid', async (args: any) => args.address.toLowerCase() === multisig)
   assert.equal(await boardAdminDenial(board, { owner: multisig, timestamp: now(), signature: '0x1234' }, message, 'act'), null)
 })

@@ -1,14 +1,14 @@
 import 'server-only'
 import { verifyMessage } from 'viem'
 import { ADDRESS_PATTERN } from '@/lib/moderation/queue'
-import { getModerationClient, readBoardOwners } from '@/lib/moderation/server'
+import { getModerationClient, readBoardAdmin } from '@/lib/moderation/server'
 
 const SIGNATURE_WINDOW_SECONDS = 300
 
 type SignedMessage = { address: `0x${string}`; message: string; signature: `0x${string}` }
 
 export const boardAdminDeps = {
-  readBoardOwners,
+  readBoardAdmin,
   contractSignatureValid: (args: SignedMessage) => getModerationClient().verifyMessage(args),
 }
 
@@ -45,7 +45,12 @@ export async function boardAdminDenial(
     return { error: 'Signature expired', status: 401 }
   if (!await signedBy({ address: owner as `0x${string}`, message: message(timestamp), signature: signature as `0x${string}` }))
     return { error: 'Invalid signature', status: 401 }
-  const [owners] = await boardAdminDeps.readBoardOwners([board.toLowerCase()])
-  if (!owners?.includes(owner)) return { error: `Only this board's admin can ${action}`, status: 403 }
+  let admin: string | null
+  try {
+    admin = await boardAdminDeps.readBoardAdmin(board.toLowerCase())
+  } catch {
+    return { error: "Could not read this board's admin. Try again in a moment.", status: 503 }
+  }
+  if (admin !== owner) return { error: `Only this board's admin can ${action}`, status: 403 }
   return null
 }

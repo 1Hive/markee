@@ -150,6 +150,13 @@ export async function readBoardOwners(boards: string[]): Promise<string[][]> {
   })
 }
 
+export async function readBoardAdmin(board: string): Promise<string | null> {
+  const admin = await boardOwnerDeps.client().readContract({
+    address: board as `0x${string}`, abi: ADMIN_ABI, functionName: 'admin',
+  }) as string
+  return admin && admin !== ZERO_ADDRESS ? admin.toLowerCase() : null
+}
+
 // Derives each markee's board on-chain (never from the caller) and returns the scopes the moderator
 // reviews it in: `board` where they own or were added as a moderator of that board, `site` for
 // global admins. A markee missing from the map can't be reviewed by this moderator.

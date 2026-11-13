@@ -31,7 +31,9 @@ test('only globally routable addresses count as public, including embedded IPv4 
     '::', '::1', '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:169.254.169.254', '::ffff:a9fe:a9fe', '64:ff9b::7f00:1', '64:ff9b::a9fe:a9fe',
     'fc00::1', 'fd00::1', 'fe80::1', 'fec0::1', 'ff02::1', '2001:db8::1', '2001::1', '2002:7f00:1::1', '2002:a9fe:a9fe::1', '3fff::1',
     '::127.0.0.1', 'fe80::1%eth0', 'localhost', 'not-an-ip',
+    '192.0.0.8', '192.0.2.1', '192.88.99.1', '198.18.0.1', '198.19.255.255', '198.51.100.7', '203.0.113.9', '100.127.255.255', '172.31.255.255',
   ]) assert.equal(publicIP(ip), false, ip)
+  for (const ip of ['100.63.255.255', '100.128.0.0', '172.15.255.255', '172.32.0.0', '198.17.255.255', '198.20.0.0', '223.255.255.255', '192.0.1.1']) assert.equal(publicIP(ip), true, ip)
 })
 
 function pinnedServer(t: any, dns: Record<string, string[]>, responses: Record<string, { status: number; headers?: Record<string, string>; body?: string }>) {
@@ -86,6 +88,18 @@ test('public fetch refuses private targets on every hop and pins the vetted addr
   const res = await fetchPublic('https://site.example/redirect-www')
   assert.equal(res.body.toString(), 'ok')
   assert.deepEqual(sent.map(r => [r.url.href, r.address]), [['https://site.example/redirect-www', '93.184.216.34'], ['https://www.site.example/ok', '93.184.216.35']])
+})
+
+test('public fetch tries the next vetted address when one is unreachable', async t => {
+  t.mock.method(publicFetchDeps, 'lookup', async () => [{ address: '93.184.216.34', family: 4 }, { address: '93.184.216.35', family: 4 }])
+  const tried: string[] = []
+  t.mock.method(publicFetchDeps, 'send', async (req: PinnedRequest) => {
+    tried.push(req.address)
+    if (req.address === '93.184.216.34') throw new Error('ECONNREFUSED')
+    return { status: 200, headers: {}, body: Buffer.from('ok') }
+  })
+  assert.equal((await fetchPublic('https://site.example/')).body.toString(), 'ok')
+  assert.deepEqual(tried, ['93.184.216.34', '93.184.216.35'])
 })
 
 test('health endpoint is rebuilt from the origin alone', () => {

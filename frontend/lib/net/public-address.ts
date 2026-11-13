@@ -1,9 +1,35 @@
 import { isIP } from 'node:net'
 
+const NON_PUBLIC_IPV4: readonly (readonly [string, number])[] = [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.0.2.0', 24],
+  ['192.88.99.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
+  ['224.0.0.0', 3],
+]
+
+function ipv4Number(ip: string): number {
+  return ip.split('.').reduce((n, octet) => n * 256 + Number(octet), 0)
+}
+
+function inIPv4Range(ip: number, [base, bits]: readonly [string, number]): boolean {
+  const size = 2 ** (32 - bits)
+  return Math.floor(ip / size) === Math.floor(ipv4Number(base) / size)
+}
+
 export function publicIPv4(ip: string): boolean {
   if (isIP(ip) !== 4) return false
-  const [a, b, c] = ip.split('.').map(Number)
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0 || b === 2 || (b === 88 && c === 99))) || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) || (a === 203 && b === 0 && c === 113))
+  const n = ipv4Number(ip)
+  return !NON_PUBLIC_IPV4.some(range => inIPv4Range(n, range))
 }
 
 function ipv6Hextets(ip: string): number[] | null {

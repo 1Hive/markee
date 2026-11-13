@@ -312,7 +312,7 @@ interface MsgRow {
   m: MyMessage | FundedMessage
   own: boolean
   bid: bigint
-  spent: bigint
+  spent: bigint | null
   top: bigint
   rate: bigint
   views: number
@@ -428,13 +428,13 @@ export function YourMessages({ bought, funded, loading, boardViews, ethPrice, on
       ...bought.map(m => ({
         m, own: true, bid: m.totalFundsAdded, top: m.topFunds, rate: BigInt(m.flowRateRaw ?? '0'), views: views(m),
         inactive: m.strategy === 'streaming' && m.markeeRateRaw === '0',
-        spent: ownedMessageSpend(m) ?? 0n,
+        spent: ownedMessageSpend(m),
       })),
       ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalContributed), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m), inactive: false })),
     ]
   }, [bought, funded, boardViews])
 
-  const cpmOf = useCallback((r: MsgRow) => ethPrice && r.views && r.spent > 0n ? (Number(r.spent) / 1e18 * ethPrice) / r.views * 1000 : null, [ethPrice])
+  const cpmOf = useCallback((r: MsgRow) => ethPrice && r.views && r.spent !== null && r.spent > 0n ? (Number(r.spent) / 1e18 * ethPrice) / r.views * 1000 : null, [ethPrice])
   const bidWei = (r: MsgRow) => r.m.strategy === 'streaming' ? r.rate * SECONDS_PER_MONTH : r.bid
   const winningN = rows.filter(r => r.m.isTop).length
 

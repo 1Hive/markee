@@ -119,15 +119,18 @@ export async function fetchPublic(input: string | URL, options: PublicFetchOptio
   let url = checkedUrl(input, protocols)
 
   for (let hop = 0; ; hop++) {
-    const [{ address, family }] = await publicAddresses(hostOf(url))
-    let res: Omit<PublicResponse, 'url'>
-    try {
-      res = await publicFetchDeps.send({ url, address, family, headers: options.headers ?? {}, maxBytes, signal })
-    } catch (error) {
-      if (error instanceof PublicFetchError) throw error
-      if (signal.aborted) throw new PublicFetchError('TIMEOUT', 'Request timed out.')
-      throw new PublicFetchError('NETWORK', 'Request failed.')
+    const addresses = await publicAddresses(hostOf(url))
+    let res: Omit<PublicResponse, 'url'> | undefined
+    for (const { address, family } of addresses) {
+      try {
+        res = await publicFetchDeps.send({ url, address, family, headers: options.headers ?? {}, maxBytes, signal })
+        break
+      } catch (error) {
+        if (error instanceof PublicFetchError) throw error
+        if (signal.aborted) throw new PublicFetchError('TIMEOUT', 'Request timed out.')
+      }
     }
+    if (!res) throw new PublicFetchError('NETWORK', 'Request failed.')
     const location = res.headers.location
     if (res.status < 300 || res.status >= 400 || !location) return { ...res, url }
     if (hop >= maxRedirects) throw new PublicFetchError('TOO_MANY_REDIRECTS', 'Too many redirects.')
