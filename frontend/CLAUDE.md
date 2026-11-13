@@ -34,7 +34,7 @@ Targeted tests are configured in package.json. Run the relevant suites and TypeS
 
 ## Architecture
 
-**Next.js 14 App Router** frontend for the Markee protocol — a leaderboard of on-chain "markees" (smart contracts) ranked by total funds added.
+**Next.js 15 App Router** (React 19) frontend for the Markee protocol — a leaderboard of on-chain "markees" (smart contracts) ranked by total funds added.
 
 ### Routing
 

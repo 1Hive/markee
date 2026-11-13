@@ -31,10 +31,10 @@ function hash(value: unknown): Hex {
   if (typeof value !== 'string' || !isHex(value) || value.length !== 66) throw new SDKError('INVALID_HASH', 'Invalid transaction hash.');
   return value;
 }
-async function handle(request: NextRequest, context: { params: { path: string[] } }) {
+async function handle(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  const path = (await context.params).path.join('/');
   try {
     await rateLimit(request);
-    const path = context.params.path.join('/');
     const search = request.nextUrl.searchParams;
     const severity = async (p: ReturnType<typeof placement>, policy: unknown, value: unknown, rules?: unknown) => {
       try { versionedModerationPolicy(policy, value, rules); }
@@ -102,7 +102,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
   } catch (error) {
     if (error instanceof SnapshotUnavailable) return cors(NextResponse.json({ error: error.message, code: 'SNAPSHOT_UNAVAILABLE' }, { status: 503, headers: { 'Retry-After': String(error.retryAfter) } }), request);
     const status = error instanceof SDKError ? error.status : error instanceof RequestBodyTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 502;
-    const operation = context.params.path.join('/');
+    const operation = path;
     if (operation.startsWith('checkout/') && ((status >= 500 && !(error instanceof SDKError && error.code === 'NOT_CONFIGURED')) || (error instanceof SDKError && ['TRANSACTION_MISMATCH', 'TRANSACTION_REUSED', 'CONVERSION_FAILED'].includes(error.code)))) {
       // Bound retry alerts across serverless instances; never let diagnostics change the response.
       const knownOperations = ['config', 'create', 'status', 'read', 'verify', 'submitted', 'balance', 'prepare', 'arm', 'rejected', 'funding-start', 'funding-reset', 'conversion-quote', 'conversion-prepare', 'conversion-arm', 'conversion-rejected', 'conversion-verify'];
