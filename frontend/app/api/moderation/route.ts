@@ -8,7 +8,8 @@
  *                                    siteFlagged -- markee.xyz-only flags, set by global admins.
  * POST /api/moderation          → Flag, unflag, or approve markees. Applies in every scope the
  *                                  moderator holds for each markee (see authorizedScopes).
- *                                  Every action requires a wallet signature, including approval.
+ *                                  Flag and unflag require a wallet signature; approval also
+ *                                  accepts a Privy session for the moderator wallet.
  *
  * Markee keys use the format: `{chainId}:{lowercase markeeId}` to support multi-chain.
  *
@@ -18,7 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { moderationWriteDeps } from '@/lib/moderation/write-deps'
-import { verifyMessage } from 'viem'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 import { softRecords, autoEnabled } from '@/lib/moderation/automatic'
 import { randomUUID } from 'node:crypto'
 import { ADDRESS_PATTERN, MAX_REVIEW_BATCH, reviewItem, reviewMessage, type ModerationAction, type ModerationItem, type ScopeReview } from '@/lib/moderation/queue'
@@ -34,8 +35,9 @@ const ACTIONS: readonly ModerationAction[] = ['flag', 'unflag', 'approve']
 const APPROVE_RATE_MAX = 60
 
 // Public flag reads are consumed by third-party embeds; browser credentials are never used.
-// CORS is not authorization: every mutation verifies a signed, timestamped wallet action
-// and server-derived moderator permissions. Keep those checks when adding POST actions.
+// CORS is not authorization: every mutation verifies a signed, timestamped wallet action (or, for
+// approval, a Privy session sent as a header, which CORS does not allow cross-origin) and
+// server-derived moderator permissions. Keep those checks when adding POST actions.
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
     const ids = markeeIds ?? (markeeId ? [markeeId] : [])
 
-    if (ids.length === 0 || !chainId || !action || !adminAddress || (!signature || !timestamp)) {
+    if (ids.length === 0 || !chainId || !action || !adminAddress || !timestamp || (action !== 'approve' && !signature)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: CORS })
     }
     if (!ACTIONS.includes(action)) {
@@ -95,12 +97,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401, headers: CORS })
     }
 
-    // Verify the caller actually controls the wallet they claim
     const message = reviewMessage(action, chainId, ids, timestamp)
-    const valid = await verifyMessage({ address: adminAddress as `0x${string}`, message, signature }).catch(() => false)
-    if (!valid) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: CORS })
-    }
+    const auth = await authorizeWallet(req, adminAddress, signature, () => message, { allowSession: action === 'approve' })
+    if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status, headers: CORS })
     if (action === 'approve' && !await moderationWriteDeps.underRateLimit('moderation:approve', clientIp(req), APPROVE_RATE_MAX, 60)) {
       return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...CORS, 'Retry-After': '60' } })
     }
