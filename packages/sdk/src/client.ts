@@ -11,8 +11,9 @@ const PRESET_RULES: Record<ModerationSeverity, readonly string[]> = { relaxed: [
  * severity preset (Standard by default). Servers without per-rule support ignore `rules` and apply
  * `severity`.
  */
-export function moderationParams(moderation?: ModerationOptions): { severity?: ModerationSeverity; rules?: string } {
-  const out: { severity?: ModerationSeverity; rules?: string } = {};
+export function moderationParams(moderation?: ModerationOptions): { severity?: ModerationSeverity; rules?: string; policy?: string } {
+  const out: { severity?: ModerationSeverity; rules?: string; policy?: string } = {};
+  if (moderation?.version !== undefined) { out.policy = JSON.stringify(moderation); return out; }
   if (moderation?.severity) out.severity = moderation.severity;
   const rules = moderation?.rules;
   if (rules && MODERATION_RULES.some(name => typeof rules[name] === 'boolean')) {
@@ -263,9 +264,9 @@ export class MarkeeClient {
   bridgeStatus(protocol: ClaimQuote['bridgeProtocol'], hash: Hex, fromChainId: number, toChainId: number): Promise<BridgeStatus> {
     return this.request(`community/status?${new URLSearchParams({ protocol, transactionHash: hash, fromChainId: String(fromChainId), toChainId: String(toChainId) })}`);
   }
-  async checkMessage(message: string): Promise<MessageCheck> {
+  async checkMessage(message: string, placement?: Placement): Promise<MessageCheck> {
     const moderation = moderationParams(this.options.moderation);
-    try { return await this.request('moderation/check', { kind: 'draft', message, ...moderation }); }
+    try { return await this.request('moderation/check', { kind: 'draft', message, ...(placement ? { placement } : {}), ...moderation }); }
     catch (error) { if (!Object.keys(moderation).length && error instanceof MarkeeError && error.status === 404) return { enabled: false, state: 'pass', contentHash: '', engine: '', policyVersion: '' }; throw error; }
   }
   recordView(address: Address, message: string, url?: string): Promise<{ counted: boolean; totalViews: number }> {

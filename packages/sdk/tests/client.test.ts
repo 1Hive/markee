@@ -144,6 +144,11 @@ test('moderation rules default unset rules from the severity preset, and are omi
   assert.deepEqual(moderationParams(undefined), {});
 });
 
+test('versioned moderation objects pass through without an SDK rule allowlist', () => {
+  const policy = { version: 1 as const, rules: { profanity: true, links: false, newServerRule: true } };
+  assert.deepEqual(moderationParams(policy), { policy: JSON.stringify(policy) });
+});
+
 test('a configured moderation policy never treats an unsupported check endpoint as passing', async () => {
   const client = new MarkeeClient({ moderation: { severity: 'strict' }, fetch: async () => Response.json({ error: 'Not found' }, { status: 404 }) });
   await assert.rejects(client.checkMessage('hello'), { status: 404 });

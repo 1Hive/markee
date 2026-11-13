@@ -9,6 +9,7 @@ import { GET as queue } from '../app/api/moderation/queue/route'
 import { POST as view } from '../app/api/views/route'
 import { viewsWriteDeps } from '../lib/views/write-deps'
 import { moderateEmbed, embedModerationDeps } from '../lib/moderation/embed'
+import { boardPolicyDeps } from '../lib/moderation/board-policy'
 
 const markee = '0x1111111111111111111111111111111111111111'
 const fake = '0x2222222222222222222222222222222222222222'
@@ -16,6 +17,7 @@ const board = '0x3333333333333333333333333333333333333333'
 const attackerBoard = '0x4444444444444444444444444444444444444444'
 const moderator = '0x5555555555555555555555555555555555555555'
 function setup(t: any) {
+  t.mock.method(boardPolicyDeps, 'get', async () => null)
   const old = process.env.FLAG_AUTO_MODERATION
   process.env.FLAG_AUTO_MODERATION = 'true'
   t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)

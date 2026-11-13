@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useAccount, useSignMessage } from 'wagmi'
 import { Check, Copy } from 'lucide-react'
 import { CopyButton } from '@/components/board-detail/shared'
 import { TxSteps, TxRing } from '@/components/modals/StreamUI'
@@ -40,6 +41,9 @@ const MODERATION_ROWS: { key: keyof ModerationRuleSet; label: string }[] = [
 ]
 // Standard: profanity on, content restrictions off.
 const DEFAULT_RULES: ModerationRuleSet = { profanity: true, links: false, addresses: false, ens: false }
+const policyObject = (rules: ModerationRuleSet) => ({ version: 1, rules })
+const policyMessage = (board: string, policy: ReturnType<typeof policyObject>, timestamp: number) =>
+  `markee:board-moderation:v1:${JSON.stringify([8453, board.toLowerCase(), policy, timestamp])}`
 
 const PANEL_BG = '#030714'
 const ACTIVE_BG = 'rgba(248,151,254,0.14)'
@@ -104,6 +108,11 @@ type Step = 'setup' | 'verifying' | 'verified'
 export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, onDone }: WebsiteEmbedWizardProps) {
   const [step, setStep] = useState<Step>('setup')
   const [rules, setRules] = useState<ModerationRuleSet>(DEFAULT_RULES)
+  const [savedRules, setSavedRules] = useState<ModerationRuleSet | null>(null)
+  const [savingPolicy, setSavingPolicy] = useState(false)
+  const [policyError, setPolicyError] = useState<string | null>(null)
+  const { address: owner } = useAccount()
+  const { signMessageAsync } = useSignMessage()
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
   const [showModerationInfo, setShowModerationInfo] = useState(false)
@@ -117,6 +126,38 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [verifyStepIdx, setVerifyStepIdx] = useState(0)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const runId = useRef(0)
+
+  useEffect(() => {
+    let live = true
+    fetch(`/api/boards/moderation?board=${encodeURIComponent(address)}`)
+      .then(async response => { if (!response.ok) throw new Error(); return response.json() })
+      .then(data => {
+        if (!live || !data.managed || !data.policy?.rules) return
+        const next = { ...DEFAULT_RULES, ...data.policy.rules } as ModerationRuleSet
+        setRules(next)
+        setSavedRules(next)
+      })
+      .catch(() => { if (live) setPolicyError('Could not load the saved board policy. Retry before changing it.') })
+    return () => { live = false }
+  }, [address])
+
+  async function savePolicy() {
+    if (!owner) { setPolicyError('Connect the board owner wallet to save moderation rules.'); return }
+    setSavingPolicy(true)
+    setPolicyError(null)
+    try {
+      const policy = policyObject(rules)
+      const timestamp = Math.floor(Date.now() / 1000)
+      const signature = await signMessageAsync({ message: policyMessage(address, policy, timestamp) })
+      const response = await fetch('/api/boards/moderation', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ board: address, owner, signature, timestamp, policy }),
+      })
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Could not save moderation rules')
+      setSavedRules({ ...rules })
+    } catch (error) { setPolicyError(error instanceof Error ? error.message : 'Could not save moderation rules') }
+    finally { setSavingPolicy(false) }
+  }
 
   useEffect(() => {
     if (step === 'setup') onHeaderChange?.({ label: 'Add Markee To Your Site', showBack: true })
@@ -328,6 +369,13 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
           )
         })}
       </div>
+      <p style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.5, margin: '10px 0' }}>
+        Save these rules for this board. The saved policy applies to existing SDK embeds on their next refresh.
+      </p>
+      <button type="button" onClick={savePolicy} disabled={savingPolicy || JSON.stringify(savedRules) === JSON.stringify(rules)} style={primaryBtnStyle(!savingPolicy && JSON.stringify(savedRules) !== JSON.stringify(rules))}>
+        {savingPolicy ? 'Saving…' : savedRules && JSON.stringify(savedRules) === JSON.stringify(rules) ? 'Saved for this board' : 'Save moderation rules'}
+      </button>
+      {policyError && <p role="alert" style={{ color: DANGER, fontSize: 12.5 }}>{policyError}</p>}
     </div>
   )
 

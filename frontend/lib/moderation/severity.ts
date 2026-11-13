@@ -53,3 +53,17 @@ export function moderationRules(policy: ModerationSeverity): ModerationRuleSet {
 }
 
 export const isCustomPolicy = (policy: ModerationSeverity): policy is CustomModerationPolicy => policy.startsWith('custom:')
+
+/** Versioned wire object. The SDK forwards it without knowing individual rule names. */
+export function versionedModerationPolicy(value: unknown, severity?: unknown, rules?: unknown): ModerationSeverity {
+  if (value === undefined || value === null) return moderationPolicy(severity, rules)
+  const policy = typeof value === 'string' ? JSON.parse(value) as unknown : value
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) throw new Error('Invalid moderation policy')
+  const p = policy as Record<string, unknown>
+  if (p.version !== 1 || !p.rules || typeof p.rules !== 'object' || Array.isArray(p.rules)) throw new Error('Unsupported moderation policy version')
+  const selected = p.rules as Record<string, unknown>
+  if (Object.keys(selected).some(name => !(RULE_ORDER as readonly string[]).includes(name) || typeof selected[name] !== 'boolean')) throw new Error('Invalid moderation rules')
+  const base = moderationSeverity(p.severity)
+  const defaults = moderationRules(base)
+  return moderationPolicy(base, RULE_ORDER.filter(name => selected[name] === undefined ? defaults[name] : selected[name]).join(','))
+}

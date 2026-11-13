@@ -1,4 +1,5 @@
-import { moderationPolicy, type ModerationSeverity } from '@/lib/moderation/severity'
+import { versionedModerationPolicy, type ModerationSeverity } from '@/lib/moderation/severity'
+import { boardModerationPolicy } from '@/lib/moderation/board-policy'
 import { autoEnabled, checkPublished, contentHash } from '@/lib/moderation/automatic'
 // app/api/views/route.ts
 import { kv } from '@vercel/kv'
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
     const validUrl = parsed?.url === undefined || (typeof parsed.url === 'string' && parsed.url.length <= 2048)
     if (!validAddress || !validMessage || !validUrl) return NextResponse.json({ error: 'Invalid address or message' }, { status: 400, headers: corsHeaders(origin) })
     let severity: ModerationSeverity
-    try { severity = moderationPolicy(parsed?.severity, parsed?.rules) } catch { return NextResponse.json({ error: 'Invalid moderation severity or rules' }, { status: 400, headers: corsHeaders(origin) }) }
+    try { severity = versionedModerationPolicy(parsed?.policy, parsed?.severity, parsed?.rules) } catch { return NextResponse.json({ error: 'Invalid moderation policy or rules' }, { status: 400, headers: corsHeaders(origin) }) }
     body = { ...(parsed as typeof body), severity }
   } catch (error) {
     return NextResponse.json({ error: error instanceof RequestBodyTooLargeError ? 'Request body is too large.' : 'Invalid JSON request.' }, { status: error instanceof RequestBodyTooLargeError ? 413 : 400, headers: corsHeaders(origin) })
@@ -228,7 +229,7 @@ export async function POST(req: NextRequest) {
 
   if (autoEnabled()) {
     try {
-      const [moderation] = await checkPublished([address], body.severity)
+      const [moderation] = await checkPublished([address], board => boardModerationPolicy(board, undefined, body.severity))
       const source = normalizeHost(req.headers.get('origin') ?? req.headers.get('referer') ?? '')
       const site = !!source && (source === 'markee.xyz' || source.endsWith('.markee.xyz') || source === 'localhost' || source === '127.0.0.1')
       if ((site ? moderation.siteState : moderation.state) !== 'visible' || moderation.contentHash !== contentHash(body.message)) {
