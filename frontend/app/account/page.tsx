@@ -660,8 +660,10 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
   )
 }
 
-type Owned = { admin?: string | null; creator?: string | null }
-const ownedByCreator = (lb: Owned, addr: string) => (lb.creator ?? lb.admin ?? '').toLowerCase() === addr.toLowerCase()
+type Owned = { admin?: string | null; creator?: string | null; initialAdmin?: string | null }
+const adminTransferred = (lb: Owned) => !!lb.initialAdmin && !!lb.admin && lb.admin.toLowerCase() !== lb.initialAdmin.toLowerCase()
+const ownedByCreator = (lb: Owned, addr: string) =>
+  (adminTransferred(lb) ? lb.admin ?? '' : lb.creator ?? lb.admin ?? '').toLowerCase() === addr.toLowerCase()
 const ownedByAdmin = (lb: Owned, addr: string) => !!lb.admin && lb.admin.toLowerCase() === addr.toLowerCase()
 
 // Cheap FNV-1a fingerprint of a board-address list, used only as a useEffect dependency -- avoids

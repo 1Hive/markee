@@ -13,6 +13,7 @@ export interface BaseLeaderboard {
   // forsale; streaming boards have no separate creator resolution, so callers fall back to admin
   // (matches the existing lb.creator ?? lb.admin convention already used elsewhere on this page).
   creator?: string | null
+  initialAdmin?: string | null
   topMessage: string | null
   topMessageOwner?: string | null
   // Address of the top markee slot itself (distinct from `address`, the leaderboard/board contract) --
