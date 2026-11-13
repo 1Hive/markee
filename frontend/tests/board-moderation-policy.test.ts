@@ -4,7 +4,8 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { boardModerationPolicy, boardPolicyDeps, boardPolicyKey } from '../lib/moderation/board-policy'
 import { versionedModerationPolicy } from '../lib/moderation/severity'
 import { metaWriteDeps } from '../lib/openinternet/meta-deps'
-import { POST, GET, boardPolicyMessage } from '../app/api/boards/moderation/route'
+import { POST, GET } from '../app/api/boards/moderation/route'
+import { boardPolicyMessage } from '../lib/moderation/board-policy-message'
 
 const board = '0x1111111111111111111111111111111111111111'
 const owner = privateKeyToAccount(`0x${'11'.repeat(32)}`)

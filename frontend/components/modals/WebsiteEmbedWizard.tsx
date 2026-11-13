@@ -12,6 +12,7 @@ import {
   type EmbedStrategy,
 } from '@/lib/embedPrompt/fragments'
 import type { ModerationRuleSet } from '@/lib/moderation/severity'
+import { boardPolicyMessage } from '@/lib/moderation/board-policy-message'
 import { alreadyVerifiedNote, useVerifiedSiteUrls, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
 import { MONO, BG, PINK, TEXT, TEXT2, MUTED, BORDER, DANGER } from '@/lib/design-tokens'
 
@@ -42,8 +43,6 @@ const MODERATION_ROWS: { key: keyof ModerationRuleSet; label: string }[] = [
 // Standard: profanity on, content restrictions off.
 const DEFAULT_RULES: ModerationRuleSet = { profanity: true, links: false, addresses: false, ens: false }
 const policyObject = (rules: ModerationRuleSet) => ({ version: 1, rules })
-const policyMessage = (board: string, policy: ReturnType<typeof policyObject>, timestamp: number) =>
-  `markee:board-moderation:v1:${JSON.stringify([8453, board.toLowerCase(), policy, timestamp])}`
 
 const PANEL_BG = '#030714'
 const ACTIVE_BG = 'rgba(248,151,254,0.14)'
@@ -148,7 +147,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
     try {
       const policy = policyObject(rules)
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: policyMessage(address, policy, timestamp) })
+      const signature = await signMessageAsync({ message: boardPolicyMessage(address, policy, timestamp) })
       const response = await fetch('/api/boards/moderation', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ board: address, owner, signature, timestamp, policy }),

@@ -3,15 +3,12 @@ import { verifyMessage } from 'viem'
 import { metaWriteDeps } from '@/lib/openinternet/meta-deps'
 import { boardModerationPolicy, boardPolicyDeps, boardPolicyKey } from '@/lib/moderation/board-policy'
 import { versionedModerationPolicy } from '@/lib/moderation/severity'
+import { boardPolicyMessage } from '@/lib/moderation/board-policy-message'
 import { readLimitedJsonBody } from '@/lib/sdk/gardens/body'
 
 export const dynamic = 'force-dynamic'
 const ADDRESS = /^0x[0-9a-f]{40}$/i
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
-
-export function boardPolicyMessage(board: string, policy: unknown, timestamp: number) {
-  return `markee:board-moderation:v1:${JSON.stringify([8453, board.toLowerCase(), policy, timestamp])}`
-}
 
 export async function GET(request: Request) {
   const board = new URL(request.url).searchParams.get('board')
