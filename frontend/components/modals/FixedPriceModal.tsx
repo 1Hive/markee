@@ -3,10 +3,11 @@
 import { useMessageModeration } from '@/hooks/useMessageModeration'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useReadContract } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { formatEther, parseEther } from 'viem'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
-import { FixedPriceStrategyABI } from '@/lib/contracts/abis'
+import { FixedPriceStrategyABI, BeneficiaryAddressABI } from '@/lib/contracts/abis'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
@@ -14,6 +15,11 @@ import { formatTransactionError, formatReceiptError, logTransactionError } from 
 import { formatUsd } from '@/lib/utils'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { usePendingTxsFor } from '@/hooks/usePendingTxs'
+import { useWalletTimeoutGuard } from '@/hooks/useWalletTimeoutGuard'
+import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
+import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { ModeratedContent } from '@/components/moderation'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
@@ -74,14 +80,29 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash })
+  const { writeContract, data: hash, isPending, isError, error: writeError, reset, needsGasReserve } = useSponsoredWriteContract()
+  // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
+  const gasReserve = needsGasReserve ? FAST_TX_GAS_RESERVE : 0n
+  const trackedBoard = fixedMarkee?.strategyAddress
+  const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    hash, track: { account: activeAddress, board: trackedBoard, label: 'Your sign payment' },
+  })
+  const pendingPayments = usePendingTxsFor(activeAddress, trackedBoard).filter(p => p.hash !== hash)
+  const walletTimeout = useWalletTimeoutGuard(writeError, activeAddress)
 
   const priceWei: bigint = fixedMarkee?.priceWei ? BigInt(fixedMarkee.priceWei) : 0n
   const priceEth = formatEther(priceWei)
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
-  const markeeEarned = Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum))
+  const issuesMarkee = !!fixedMarkee?.revNetEnabled
+  const markeeEarned = issuesMarkee ? Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum)) : 0
+  const { data: beneficiary } = useReadContract({
+    address: fixedMarkee?.strategyAddress as `0x${string}` | undefined,
+    abi: BeneficiaryAddressABI,
+    functionName: 'beneficiaryAddress',
+    chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!fixedMarkee && !issuesMarkee },
+  })
   const maxLen = fixedMarkee?.maxMessageLength ?? 222
   const maxNameLen = 32
 
@@ -90,9 +111,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   }, [isOpen, fixedMarkee, reset])
 
   useEffect(() => {
-    if (isSuccess && isOpen) {
-      setTimeout(() => { onSuccess?.(); onClose() }, 2000)
-    }
+    if (!isSuccess || !isOpen) return
+    const timer = setTimeout(() => { onSuccess?.(); onClose() }, 2000)
+    return () => clearTimeout(timer)
   }, [isSuccess, onClose, isOpen, onSuccess])
 
   useEffect(() => {
@@ -124,14 +145,15 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   const canAfford = () => {
     if (!balanceData || priceWei === 0n) return false
-    return balanceData.value >= priceWei + FAST_TX_GAS_RESERVE
+    return balanceData.value >= priceWei + gasReserve
   }
   const insufficientBalance = priceWei > 0n && !canAfford()
-  const balanceWarning = insufficientBalance ? `You don't have enough ETH after reserving ${formatEther(FAST_TX_GAS_RESERVE)} ETH for gas.` : null
+  const balanceWarning = insufficientBalance ? (!needsGasReserve ? "You don't have enough ETH." : `You don't have enough ETH after reserving ${formatEther(gasReserve)} ETH for gas.`) : null
 
   const handleChangeMessage = async () => {
     if (!await messageModeration.guard(newMessage)) { setReviewOpen(false); return }
     if (!fixedMarkee || !hasActiveWalletConnection) { setError('Please connect your wallet'); return }
+    if (pendingPayments.length || walletTimeout.blocked) return
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
     if (priceWei === 0n) { setError('Unable to load price'); return }
@@ -158,9 +180,12 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const isOverLimit = newMessage.length > maxLen
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
-  const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit
+  const paymentBlocked = pendingPayments.length > 0 || walletTimeout.blocked
+  const btnDisabled = isPending || isConfirming || isSuccess || !newMessage.trim() || insufficientBalance || isOverLimit || paymentBlocked
   const btnDisabledReason = !btnDisabled || isSuccess ? null
     : (isPending || isConfirming) ? 'Transaction in progress'
+    : pendingPayments.length ? PENDING_PAYMENT_REASON
+    : walletTimeout.blocked ? 'Check your wallet first'
     : insufficientBalance ? 'Insufficient ETH balance'
     : isOverLimit ? 'Message exceeds character limit'
     : !newMessage.trim() ? 'Enter a message to continue'
@@ -228,9 +253,11 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
             isSuccess={txStep === 'success'}
             headline={
               txStep === 'signing' ? 'Waiting for wallet…' :
-              txStep === 'pending' ? 'Confirming on Base' :
+              txStep === 'pending' ? (isUnknown ? 'Still checking' : 'Confirming on Base') :
               'Success! Message updated'
             }
+            detail={txStep === 'pending' && isUnknown ? 'The network is not answering. Your payment may still go through, so check Basescan before paying again.' : undefined}
+            explorerUrl={txStep === 'pending' ? explorerUrl : undefined}
           />
 
         ) : isWalletConnectionPending ? (
@@ -267,7 +294,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   message={newMessage}
                   amountLabel={`${priceEth} ETH`}
                   amountUsd={priceUsd != null ? formatUsd(priceUsd) : null}
-                  markeeEarnedLabel={`${markeeEarned.toLocaleString()} MARKEE`}
+                  markeeEarnedLabel={issuesMarkee ? `${markeeEarned.toLocaleString()} MARKEE` : 'No MARKEE for this sign'}
                   willWin
                   chainId={fixedMarkee.chainId}
                   markeeId={fixedMarkee.markeeAddress}
@@ -339,7 +366,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   </div>
 
                   {/* You'll receive — horizontal */}
-                  {priceEthNum > 0 && (
+                  {priceEthNum > 0 && issuesMarkee && (
                     <div style={{
                       marginTop: 12, borderRadius: 14, padding: '14px 20px',
                       background: 'linear-gradient(135deg, rgba(248,151,254,0.16), rgba(123,106,244,0.16))',
@@ -358,8 +385,12 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                 </>
               )}
 
-              {/* Error */}
-              {!reviewOpen && transactionError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+                <PendingPaymentNotice pending={pendingPayments} />
+                <WalletTimeoutNotice state={walletTimeout.state} accountUrl={walletTimeout.accountUrl} onAcknowledge={walletTimeout.acknowledge} />
+              </div>
+
+              {!reviewOpen && transactionError && !walletTimeout.blocked && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '14px 0 0' }}>
                   {transactionError}
                 </p>
@@ -387,7 +418,9 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
               ) : (
                 <>
                   <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, flex: 1 }}>
-                    100% to the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a>
+                    {issuesMarkee
+                      ? <>Paid into the <a href="/own-the-network" target="_blank" rel="noopener noreferrer" style={{ color: BLUE }}>Revnet</a></>
+                      : <>100% to {typeof beneficiary === 'string' ? `${beneficiary.slice(0, 6)}…${beneficiary.slice(-4)}` : 'the sign owner'}. No MARKEE is issued.</>}
                   </div>
                   <BtnTooltip reason={btnDisabledReason}>
                     <button

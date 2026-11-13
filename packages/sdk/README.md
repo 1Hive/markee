@@ -199,7 +199,7 @@ Community activation supports the current council Safe, a current Safe owner, or
 
 ## Integration boundaries
 
-- Current board versions: `1.3.0` For Sale and `streaming-1.0.0` For Rent, on Base and configured Sepolia deployments. Additional factories must be enabled on Markee's server. Legacy strategy versions are rejected explicitly.
+- Current board versions: `1.3.0` and `1.4.0` For Sale and `streaming-1.0.0` and `streaming-1.1.0` For Rent, on Base and configured Sepolia deployments. Additional factories must be enabled on Markee's server. Legacy strategy versions are rejected explicitly.
 - Transaction sending currently expects an EIP-1193 wallet returning an on-chain transaction hash with the connected wallet as the transaction sender. UserOperation-only and Safe transaction-service hashes need a future adapter; they are not treated as successful direct transactions. Community authorization independently supports ERC-1271 Safe signatures.
 - The native ETHx downgrade uses the deployed contract's native transfer path. Contract accounts whose receive function needs more than its transfer stipend may not support it; simulation catches the failure before prompting.
 - The modal renders escaped text, uses isolated CSS, and supports keyboard focus, Escape, mobile sizing and reduced motion. A host CSP must permit the SDK's inline styles and connections to its configured Markee API. No external font or image is needed by the modal.

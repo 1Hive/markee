@@ -504,7 +504,7 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} style={{ display: 'grid', gridTemplateColumns: ROW_COLS, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
           {[1, 2, 3, 4, 5].map(j => (
-            <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+            <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
           ))}
           <div />
         </div>

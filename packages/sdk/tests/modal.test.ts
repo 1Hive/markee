@@ -26,7 +26,9 @@ test('moderation notices use distinct styling while approved messages keep the n
   const flagged = modal.entryMessageHtml({ message: 'Private text', moderated: true });
   assert.match(flagged, /class="message moderation-placeholder">This message is hidden by moderation\./);
   assert.doesNotMatch(flagged, /Private text/);
-  assert.match(modal.entryMessageHtml({ message: 'Private text', moderated: null }), /class="message moderation-placeholder" role="status" aria-label="Loading message">This is a sign<span class="sign-dots"/);
+  const loading = modal.entryMessageHtml({ message: 'Private text', moderated: null });
+  assert.match(loading, /class="message skeleton-lines" role="status" aria-label="Loading message"><span class="skeleton-line"><\/span><span class="skeleton-line short"><\/span>/);
+  assert.doesNotMatch(loading, /Private text|This is a sign/);
   assert.match(modal.entryMessageHtml({ message: '<Public text>', moderated: false }), /class="message">&lt;Public text&gt;<\/p>/);
 });
 test('wallet-free checkout has a single Review Payment action and no connected-wallet controls', () => {

@@ -129,21 +129,28 @@ test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads'
   const account = '0x1111111111111111111111111111111111111111' as const
   const sale = '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' as const
   const rent = '0x0590b56430426A38D0fA065b839c10D542E75CCD' as const
+  const saleV14 = '0xdF4769a9593CB8E40d0409dEF2645651412A8A97' as const
+  const rentV11 = '0x3333333333333333333333333333333333333333' as const
+  const factoryV14 = '0x2222222222222222222222222222222222222222' as const
+  const enabledFactories = process.env.MARKEE_SDK_FACTORIES_8453
+  process.env.MARKEE_SDK_FACTORIES_8453 = factoryV14
+  t.after(() => enabledFactories === undefined ? delete process.env.MARKEE_SDK_FACTORIES_8453 : process.env.MARKEE_SDK_FACTORIES_8453 = enabledFactories)
   let reads = 0
+  const beaconVersions = new Set(['1.4.0', 'streaming-1.1.0'])
   let version = '1.3.0'
   let council = account
   t.mock.method(client, 'getBalance', async () => 1000n)
   t.mock.method(client, 'getBlockNumber', async () => 100n)
   t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
     reads++
-    const results: Record<string, unknown> = { VERSION: version, factory: zeroAddress, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
+    const results: Record<string, unknown> = { VERSION: version, factory: beaconVersions.has(version) ? factoryV14 : zeroAddress, isFactoryLeaderboard: true, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
       ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council }
     if (!(functionName in results)) throw new Error(`Unexpected read ${functionName}`)
     return results[functionName]
   })
   try {
-    for (const [board, strategy, minimum] of [[sale, 'sale', '1'], [rent, 'rent', '2']] as const) {
-      version = strategy === 'rent' ? 'streaming-1.0.0' : '1.3.0'
+    for (const [board, strategy, minimum, boardVersion] of [[sale, 'sale', '1', '1.3.0'], [rent, 'rent', '2', 'streaming-1.0.0'], [saleV14, 'sale', '1', '1.4.0'], [rentV11, 'rent', '2', 'streaming-1.1.0']] as const) {
+      version = boardVersion
       const p = { kind: 'board' as const, chainId: 8453, address: board }
       const first = await snapshot(p)
       const count = reads

@@ -121,7 +121,7 @@ export function ExpandableMarkeeRow({
               <Pencil size={11} />
             </button>
           )}
-          <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
+          <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin} className="min-w-0 flex-1">
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {markee.message || <span className="opacity-40 italic">No message</span>}
             </p>

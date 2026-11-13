@@ -80,7 +80,7 @@ export function IntegrationModal({ isOpen, onClose, leaderboard, onOpenVerify }:
   const { address, name } = leaderboard
   const lowerAddress = address.toLowerCase()
   const buyUrl = `https://markee.xyz/markee/${address}`
-  const embedUrl = `https://markee.xyz/api/embed/${address}`
+  const embedUrl = `https://markee.xyz/embed/${address}`
   const apiUrl = `https://markee.xyz/api/openinternet/leaderboards`
   const dataAttr = `data-markee-address="${lowerAddress}"`
 
@@ -111,7 +111,7 @@ GET /api/markee/leaderboards
 
 If this is a static site (plain HTML, Vite, CRA with no SSR), use the iframe embed instead -- it has no CORS issues:
 <div ${dataAttr}>
-  <iframe src="https://markee.xyz/api/embed/${address}" width="100%" height="80" frameborder="0"></iframe>
+  <iframe src="https://markee.xyz/embed/${address}" width="100%" height="80" frameborder="0"></iframe>
 </div>
 
 Step 2: Find this leaderboard in the response:
@@ -224,10 +224,21 @@ export function MarkeeWidget() {
             : rawOwner;
           var el = document.getElementById('markee-widget');
           if (!el) return;
-          el.innerHTML =
-            '<p>' + lb.topMessage + '</p>' +
-            (owner ? '<p>' + owner + '</p>' : '') +
-            '<a href="' + BUY_URL + '" target="_blank">Change this message</a>';
+          var text = document.createElement('p');
+          text.textContent = lb.topMessage;
+          var nodes = [text];
+          if (owner) {
+            var by = document.createElement('p');
+            by.textContent = owner;
+            nodes.push(by);
+          }
+          var link = document.createElement('a');
+          link.href = BUY_URL;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Change this message';
+          nodes.push(link);
+          el.replaceChildren.apply(el, nodes);
         });
     }
 

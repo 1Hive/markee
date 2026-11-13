@@ -5,7 +5,10 @@
 // StreamSignModal call the same working implementation instead of two copies that can drift.
 
 import { useState, useEffect, useRef } from 'react'
-import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, usePublicClient, useReadContract } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
 import { erc20Abi, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
@@ -31,9 +34,9 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
-  const { writeContractAsync, isPending, reset } = useWriteContract()
+  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
-    useWaitForTransactionReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+    useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   // Lets the async flow bail out after each await if the caller closed the modal meanwhile.
   const openRef = useRef(isOpen)
@@ -56,8 +59,13 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     query: { enabled, refetchInterval: retryUntilLoaded },
   })
 
+  const { data: deposit } = useReadContract({
+    address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
+    query: { enabled, refetchInterval: retryUntilLoaded },
+  })
+
   const poolReady = !!refundPool && refundPool !== ZERO_ADDRESS
-  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && !!publicClient
+  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && deposit !== undefined && !!publicClient
 
   useEffect(() => {
     if (!isOpen) {
@@ -86,16 +94,17 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     try {
       setSubmitting(true)
 
-      if ((allowance ?? 0n) < calc.buffer) {
+      const depositTopUp = calc.buffer > (deposit ?? 0n) ? calc.buffer - (deposit ?? 0n) : 0n
+      if (depositTopUp > 0n && (allowance ?? 0n) < depositTopUp) {
         setApproving(true)
         const approveHash = await writeContractAsync({
           address: ETHX,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [board, calc.buffer],
+          args: [board, depositTopUp],
           chainId: CANONICAL_CHAIN.id,
         })
-        const approveReceipt = await publicClient!.waitForTransactionReceipt({ hash: approveHash })
+        const approveReceipt = await waitForStep(publicClient!, approveHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
         if (approveReceipt.status !== 'success') throw new Error('The approval transaction reverted.')
         await refetchAllowance()
         if (!openRef.current) return
@@ -108,7 +117,7 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
         markee: markeeAddress,
         backer: address,
         ratePerSec: calc.ratePerSec,
-        buffer: calc.buffer,
+        buffer: depositTopUp,
         cfaAgreement: cfaAgreement as Address,
         gdaAgreement: gdaAgreement as Address,
         pool: refundPool as Address,
@@ -123,6 +132,7 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
         value: calc.value,
         chainId: CANONICAL_CHAIN.id,
       })
+      recordSubmitted(batchHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
       if (!openRef.current) return
       setTxHash(batchHash)
     } catch (e: unknown) {
@@ -134,5 +144,5 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     }
   }
 
-  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, openStream }
+  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, deposit, openStream }
 }

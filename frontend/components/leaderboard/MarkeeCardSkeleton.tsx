@@ -3,7 +3,7 @@
 export function MarkeeCardSkeleton({ size }: { size: 'hero' | 'large' | 'medium' | 'list' }) {
   if (size === 'hero') {
     return (
-      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 rounded-xl shadow-lg p-8 mb-6 border-4 border-[#F897FE] animate-pulse">
+      <div className="bg-gradient-to-r from-[#F897FE]/20 to-[#7C9CFF]/20 rounded-xl shadow-lg p-8 mb-6 border-4 border-[#F897FE] skeleton">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="w-24 h-16 bg-[#8A8FBF]/30 rounded mb-2"></div>
@@ -21,7 +21,7 @@ export function MarkeeCardSkeleton({ size }: { size: 'hero' | 'large' | 'medium'
 
   if (size === 'large') {
     return (
-      <div className="bg-[#0A0F3D] rounded-lg shadow-md p-6 border-2 border-[#8A8FBF]/30 h-full animate-pulse">
+      <div className="bg-[#0A0F3D] rounded-lg shadow-md p-6 border-2 border-[#8A8FBF]/30 h-full skeleton">
         <div className="flex items-start justify-between mb-3">
           <div className="w-12 h-8 bg-[#8A8FBF]/30 rounded"></div>
         </div>
@@ -37,7 +37,7 @@ export function MarkeeCardSkeleton({ size }: { size: 'hero' | 'large' | 'medium'
 
   if (size === 'medium') {
     return (
-      <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-4 border border-[#8A8FBF]/30 h-full animate-pulse">
+      <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-4 border border-[#8A8FBF]/30 h-full skeleton">
         <div className="flex items-start justify-between mb-2">
           <div className="w-10 h-6 bg-[#8A8FBF]/30 rounded"></div>
         </div>
@@ -53,7 +53,7 @@ export function MarkeeCardSkeleton({ size }: { size: 'hero' | 'large' | 'medium'
 
   // list
   return (
-    <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 animate-pulse">
+    <div className="flex items-center justify-between py-2 border-b border-[#8A8FBF]/20 skeleton">
       <div className="flex items-center gap-4 flex-1">
         <div className="w-8 h-4 bg-[#8A8FBF]/30 rounded"></div>
         <div className="w-64 h-4 bg-[#8A8FBF]/30 rounded"></div>
@@ -88,7 +88,7 @@ export function LeaderboardSkeleton() {
       
       {/* List skeletons */}
       <div className="bg-[#0A0F3D] rounded-lg shadow-sm p-6 border border-[#8A8FBF]/20">
-        <div className="w-32 h-6 bg-[#8A8FBF]/30 rounded mb-4 animate-pulse"></div>
+        <div className="w-32 h-6 bg-[#8A8FBF]/30 rounded mb-4 skeleton"></div>
         <div className="space-y-2">
           {Array.from({ length: 10 }).map((_, i) => (
             <MarkeeCardSkeleton key={i} size="list" />

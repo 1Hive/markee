@@ -121,7 +121,7 @@ contract StreamingLeaderboardTest is Test {
         assertGt(address(CFA).code.length, 0, "CFA forwarder missing");
         assertGt(address(GDA).code.length, 0, "GDA forwarder missing");
 
-        boardImplementation = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        boardImplementation = _boardImplementation();
         markeeImplementation = address(new Markee());
         factory = _deployFactory(boardImplementation, markeeImplementation);
         assertEq(factory.leaderboardImplementation(), boardImplementation, "board impl not stored");
@@ -141,6 +141,10 @@ contract StreamingLeaderboardTest is Test {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    function _boardImplementation() internal virtual returns (address) {
+        return address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
+    }
 
     function _deployFactory(address boardImpl, address markeeImpl)
         internal
@@ -1263,6 +1267,79 @@ contract StreamingLeaderboardTest is Test {
         _notJailed();
     }
 
+    function test_beneficiaryCloseAfterQuietWindow_keepsAccrualAndDeposits() public {
+        address other = _backer("other");
+        address otherMarkee = _newMarkee("o", "other");
+        vm.prank(other);
+        board.depositBuffer(other, 0.05 ether);
+        _open(other, otherMarkee, _rate(0.02 ether));
+
+        address top = _backer("top");
+        address topMarkee = _newMarkee("t", "top");
+        _open(top, topMarkee, _rate(0.1 ether));
+        assertEq(board.topMarkee(), topMarkee, "top backer should lead");
+
+        vm.warp(block.timestamp + 5 days);
+        uint256 pendingBefore = board.pendingSettlement(top);
+
+        vm.prank(beneficiary);
+        CFA.deleteFlow(ETHX, address(board), beneficiary, "");
+        _notJailed();
+        assertEq(board.pendingSettlement(top), pendingBefore, "accrual changed on beneficiary close");
+
+        vm.warp(block.timestamp + 1 days);
+        assertApproxEqAbs(
+            board.pendingSettlement(top) - pendingBefore, _r(_rate(0.1 ether)) * 1 days, 1e6, "full rate not accrued after close"
+        );
+
+        vm.prank(top);
+        CFA.deleteFlow(ETHX, top, address(board), "");
+        address[] memory backers = new address[](1);
+        backers[0] = top;
+        board.settle(backers);
+
+        vm.startPrank(other);
+        CFA.deleteFlow(ETHX, other, address(board), "");
+        board.withdrawDeposit();
+        vm.stopPrank();
+        assertEq(board.backerDeposit(other), 0, "deposit not returned");
+        _notJailed();
+    }
+
+    function test_superAppBeneficiary_isNotStreamedTo() public {
+        (address appBoard,) = factory.createLeaderboard(admin, "App", "Open Internet", "openinternet");
+        assertTrue(ISuperfluid(HOST).isApp(ISuperApp(appBoard)), "beneficiary is not an app");
+        board.setBeneficiaryAddress(appBoard);
+
+        address top = _backer("top");
+        _open(top, _newMarkee("t", "top"), _rate(0.1 ether));
+        _notJailed();
+        assertEq(CFA.getFlowrate(ETHX, address(board), appBoard), int96(0), "an app beneficiary was paid");
+
+        board.syncBeneficiaryFlow();
+        vm.prank(top);
+        CFA.deleteFlow(ETHX, top, address(board), "");
+        _notJailed();
+        assertEq(CFA.getFlowrate(ETHX, address(board), appBoard), int96(0), "an app beneficiary was paid");
+    }
+
+    function test_setBeneficiaryAddress_accruesTheWindowFirst() public {
+        address top = _backer("top");
+        address m = _newMarkee("t", "top");
+        _open(top, m, _rate(0.1 ether));
+        vm.warp(block.timestamp + 5 days);
+
+        uint256 pendingBefore = board.pendingSettlement(top);
+        board.setBeneficiaryAddress(address(0));
+        assertEq(board.pendingSettlement(top), pendingBefore, "accrual changed on beneficiary change");
+
+        vm.warp(block.timestamp + 1 days);
+        uint256 pendingMid = board.pendingSettlement(top);
+        board.setBeneficiaryAddress(makeAddr("newBeneficiary"));
+        assertEq(board.pendingSettlement(top), pendingMid, "accrual changed on beneficiary change");
+        _notJailed();
+    }
+
     // ─── Regression tests for the security-review fixes ─────────────────────────
 
     function _fundApprove(address who, address spender) internal {
@@ -1563,7 +1640,7 @@ contract StreamingLeaderboardTest is Test {
         address oldMarkeeImpl = factory.markeeImplementation();
         assertEq(_implOf(address(board)), oldBoardImpl, "seed board not on old impl");
 
-        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
         address newMarkeeImpl = address(new Markee());
         address codeless = address(uint160(uint256(keccak256("markee-codeless-probe"))));
         assertEq(codeless.code.length, 0, "probe address unexpectedly has code");
@@ -1609,7 +1686,7 @@ contract StreamingLeaderboardTest is Test {
     ///         untouched and emits nothing.
     function test_setImplementations_boardOnly() public {
         address oldMarkeeImpl = factory.markeeImplementation();
-        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX));
+        address newBoardImpl = address(new StreamingLeaderboard(ISuperfluid(HOST), ETHX, address(this)));
 
         vm.recordLogs();
         vm.prank(admin);

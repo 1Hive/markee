@@ -1158,28 +1158,28 @@ export function BoardDetailSkeleton() {
       <section style={{ background: HERO_GRAD, padding: '44px 40px 30px', borderBottom: `1px solid ${BORDER}`, position: 'relative', overflow: 'hidden' }}>
         <HeroBackground />
         <div style={{ maxWidth: 920, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-          <div style={{ height: 18, width: 180, background: 'rgba(138,143,191,0.12)', borderRadius: 4, marginBottom: 16 }} />
-          <div style={{ height: 200, background: 'rgba(138,143,191,0.07)', borderRadius: 16 }} />
+          <div className="skeleton" style={{ height: 18, width: 180, background: 'rgba(138,143,191,0.12)', borderRadius: 4, marginBottom: 16 }} />
+          <div className="skeleton" style={{ height: 200, background: 'rgba(138,143,191,0.07)', borderRadius: 16 }} />
         </div>
         <div style={{ maxWidth: 1100, margin: '28px auto 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 24, paddingTop: 26, borderTop: `1px solid ${BORDER}` }}>
           {[...Array(5)].map((_, i) => (
-            <div key={i} style={{ height: 52, background: 'rgba(138,143,191,0.07)', borderRadius: 6 }} />
+            <div className="skeleton" key={i} style={{ height: 52, background: 'rgba(138,143,191,0.07)', borderRadius: 6 }} />
           ))}
         </div>
       </section>
       {/* Table skeleton */}
       <section style={{ padding: '8px 40px 20px' }}>
         <div style={{ maxWidth: 1100, margin: '40px auto 0' }}>
-          <div style={{ height: 30, width: 200, background: 'rgba(138,143,191,0.1)', borderRadius: 4, marginBottom: 20 }} />
+          <div className="skeleton" style={{ height: 30, width: 200, background: 'rgba(138,143,191,0.1)', borderRadius: 4, marginBottom: 20 }} />
           <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: BG2, padding: 10 }}>
             {[...Array(6)].map((_, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 150px', gap: 14, alignItems: 'center', padding: '14px', border: `1px solid ${BORDER}`, borderRadius: 8, marginBottom: i === 5 ? 0 : 10 }}>
-                <div style={{ width: 30, height: 30, background: 'rgba(138,143,191,0.08)', borderRadius: 99 }} />
+                <div className="skeleton" style={{ width: 30, height: 30, background: 'rgba(138,143,191,0.08)', borderRadius: 99 }} />
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ height: 16, width: '70%', background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
-                  <div style={{ height: 12, width: '38%', background: 'rgba(138,143,191,0.06)', borderRadius: 4 }} />
+                  <div className="skeleton" style={{ height: 16, width: '70%', background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+                  <div className="skeleton" style={{ height: 12, width: '38%', background: 'rgba(138,143,191,0.06)', borderRadius: 4 }} />
                 </div>
-                <div style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
+                <div className="skeleton" style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
               </div>
             ))}
           </div>

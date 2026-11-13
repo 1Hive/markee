@@ -55,7 +55,7 @@ function slotToMarkee(slot: MarkeeSlot): Markee {
 // ─── Skeletons ────────────────────────────────────────────────────────────────
 
 function SkeletonBar({ className = '' }: { className?: string }) {
-  return <div className={`bg-[#1A1F4D] rounded animate-pulse ${className}`} />
+  return <div className={`bg-[#1A1F4D] rounded skeleton ${className}`} />
 }
 
 function MetaStatsSkeleton() {

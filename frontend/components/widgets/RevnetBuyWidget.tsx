@@ -3,26 +3,19 @@
 import { useMemo, useState } from 'react'
 import { parseEther } from 'viem'
 import { base } from 'viem/chains'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useAccount, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
 import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
 import { formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, BLUE, BORDER, DANGER } from '@/lib/design-tokens'
+import { sanitizeDecimalInput } from '@/components/modals/StreamUI'
 
 
 // Juicebox v4 uses this sentinel address for native ETH
 const ETH_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-
-// Caps each side of the decimal at 9 digits so a pasted/huge value can't blow out the layout.
-function sanitizeAmountInput(raw: string): string {
-  let cleaned = raw.replace(/[^0-9.]/g, '')
-  const dot = cleaned.indexOf('.')
-  if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
-  const [intPart, fracPart] = cleaned.split('.')
-  const cappedInt = (intPart ?? '').slice(0, 9)
-  return fracPart !== undefined ? `${cappedInt}.${fracPart.slice(0, 9)}` : cappedInt
-}
 
 // M/B/T-abbreviated, NaN-safe MARKEE amount display -- shows extra decimal places for sub-10 amounts
 // instead of collapsing to "0" (matches MarkeeSignModal's ReceiveCard).
@@ -72,11 +65,8 @@ export function RevnetBuyWidget({ compact = false }: Props) {
   const { address, chain } = useAccount()
   const { switchChain } = useSwitchChain()
 
-  const { writeContract, data: txHash, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({
-    hash: txHash,
-    query: { enabled: !!txHash },
-  })
+  const { writeContract, data: txHash, isPending, reset } = useSponsoredWriteContract()
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash })
 
   const parsedEth  = parseFloat(amount)
   const eth        = Number.isFinite(parsedEth) ? parsedEth : 0
@@ -139,7 +129,9 @@ export function RevnetBuyWidget({ compact = false }: Props) {
           <input
             value={amount}
             onChange={e => {
-              setAmount(sanitizeAmountInput(e.target.value))
+              const v = sanitizeDecimalInput(e.target.value)
+              if (v === null) return
+              setAmount(v)
               if (isSuccess) reset()
             }}
             inputMode="decimal"

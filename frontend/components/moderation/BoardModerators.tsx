@@ -153,7 +153,7 @@ export function BoardModerators({ board }: { board: string }) {
   return (
     <div>
       {isLoading ? (
-        <div style={{ height: 72, background: 'rgba(138,143,191,0.08)', borderRadius: 8 }} />
+        <div className="skeleton" style={{ height: 72, background: 'rgba(138,143,191,0.08)', borderRadius: 8 }} />
       ) : error ? (
         <p style={{ margin: 0, color: RED, fontSize: 12.5 }}>Could not load this board's moderators.</p>
       ) : (

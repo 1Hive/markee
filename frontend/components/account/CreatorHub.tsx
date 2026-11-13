@@ -241,7 +241,7 @@ export function YourMarkees({ active, archived, inactive, awaiting, loading, boa
           {loading ? (
             [1, 2, 3].map(i => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: MK_COLS, gap: 12, padding: '16px 18px', borderTop: `1px solid ${BORDER}` }}>
-                {[1, 2, 3, 4].map(j => <div key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
+                {[1, 2, 3, 4].map(j => <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />)}
               </div>
             ))
           ) : rows.length === 0 ? (

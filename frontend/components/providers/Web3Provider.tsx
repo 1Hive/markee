@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAccount } from 'wagmi'
 import { config } from '@/lib/config/wagmi'
 import { ModerationProvider } from '@/components/moderation'
+import { PendingTxBanner } from '@/components/tx/PendingTxBanner'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 
@@ -49,7 +50,9 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
       config={{
-        loginMethods: ['email', 'wallet', 'google', 'apple', 'farcaster'],
+        // No `loginMethods` here on purpose: the Privy dashboard is the source of truth for which
+        // sign-in options appear. A list in code overrides the dashboard toggles (that's how Apple and
+        // Farcaster kept showing after being switched off there).
         embeddedWallets: {
           ethereum: {
             createOnLogin: 'all-users',
@@ -70,6 +73,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
           <ModerationProvider>
             {children}
           </ModerationProvider>
+          <PendingTxBanner />
         </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>

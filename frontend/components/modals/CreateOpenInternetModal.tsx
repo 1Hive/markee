@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Globe, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from 'wagmi'
+import { useAccount, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
+import { beneficiaryError } from '@/lib/beneficiary'
 
 const OI_FACTORY_ADDRESS = '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const
 
@@ -42,8 +45,8 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const [newAddress, setNewAddress] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
 
-  const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useWaitForTransactionReceipt({ hash })
+  const { writeContract, data: hash, isPending, error: writeError, reset } = useSponsoredWriteContract()
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useTrackedReceipt({ hash })
 
   useEffect(() => {
     if (isOpen) {
@@ -106,8 +109,9 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const handleCreate = () => {
     setError(null)
     if (!name.trim()) { setError('Enter a name for your sign.'); return }
-    if (!beneficiary || !/^0x[0-9a-fA-F]{40}$/.test(beneficiary)) {
-      setError('Enter a valid treasury address.')
+    const beneficiaryProblem = beneficiaryError(beneficiary)
+    if (beneficiaryProblem) {
+      setError(beneficiaryProblem)
       return
     }
     if (chain?.id !== CANONICAL_CHAIN.id) {
@@ -120,7 +124,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
         address: OI_FACTORY_ADDRESS,
         abi: FACTORY_ABI,
         functionName: 'createLeaderboard',
-        args: [beneficiary as `0x${string}`, name.trim()],
+        args: [beneficiary.trim() as `0x${string}`, name.trim()],
         chainId: CANONICAL_CHAIN.id,
       })
     } catch (err) {

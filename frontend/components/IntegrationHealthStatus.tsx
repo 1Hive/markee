@@ -55,7 +55,7 @@ export function IntegrationHealthStatus({ url }: { url: string }) {
   }, [url])
 
   if (loading) {
-    return <div className="h-4 w-14 rounded bg-[#1A1F4D] animate-pulse" />
+    return <div className="h-4 w-14 rounded bg-[#1A1F4D] skeleton" />
   }
 
   if (!health) return null

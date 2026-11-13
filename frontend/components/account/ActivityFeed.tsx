@@ -68,7 +68,7 @@ export function LatestActivity({ events, state, onRetry, boardName, ethPrice, pr
       </PanelHead>
       {state === 'loading' ? (
         <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[1, 2, 3].map(i => <div key={i} style={{ height: 36, background: 'rgba(138,143,191,0.08)', borderRadius: 8 }} />)}
+          {[1, 2, 3].map(i => <div className="skeleton" key={i} style={{ height: 36, background: 'rgba(138,143,191,0.08)', borderRadius: 8 }} />)}
         </div>
       ) : state === 'failed' ? (
         <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: DANGER }}>
@@ -114,7 +114,7 @@ export function LatestActivity({ events, state, onRetry, boardName, ethPrice, pr
                   <span style={{ fontFamily: MONO, fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>on {boardName(e.board)}</span>
                 </span>
                 {e.message && (
-                  <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={e.message ?? ''} markeeId={e.markee} className="min-w-0">
+                  <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={e.message ?? ''} markeeId={e.markee} className="min-w-0">
                     <span style={{ display: 'block', fontSize: 12.5, color: MUTED, marginTop: 3, paddingLeft: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>&ldquo;{e.message}&rdquo;</span>
                   </ModeratedContent>
                 )}

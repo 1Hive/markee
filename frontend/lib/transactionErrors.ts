@@ -85,6 +85,32 @@ function isDisplayableMessage(text: string): boolean {
   return !!text && text.length <= 180 && !matchesAny(text, NOISY_TRANSACTION_PATTERNS)
 }
 
+// Only the wallet itself reporting that its prompt timed out or expired: a request that may still be
+// open in the wallet is the one case where "approving it will still send this payment" is true.
+// - 'wallet timeout': injected/Privy connectors ("An unknown RPC error occurred. Details: Wallet timeout").
+// - 'request expired' / 'request has expired': WalletConnect relays when the mobile wallet didn't
+//   answer before the request's expiry, while it can still be open in the wallet app.
+// Generic RPC failures ('unknown rpc error' on its own) and HTTP timeouts (viem's TimeoutError,
+// "request timed out") happen during simulation/estimation before anything is sent, so matching them
+// showed the wallet-timeout notice and blocked payment buttons when nothing could be pending.
+const WALLET_TIMEOUT_PATTERNS = [
+  'wallet timeout',
+  'request expired',
+  'request has expired',
+]
+
+export const WALLET_TIMEOUT_MESSAGE = 'Your wallet did not answer in time. If its request is still open, approving it will still send this payment, so check your wallet before trying again.'
+
+export function isWalletTimeoutError(error: unknown): boolean {
+  if (!error) return false
+  const combined = `${shortText(error)}\n${errorText(error)}`
+  return !matchesAny(combined, USER_REJECTED_PATTERNS) && matchesAny(combined, WALLET_TIMEOUT_PATTERNS)
+}
+
+export function isUserRejectedError(error: unknown): boolean {
+  return !!error && matchesAny(`${shortText(error)}\n${errorText(error)}`, USER_REJECTED_PATTERNS)
+}
+
 export function formatTransactionError(error: unknown): string {
   const known = extractKnownSelector(error)
   if (known) return known
@@ -97,6 +123,8 @@ export function formatTransactionError(error: unknown): string {
     return 'Transaction rejected'
   }
 
+  if (matchesAny(combined, WALLET_TIMEOUT_PATTERNS)) return WALLET_TIMEOUT_MESSAGE
+
   if (matchesAny(raw, NOISY_TRANSACTION_PATTERNS)) {
     if (isDisplayableMessage(short)) return short
     return 'Transaction error'
@@ -107,7 +135,7 @@ export function formatTransactionError(error: unknown): string {
   return candidate
 }
 
-// For a useWaitForTransactionReceipt error (a reverted receipt, or a wait that failed): the decoded
+// For a reverted receipt error (from useTrackedReceipt, which replays the call): the decoded
 // revert reason when there is one, else a generic on-chain failure. Logs it under `context`.
 // wagmi replays a reverted tx to read its reason; when the replay has none it throws
 // 'unknown reason', or text decoded from whatever the replay returned.
@@ -119,6 +147,6 @@ export function formatReceiptError(error: unknown, context: string): string {
 }
 
 export function logTransactionError(error: unknown, context: string): void {
-  if (!error) return
+  if (!error || isUserRejectedError(error)) return
   console.error(`[${context}] Transaction error`, error)
 }

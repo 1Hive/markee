@@ -5,16 +5,19 @@
 // boards) -- every setter has a matching getter with the same underlying value (admin/setAdmin,
 // beneficiaryAddress/setBeneficiaryAddress, etc.), so one parameterized component covers all of them
 // instead of ~11 near-identical hand-written forms. Follows the same useWriteContract +
-// useWaitForTransactionReceipt + chain-switch-guard pattern EditMessageModal already uses -- this is
+// useTrackedReceipt + chain-switch-guard pattern EditMessageModal already uses -- this is
 // the first place on the account page itself that writes to a contract directly (everywhere else on
 // that page delegates to a dedicated modal), so it's a standalone component rather than inlined.
 
 import { useEffect, useState } from 'react'
-import { useAccount, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
-import { formatEther, isAddress, parseEther, type Abi } from 'viem'
+import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
+import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
+import { formatEther, isAddress, type Abi } from 'viem'
 import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { formatReceiptError } from '@/lib/transactionErrors'
+import { farFromCurrentWarning, parseEthAmountInput } from '@/lib/leaderboard/ethAmount'
 import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 
 export interface AdminSettingRowProps {
@@ -74,8 +77,8 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
   const [acknowledged, setAcknowledged] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  const { writeContractAsync, data: hash, isPending, reset } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useWaitForTransactionReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { writeContractAsync, data: hash, isPending, reset } = useSponsoredWriteContract()
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
 
   useEffect(() => {
     if (!isSuccess) return
@@ -95,9 +98,11 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
 
   const isWrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
   const typed = value.trim()
+  const ethAmount = unit && typed ? parseEthAmountInput(typed, unit === 'ethPerMonth' ? 'ETH per month' : 'ETH') : null
   const inputError = !typed ? null
     : inputType === 'address' && !isAddress(typed) ? 'Enter a full wallet address (0x + 40 characters).'
-    : validate?.(typed) ?? null
+    : ethAmount?.error ?? validate?.(typed) ?? null
+  const typedWarning = ethAmount?.wei != null && typeof current === 'bigint' ? farFromCurrentWarning(ethAmount.wei, current) : null
   const busy = isPending || isConfirming
   const suffix = unit === 'ethPerMonth' ? 'ETH / mo' : unit === 'eth' ? 'ETH' : inputType === 'uint256' ? 'chars' : null
 
@@ -120,7 +125,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
     if (invalid) { setLocalError(invalid); return }
     let arg: unknown = value.trim()
     try {
-      if (inputType === 'uint256') arg = unit ? parseEther(value.trim()) : BigInt(value.trim())
+      if (inputType === 'uint256') arg = ethAmount?.wei ?? BigInt(value.trim())
       if (inputType === 'bool') arg = value.trim() === 'true'
     } catch {
       setLocalError(unit ? 'Enter an amount in ETH.' : 'Enter a whole number.')
@@ -186,6 +191,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
             {acknowledge ?? 'I understand this cannot be undone from here'}
           </label>
         </div>
+        {!inputError && typedWarning && <p style={{ margin: '8px 0 0', fontSize: 12, color: AMBER, lineHeight: 1.45 }}>{typedWarning}</p>}
         {localError && <p style={{ margin: '8px 0 0', fontSize: 12, color: DANGER }}>{localError}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 14 }}>
           {busy ? pending : (
@@ -248,6 +254,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
         </span>
       </div>
       {editing && warning && dangerous === 'warn' && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{warning}</div>}
+      {editing && !inputError && typedWarning && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{typedWarning}</div>}
       {editing && inputError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{inputError}</div>}
       {!editing && viewWarning && <div style={{ fontSize: 12, color: AMBER, marginTop: 6, paddingLeft: 182, lineHeight: 1.45 }}>{viewWarning}</div>}
       {localError && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, paddingLeft: 182 }}>{localError}</div>}
