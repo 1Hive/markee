@@ -57,7 +57,7 @@ const emailIndex = kvEmailIndexStore(notifyStateKey)
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
-  if (at < 0) return '***'
+  if (at < 0) return MASK
   const local = email.slice(0, at)
   const domain = email.slice(at)
   return local.slice(0, 1) + MASK + (local.length > 1 ? local.slice(-1) : '') + domain
