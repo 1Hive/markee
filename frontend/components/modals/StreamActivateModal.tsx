@@ -15,6 +15,7 @@ import {
   PaymentReviewCard, PaymentReviewFooter,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { formatUsd } from '@/lib/utils'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useCreateStreamFlow } from '@/hooks/useCreateStreamFlow'
@@ -125,8 +126,8 @@ export function StreamActivateModal({
     address: board, abi: StreamingLeaderboardABI, functionName: 'maxNameLength', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
-  const maxLen = Number(maxMessageLength || 223)
-  const maxNameLen = Number(maxNameLength || 32)
+  const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
   const { data: ethxBalance } = useReadContract({
     address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: activeAddress ? [activeAddress] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen && !!activeAddress, refetchInterval: retryUntilLoaded },
@@ -201,7 +202,7 @@ export function StreamActivateModal({
   const pendingStreams = usePendingTxsFor(activeAddress, board)
   const handleActivate = () => boardBlockedReason ? setError(boardBlockedReason)
     : phase === 'idle' && pendingStreams.length ? undefined
-    : activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim())
+    : activate(message, calc, { maxLen, maxNameLen, belowMin, minMonthlyEth }, name.trim())
 
   if (!isOpen) return null
 
@@ -339,13 +340,13 @@ export function StreamActivateModal({
           <ModalField label={messageLabel}>
             <textarea
               value={message}
-              onChange={e => { if (e.target.value.length <= maxLen) setMessage(e.target.value) }}
+              onChange={e => setMessage(truncateUtf8(e.target.value, maxLen))}
               placeholder={messagePlaceholder}
               rows={2}
               style={{ ...messageBoxStyle, resize: 'vertical' }}
             />
             <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
-              {message.length}/{maxLen}
+              {utf8Length(message)}/{maxLen} bytes
             </div>
           </ModalField>
 
@@ -354,7 +355,7 @@ export function StreamActivateModal({
             <input
               type="text"
               value={name}
-              onChange={e => setName(e.target.value.slice(0, maxNameLen))}
+              onChange={e => setName(truncateUtf8(e.target.value, maxNameLen))}
               placeholder="tell the world who wrote this..."
               style={inputStyle}
             />

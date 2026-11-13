@@ -15,6 +15,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePendingTxsFor } from '@/hooks/usePendingTxs'
@@ -379,8 +380,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const fundedMarkees = markees.filter(m => m.totalFundsAdded > 0n)
   const minimumAmount = meta?.minimumPrice || parseEther('0.001')
   const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
-  const maxLen = Number(maxMessageLength || 223)
-  const maxNameLen = Number(maxNameLength || 32)
+  const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
 
   // ── Views (batched, per-markee + summed for the header) ────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -511,7 +512,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
     const amountWei = parseEther(amount)
     if (amountWei < minimumAmount) { setError(`Minimum payment is ${formatEther(minimumAmount)} ETH`); return }
-    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen) ?? textLimitError('Name', name.trim(), maxNameLen)
+    if (textError) { setError(textError); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
@@ -564,7 +566,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
-    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen)
+    if (textError) { setError(textError); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'updateMessage', args: [target.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
@@ -780,16 +783,16 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set your message</span>
-                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{utf8Length(message)}/{maxLen} bytes</span>
                       </div>
                       <textarea
                         value={message}
                         onChange={e => {
                           setHasUserEdited(true)
-                          setMessage(e.target.value.slice(0, maxLen))
+                          setMessage(truncateUtf8(e.target.value, maxLen))
                           if (isMessageFieldError(error)) setError(null)
                         }}
-                        placeholder={`Your message here... (${maxLen} max)`}
+                        placeholder={`Your message here... (${maxLen} bytes max)`}
                         rows={2}
                         style={{ ...messageBoxStyle, resize: 'vertical' }}
                         disabled={busy}
@@ -804,7 +807,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       <input
                         type="text"
                         value={name}
-                        onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                        onChange={e => { setHasUserEdited(true); setName(truncateUtf8(e.target.value, maxNameLen)) }}
                         placeholder="tell the world who wrote this..."
                         style={inputStyle}
                         disabled={busy}
@@ -943,13 +946,13 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set new message</span>
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{utf8Length(message)}/{maxLen} bytes</span>
                     </div>
                     <textarea
                       value={message}
                       onChange={e => {
                         setHasUserEdited(true)
-                        setMessage(e.target.value.slice(0, maxLen))
+                        setMessage(truncateUtf8(e.target.value, maxLen))
                         if (isMessageFieldError(error)) setError(null)
                       }}
                       placeholder="Enter your new message..."

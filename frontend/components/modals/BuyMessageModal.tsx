@@ -14,6 +14,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
@@ -365,7 +366,8 @@ export function BuyMessageModal({
     const amountWei = parseEther(amount)
     const minPrice = minimumPrice || BigInt(0)
     if (amountWei < minPrice) { setError(`Minimum payment is ${formatEther(minPrice)} ETH`); return }
-    if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen) ?? textLimitError('Name', name.trim(), maxNameLen)
+    if (textError) { setError(textError); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
@@ -399,7 +401,8 @@ export function BuyMessageModal({
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!message.trim()) { setError('Please enter a message'); return }
-    if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen)
+    if (textError) { setError(textError); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'updateMessage', args: [userMarkee.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
@@ -430,8 +433,8 @@ export function BuyMessageModal({
     : (activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
-  const maxLen = Number(maxMessageLength || 223)
-  const maxNameLen = Number(maxNameLength || 32)
+  const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
@@ -619,21 +622,21 @@ export function BuyMessageModal({
                   <ModalField label={messageLabel}>
                     <textarea
                       value={message}
-                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
+                      onChange={e => { setHasUserEdited(true); setMessage(truncateUtf8(e.target.value, maxLen)) }}
                       placeholder={messagePlaceholder}
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
                     />{messageModeration.ui}
                     <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
-                      {message.length}/{maxLen}
+                      {utf8Length(message)}/{maxLen} bytes
                     </div>
                   </ModalField>
                   <ModalField label="Your Name (optional)">
                     <input
                       type="text"
                       value={name}
-                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      onChange={e => { setHasUserEdited(true); setName(truncateUtf8(e.target.value, maxNameLen)) }}
                       placeholder="tell the world who wrote this..."
                       style={inputStyle}
                       disabled={isPending || isConfirming}
@@ -668,7 +671,7 @@ export function BuyMessageModal({
                   <ModalField label="New Message">
                     <textarea
                       value={message}
-                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
+                      onChange={e => { setHasUserEdited(true); setMessage(truncateUtf8(e.target.value, maxLen)) }}
                       placeholder="Enter your new message..."
                       rows={3}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
