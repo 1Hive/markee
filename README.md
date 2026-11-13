@@ -13,7 +13,7 @@
                  ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 ```
-*Show the world you support this repo! [Change this message at markee.xyz](https://markee.xyz/ecosystem/platforms/github/0x5e2d08d07b2c771abe15af29fb30826bfeef2151) ^*
+*Show the world you support this repo! [Change this message at markee.xyz](https://markee.xyz/markee/0x5e2d08d07b2c771abe15af29fb30826bfeef2151) ^*
 <!-- MARKEE:END:0x5e2d08d07b2c771abe15af29fb30826bfeef2151 -->
 
 > **SDK alpha environment:** Published `@markee_team/sdk` currently defaults to
