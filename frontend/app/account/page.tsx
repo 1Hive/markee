@@ -36,6 +36,7 @@ import { formatUsd } from '@/lib/utils'
 import { ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { boardLabel } from '@/lib/leaderboards/label'
 
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -1395,9 +1396,9 @@ function AccountDashboard() {
 
   const boardNames = useMemo(() => {
     const names = new Map<string, string>()
-    myMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
-    fundedMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
-    allBoards.forEach(lb => lb.name && names.set(lb.address.toLowerCase(), lb.name))
+    const set = (board: string, label: string) => label && names.set(board.toLowerCase(), label)
+    for (const m of [...myMessages, ...fundedMessages]) set(m.strategyId, boardLabel({ name: m.strategyName, verifiedUrls: m.verifiedUrls, linkedFiles: m.linkedFiles }))
+    allBoards.forEach(lb => set(lb.address, boardLabel(lb)))
     return names
   }, [allBoards, myMessages, fundedMessages])
 

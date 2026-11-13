@@ -8,7 +8,7 @@ import { contentHash, automaticDeps } from '@/lib/moderation/automatic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { queueDeps } from '@/lib/moderation/queue-deps'
-import { ADDRESS_PATTERN, observeMessage, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, isBlankMessage, observeMessage, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
 import { PENDING_SITE_KEY, flagKey, isGlobalAdmin, markeeOfFlagKey, pendingKey } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     const flagged: ModerationItem[] = []
     all.forEach(it => {
       const scopes = scopesOf.get(it.board)
-      if (!scopes) return
+      if (!scopes || isBlankMessage(it)) return
       const manual = scopes.some(scope => flags[scope].includes(flagKey(it.markee)))
       if (manual || isFlaggedIn(it, scopes)) flagged.push(it)
       else if (softMap.has(it.markee)) flagged.push({ ...it, automatic: softMap.get(it.markee)! })

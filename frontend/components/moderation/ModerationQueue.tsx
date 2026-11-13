@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowUpRight, Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
+import { Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
@@ -15,13 +15,13 @@ const itemId = (it: ModerationItem) => `${it.markee}:${it.blockNumber}`
 const ago = (it: ModerationItem) => it.at > 0 ? formatDistanceToNow(it.at * 1000, { addSuffix: true }) : null
 const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '0 12px', height: 32, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7 }
 
-// A link to the board's page, where the message shows on its Markee sign.
-function SignLink({ item, board }: { item: { board: string }; board: { name?: string } | undefined }) {
-  return (
-    <a href={`/markee/${item.board}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11.5, color: TEXT2, textDecoration: 'none' }}>
-      {board?.name || fmtAddr(item.board)} <ArrowUpRight size={11} />
-    </a>
-  )
+// The message opens its board's page, where it shows on the Markee sign.
+function SignLink({ board, style, children }: { board: string; style: React.CSSProperties; children: React.ReactNode }) {
+  return <a href={`/markee/${board}`} style={{ ...style, display: 'block', textDecoration: 'none' }}>{children}</a>
+}
+
+function BoardTag({ item, board }: { item: { board: string }; board: { name?: string } | undefined }) {
+  return <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{board?.name || fmtAddr(item.board)}</span>
 }
 
 // One message awaiting review, used by both the Activity Feed and the Creator Hub Moderation panel.
@@ -50,10 +50,10 @@ export function ModerationItemRow({ item, board, onReview }: {
   return (
     <div style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <SignLink board={item.board} style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.message || 'Empty message'}
           {item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
-        </div>
+        </SignLink>
         {edited && item.previousMessage !== null && item.previousMessage !== item.message && (
           <div style={{ marginTop: 3, color: MUTED, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             was <span style={{ textDecoration: 'line-through' }}>{item.previousMessage || 'empty'}</span>
@@ -66,7 +66,7 @@ export function ModerationItemRow({ item, board, onReview }: {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
           {ago(item) && <span>{ago(item)}</span>}
-          <SignLink item={item} board={board} />
+          <BoardTag item={item} board={board} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
@@ -103,13 +103,13 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
+        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
           {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
-        </div>
+        </SignLink>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.automatic && <span>{item.automatic.siteState === 'visible' ? 'Approved on Markee only · Still hidden in SDK integrations' : `Automatic · ${item.automatic.reason || 'Matched automatic moderation rule'}`}</span>}
           {ago(item) && <span>{ago(item)}</span>}
-          <SignLink item={item} board={board} />
+          <BoardTag item={item} board={board} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
@@ -148,14 +148,14 @@ function VisibleRow({ item, onReview }: { item: VisibleMessage; onReview: (actio
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.message || 'Empty message'}{item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
-        </div>
+        </SignLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.rank === 1
             ? <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: PINK }}>Winning</span>
             : <span style={{ fontFamily: MONO, fontSize: 11 }}>#{item.rank}</span>}
-          <SignLink item={item} board={{ name: item.boardName }} />
+          <BoardTag item={item} board={{ name: item.boardName }} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>

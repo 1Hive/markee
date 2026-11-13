@@ -25,6 +25,7 @@ import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/comp
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
 import { integrationsOf, type Integration } from '@/components/account/sites'
 import { useToast } from '@/components/account/Toast'
+import { boardLabel } from '@/lib/leaderboards/label'
 
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 38, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
 const pinkOutline: React.CSSProperties = { ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700 }
@@ -314,7 +315,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(6,10,42,0.6)', backdropFilter: 'blur(3px)', animation: 'fadeIn 160ms ease' }}>
       <aside
         role="dialog"
-        aria-label={`Manage ${lb.name || 'Markee'}`}
+        aria-label={`Manage ${boardLabel(lb, 'Markee')}`}
         onClick={e => e.stopPropagation()}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(580px, 100%)', background: BG2, borderLeft: `1px solid ${BORDER}`, boxShadow: '-24px 0 80px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', animation: 'drawerIn 220ms cubic-bezier(.2,.8,.2,1)', fontFamily: SANS }}
       >
