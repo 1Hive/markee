@@ -37,6 +37,8 @@ import {
 } from '@/lib/moderation/queue'
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
+import { verifyEmailIpAllowed, verifyEmailRecipientAllowed, verifyEmailWalletAllowed } from '@/lib/moderation/email-throttle'
+import { clientIp } from '@/lib/rate-limit'
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
 // Domain labels can't contain dots, so there's only one way to match and no catastrophic backtracking.
@@ -89,12 +91,19 @@ export async function POST(req: NextRequest) {
     if (Math.abs(now - timestamp) > 300) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     }
+    if (!await verifyEmailIpAllowed(clientIp(req))) {
+      return NextResponse.json({ error: 'Too many verification emails. Wait a few minutes and try again.' }, { status: 429 })
+    }
     const valid = await verifyMessage({
       address: wallet as `0x${string}`,
       message: notifyEmailMessage(base.id, wallet, email, timestamp),
       signature,
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+
+    if (!await verifyEmailWalletAllowed(wallet) || !await verifyEmailRecipientAllowed(email)) {
+      return NextResponse.json({ error: 'Too many verification emails. Wait a few minutes and try again.' }, { status: 429 })
+    }
 
     const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
     const notifyState: ModeratorNotifyState = {

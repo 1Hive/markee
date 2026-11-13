@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { clientIp, underRateLimit } from '@/lib/rate-limit'
+import { clientIp } from '@/lib/rate-limit'
 import { checkoutAlert } from '@/lib/checkout-alerts'
 import { logger } from '@/lib/server/logger'
 import { withServerError } from '@/lib/server/withServerError'
+import { readLimitedJsonBody, RequestBodyTooLargeError } from '@/lib/sdk/gardens/body'
+import { CLIENT_ERROR_LIMITS, clientErrorDeps, clientErrorForwarding, sanitizePathname, sanitizeReportText } from '@/lib/server/client-errors'
 
 const MAX_BODY_BYTES = 16_384
 const MAX_VALUE_LENGTH = 4_000
-
-function limitedString(value: unknown, max = MAX_VALUE_LENGTH): string | undefined {
-  if (typeof value !== 'string') return undefined
-  return value.slice(0, max)
-}
 
 export const POST = withServerError('POST /api/errors', async (request: NextRequest) => {
   const origin = request.headers.get('origin')
@@ -18,16 +15,18 @@ export const POST = withServerError('POST /api/errors', async (request: NextRequ
     return NextResponse.json({ error: 'Invalid origin' }, { status: 403 })
   }
 
-  const contentLength = Number(request.headers.get('content-length') ?? 0)
-  if (contentLength > MAX_BODY_BYTES) {
-    return NextResponse.json({ error: 'Payload too large' }, { status: 413 })
-  }
-
-  if (!await underRateLimit('client-errors', clientIp(request), 10, 60)) {
+  const { max, windowSeconds } = CLIENT_ERROR_LIMITS.perIp
+  if (!await clientErrorDeps.underRateLimit('client-errors', clientIp(request), max, windowSeconds)) {
     return NextResponse.json({ error: 'Too many reports' }, { status: 429 })
   }
 
-  const body: unknown = await request.json().catch(() => null)
+  let body: unknown
+  try {
+    body = await readLimitedJsonBody(request, MAX_BODY_BYTES)
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: 'Payload too large' }, { status: 413 })
+    body = null
+  }
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'Invalid error report' }, { status: 400 })
   }
@@ -40,21 +39,25 @@ export const POST = withServerError('POST /api/errors', async (request: NextRequ
     return new NextResponse(null, { status: 204 })
   }
 
-  const message = limitedString(report.message, 1_000)
+  const message = sanitizeReportText(report.message, 1_000)
   if (!message) {
     return NextResponse.json({ error: 'Missing error message' }, { status: 400 })
   }
 
   const clientError = new Error(message)
-  clientError.name = limitedString(report.name, 200) ?? 'ClientError'
-  clientError.stack = limitedString(report.stack)
+  clientError.name = sanitizeReportText(report.name, 200) || 'ClientError'
+  clientError.stack = sanitizeReportText(report.stack, MAX_VALUE_LENGTH)
+  const digest = sanitizeReportText(report.digest, 200)
+  const context = {
+    digest,
+    componentStack: sanitizeReportText(report.componentStack, MAX_VALUE_LENGTH),
+    pathname: sanitizePathname(report.pathname),
+    userAgent: sanitizeReportText(request.headers.get('user-agent'), 500),
+  }
 
-  await logger.error('Client error', clientError, {
-    digest: limitedString(report.digest, 200),
-    componentStack: limitedString(report.componentStack),
-    pathname: limitedString(report.pathname, 1_000),
-    userAgent: limitedString(request.headers.get('user-agent'), 500),
-  })
+  const decision = await clientErrorForwarding(clientError.name, message, digest)
+  if (decision === 'forward') await logger.error('Client error', clientError, context)
+  else console.error(`[Client error] not forwarded (${decision})`, clientError, context)
 
   return new NextResponse(null, { status: 204 })
 })

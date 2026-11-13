@@ -33,6 +33,8 @@ import {
   type VerifyToken,
 } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
+import { verifyEmailIpAllowed, verifyEmailRecipientAllowed } from '@/lib/moderation/email-throttle'
+import { clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -175,6 +177,10 @@ export async function POST(req: NextRequest) {
     // Send verification emails to newly added moderators that have an email address.
     const origin = req.nextUrl.origin
     const moderatorsWithNewEmails = toAdd.filter(m => m.email)
+    if (moderatorsWithNewEmails.length > 0 && !await verifyEmailIpAllowed(clientIp(req))) {
+      console.warn('[moderation/moderators] verification emails skipped, sender over its hourly limit')
+      moderatorsWithNewEmails.length = 0
+    }
     if (moderatorsWithNewEmails.length > 0) {
       // Read any existing board name from the moderated boards listing for a friendlier email.
       const { listModeratedBoards } = await import('@/lib/moderation/server')
@@ -203,6 +209,10 @@ export async function POST(req: NextRequest) {
             setAt: now,
           }
           await kv.set(notifyStateKey(m.wallet), notifyState)
+        }
+        if (!await verifyEmailRecipientAllowed(email)) {
+          console.warn('[moderation/moderators] verification email skipped, recipient over its hourly limit')
+          return
         }
         await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })
         await sendVerificationEmail(email, boardName, verifyUrl).catch(e => {
