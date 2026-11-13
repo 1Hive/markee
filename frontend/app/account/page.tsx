@@ -1019,6 +1019,7 @@ function AccountDashboard() {
 
   const fetchAll = useCallback(async (addr: string, refresh = false) => {
     const suffix = refresh ? '?bust=1' : ''
+    const isAdminOf = (lb: { admin?: string | null }) => !!lb.admin && lb.admin.toLowerCase() === addr.toLowerCase()
     setIsLoading(true)
     try {
       const [sfRes, ghRes, oiRes, strRes, fsRes] = await Promise.all([
@@ -1032,7 +1033,7 @@ function AccountDashboard() {
         const data = await sfRes.json()
         setSuperfluidBoards(
           (data.leaderboards ?? [])
-            .filter((lb: BaseLeaderboard & { creator?: string | null }) => (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase())
+            .filter((lb: BaseLeaderboard) => isAdminOf(lb))
             .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
         )
       }
@@ -1040,28 +1041,23 @@ function AccountDashboard() {
         const data = await ghRes.json()
         setGithubBoards(
           (data.leaderboards ?? [])
-            .filter((lb: any) => (lb.creator ?? lb.admin).toLowerCase() === addr.toLowerCase())
+            .filter((lb: any) => isAdminOf(lb))
             .map((lb: any) => ({ ...lb, platform: 'github' as const, linkedFiles: lb.linkedFiles ?? [] }))
         )
       }
       if (oiRes.ok || fsRes.ok) {
         const oiData = oiRes.ok ? await oiRes.json() : { leaderboards: [] }
         const fsData = fsRes.ok ? await fsRes.json() : { leaderboards: [] }
-        const byCreator = (lb: any) => {
-          if (lb.isLegacy) return false
-          const c = lb.creator ?? lb.admin
-          return c && c.toLowerCase() === addr.toLowerCase()
-        }
         setWebsiteBoards([
-          ...(oiData.leaderboards ?? []).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
-          ...(fsData.leaderboards ?? []).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(oiData.leaderboards ?? []).filter((lb: any) => !lb.isLegacy && isAdminOf(lb)).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(fsData.leaderboards ?? []).filter((lb: any) => !lb.isLegacy && isAdminOf(lb)).map((lb: any) => ({ ...lb, platform: 'website' as const })),
         ])
       }
       if (strRes.ok) {
         const data = await strRes.json()
         setStreamingBoards(
           (data.leaderboards ?? [])
-            .filter((lb: any) => lb.admin && lb.admin.toLowerCase() === addr.toLowerCase())
+            .filter((lb: any) => isAdminOf(lb))
             .map((lb: any): AnyLeaderboard => {
               if (lb.platform === 'github') {
                 return { ...lb, platform: 'github', repoFullName: null, repoAvatarUrl: null, repoHtmlUrl: null, filePath: null, linkedFiles: [] }

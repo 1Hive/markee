@@ -263,14 +263,18 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
 }) {
   const toast = useToast()
   const me = activeAddress?.toLowerCase()
-  const isAdmin = !!me && !!lb.admin && lb.admin.toLowerCase() === me
-  const isOwner = isAdmin || (!!me && (lb.creator ?? '').toLowerCase() === me)
   const isStreaming = lb.strategy === 'streaming'
   // Legacy is a website-only historical concept (pre-migration TopDawg boards) -- github/superfluid/
   // streaming-platform listing routes never set it, so every board on those platforms already uses
   // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
   const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
   const contractAddress = lb.address as `0x${string}`
+  const { data: liveAdmin, refetch: refetchAdmin } = useReadContract({
+    address: contractAddress, abi: LeaderboardV11ABI, functionName: 'admin', chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !isLegacyFixed },
+  })
+  const admin = (liveAdmin as string | undefined) ?? lb.admin
+  const isAdmin = !!me && !!admin && admin.toLowerCase() === me
   const { data: boardVersion, isPending: versionLoading } = useReadContract({
     address: contractAddress, abi: LeaderboardV14AdminABI, functionName: 'VERSION', chainId: CANONICAL_CHAIN_ID,
     query: { enabled: !isStreaming && !isLegacyFixed },
@@ -299,7 +303,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
       : { abi: LeaderboardV11ABI, minPrice: null, setMinPrice: null, unit: 'eth' as const, setAdmin: 'setAdmin', limits: false }
   const abi = settings.abi as unknown as Abi
   const adminAbi = ('adminAbi' in settings ? settings.adminAbi : settings.abi) as unknown as Abi
-  const saved = (message: string) => () => { toast(message); onSuccess() }
+  const saved = (message: string) => () => { toast(message); refetchAdmin(); onSuccess() }
 
   // A Rent minimum far above what the current renter streams is almost always a units mistake.
   const currentMonthly = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) * SECONDS_PER_MONTH : 0n
@@ -345,7 +349,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 chosen={!!info?.chosen}
                 views={info ? info.views[it.key] ?? null : null}
                 reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
-                canEdit={isOwner}
+                canEdit={isAdmin}
                 onChanged={() => { reloadIntegrations(); onSuccess() }}
                 onFeaturedChanged={reloadIntegrations}
               />
@@ -353,11 +357,11 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
             {verifying && <VerifyUrl board={lb.address} verifiedUrls={lb.verifiedUrls?.length ? lb.verifiedUrls : (lb as WebsiteLeaderboard).verifiedUrl ? [(lb as WebsiteLeaderboard).verifiedUrl!] : []} onCancel={() => setVerifying(false)} onVerified={() => { setVerifying(false); onSuccess() }} />}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button onClick={onAddToSite} style={pinkOutline}>Add to Your Site</button>
-              {isOwner && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
+              {isAdmin && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
             </div>
           </DrawerSection>
 
-          {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
+          {/* Per-board moderators, managed by the board admin, kept separate from
               lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
               boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
           {!isLegacyFixed && (

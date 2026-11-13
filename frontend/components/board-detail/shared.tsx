@@ -1293,14 +1293,13 @@ function TxEventIcon({ kind }: { kind: TxHistoryEvent['kind'] }) {
   return <div className="w-7 h-7 rounded-full bg-[#FFA94D]/20 flex items-center justify-center flex-shrink-0"><User size={13} className="text-[#FFA94D]" /></div>
 }
 
-export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured, strategy, boardAdmin, boardCreator }: {
+export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, featured, strategy, boardAdmin }: {
   leaderboardAddress: string
   markeeAddress: string
   expanded: boolean
   featured?: boolean
   strategy?: 'fixed' | 'streaming'
   boardAdmin?: string | null
-  boardCreator?: string | null
 }) {
   const { history, bidders, isLoading, error, refresh } = useTxHistory(leaderboardAddress, markeeAddress, expanded, strategy)
   if (!expanded) return null
@@ -1420,10 +1419,10 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   <div>
                     <span className="text-sm font-semibold text-[#EDEEFF]">Changed Message</span>
                     <div className="flex items-center gap-2">
-                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={event.message ?? ''} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
+                      <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={event.message ?? ''} markeeId={markeeAddress} boardAdmin={boardAdmin} className="min-w-0 flex-1">
                         <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message || '(empty message)'}</p>
                       </ModeratedContent>
-                      <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} compact />
+                      <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} compact />
                     </div>
                   </div>
                 ) : event.kind === 'bought' ? (
@@ -1436,10 +1435,10 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                     </div>
                     {event.message && (
                       <div className="flex items-center gap-2">
-                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={event.message ?? ''} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} className="min-w-0 flex-1">
+                        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={event.message ?? ''} markeeId={markeeAddress} boardAdmin={boardAdmin} className="min-w-0 flex-1">
                           <p className="text-sm text-[#EDEEFF] font-mono break-words mt-0.5">{event.message}</p>
                         </ModeratedContent>
-                        <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator} compact />
+                        <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} compact />
                       </div>
                     )}
                   </div>
@@ -1454,7 +1453,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   </div>
                 ) : (
                   <p className="text-sm text-[#EDEEFF]">
-                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin} boardCreator={boardCreator}>{event.name || '(cleared)'}</ModeratedAuthor></span>
+                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin}>{event.name || '(cleared)'}</ModeratedAuthor></span>
                   </p>
                 )}
                 {event.actor && (

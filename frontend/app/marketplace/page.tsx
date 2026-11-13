@@ -41,9 +41,8 @@ interface Leaderboard {
   streamedAt?: number
   topFundsAddedRaw: string
   markeeCount: number
-  // Both already come through in /api/ecosystem/leaderboards' response (every platform route
-  // returns them); only used for moderation eligibility (FlagButton/ModeratedContent's boardAdmin/
-  // boardCreator props), not currently displayed.
+  // Both come through in /api/ecosystem/leaderboards. admin gates moderation (FlagButton and
+  // ModeratedContent boardAdmin); neither is displayed.
   admin?: string
   creator?: string | null
   topMessage: string | null
@@ -438,7 +437,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin}>
               {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
               {lb.topMarkeeOwner && (
                 <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>

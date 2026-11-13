@@ -62,7 +62,6 @@ export const pendingKey = (scope: ModerationScope, board: string) =>
   scope === 'site' ? PENDING_SITE_KEY : `moderation:pending:${board.toLowerCase()}`
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-const CREATOR_PLATFORMS = ['sf', 'gh', 'oi', 'fs'] as const
 
 const PRICING_STRATEGY_ABI = [
   { inputs: [], name: 'pricingStrategy', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
@@ -136,20 +135,18 @@ export async function readBoardModerators(boards: string[]): Promise<BoardModera
   return rows.map(r => r ? normalizeBoardModerators(r) : { moderators: [], updatedAt: 0, updatedBy: '' })
 }
 
-// A board's owners are its on-chain admin() and its KV-cached creator. They always moderate the
-// board and are the only wallets that can change its moderator list.
+export const boardOwnerDeps = { client: () => getModerationClient() }
+
+// A board's only owner is its current on-chain admin(), so transferring admin hands over moderation,
+// moderator management and integration control. A failed read yields no owner.
 export async function readBoardOwners(boards: string[]): Promise<string[][]> {
   if (boards.length === 0) return []
-  const [adminReads, creators] = await Promise.all([
-    getModerationClient().multicall({
-      contracts: boards.map(b => ({ address: b as `0x${string}`, abi: ADMIN_ABI, functionName: 'admin' as const })),
-    }),
-    kv.mget<(string | null)[]>(...boards.flatMap(b => CREATOR_PLATFORMS.map(p => `creator:${p}:${b.toLowerCase()}`))),
-  ])
+  const adminReads = await boardOwnerDeps.client().multicall({
+    contracts: boards.map(b => ({ address: b as `0x${string}`, abi: ADMIN_ABI, functionName: 'admin' as const })),
+  })
   return boards.map((_, i) => {
     const admin = adminReads[i]?.status === 'success' ? (adminReads[i].result as string) : null
-    const boardCreators = creators.slice(i * CREATOR_PLATFORMS.length, (i + 1) * CREATOR_PLATFORMS.length)
-    return [...new Set([admin, ...boardCreators].filter((a): a is string => !!a && a !== ZERO_ADDRESS).map(a => a.toLowerCase()))]
+    return admin && admin !== ZERO_ADDRESS ? [admin.toLowerCase()] : []
   })
 }
 
@@ -190,11 +187,11 @@ export interface ModeratedBoard {
   name: string
   platform: string | null
   strategy: 'fixed' | 'streaming'
-  // Owners (admin and creator) plus the moderators they added.
+  // The board admin plus the moderators it added.
   moderators: string[]
 }
 
-type ListedBoard = { address: string; name?: string; platform?: string; admin?: string | null; creator?: string | null; isLegacy?: boolean }
+type ListedBoard = { address: string; name?: string; platform?: string; isLegacy?: boolean }
 
 // Every v1.x fixed and streaming board, from the same listing routes /account reads, with added
 // moderators merged in. Cached for a minute since every connected wallet polls the queue, and
@@ -206,10 +203,8 @@ export async function listModeratedBoards(): Promise<ModeratedBoard[]> {
 
   const listed = await listBoardsUncached()
   const addresses = listed.map(b => b.address)
-  // readBoardOwners reads creator:* KV keys for all platforms directly, covering Superfluid boards
-  // where lb.creator is null until the creator visits /account (lb.admin is the beneficiary there).
   const [added, owners] = await Promise.all([readBoardModerators(addresses), readBoardOwners(addresses)])
-  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...owners[i], ...b.moderators, ...added[i].moderators.map(m => m.wallet)])] }))
+  const boards = listed.map((b, i) => ({ ...b, moderators: [...new Set([...owners[i], ...added[i].moderators.map(m => m.wallet)])] }))
   await kv.set(BOARDS_CACHE_KEY, boards, { ex: BOARDS_CACHE_TTL }).catch(() => {})
   return boards
 }
@@ -239,13 +234,7 @@ async function listBoardsUncached(): Promise<ModeratedBoard[]> {
   const add = (lb: ListedBoard, platform: string | null, strategy: ModeratedBoard['strategy']) => {
     if (lb.isLegacy || !lb.address) return
     const address = lb.address.toLowerCase()
-    const moderators = [lb.admin, lb.creator].filter((a): a is string => !!a).map(a => a.toLowerCase())
-    const existing = boards.get(address)
-    if (existing) {
-      existing.moderators = [...new Set([...existing.moderators, ...moderators])]
-      return
-    }
-    boards.set(address, { address, name: lb.name || 'Untitled board', platform, strategy, moderators: [...new Set(moderators)] })
+    if (!boards.has(address)) boards.set(address, { address, name: lb.name || 'Untitled board', platform, strategy, moderators: [] })
   }
 
   sf.forEach(lb => add(lb, 'superfluid', 'fixed'))

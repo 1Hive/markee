@@ -19,21 +19,19 @@ interface FlagButtonProps {
   markeeId: string
   /** This markee's board admin -- lets that board's own admin flag messages on it too, not just global admins */
   boardAdmin?: string | null
-  /** This markee's board creator (from lib/leaderboards/resolveCreators.ts) -- same as boardAdmin */
-  boardCreator?: string | null
   /** Compact mode for smaller cards */
   compact?: boolean
 }
 
-export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compact = false }: FlagButtonProps) {
+export function FlagButton({ chainId, markeeId, boardAdmin, compact = false }: FlagButtonProps) {
   const { canModerate, canUnflag, isFlagged, toggleFlag } = useModeration()
   const [isToggling, setIsToggling] = useState(false)
 
-  if (!canModerate(boardAdmin, boardCreator)) return null
+  if (!canModerate(boardAdmin)) return null
 
   const flagged = isFlagged(chainId, markeeId)
   // A global admin can't lift a flag the board's own moderators set.
-  const locked = flagged && !canUnflag(chainId, markeeId, boardAdmin, boardCreator)
+  const locked = flagged && !canUnflag(chainId, markeeId, boardAdmin)
   const iconSize = compact ? 14 : 16
 
   const handleClick = async (e: React.MouseEvent) => {
@@ -43,7 +41,7 @@ export function FlagButton({ chainId, markeeId, boardAdmin, boardCreator, compac
 
     setIsToggling(true)
     try {
-      await toggleFlag(chainId, markeeId, boardAdmin, boardCreator)
+      await toggleFlag(chainId, markeeId, boardAdmin)
     } finally {
       setIsToggling(false)
     }
