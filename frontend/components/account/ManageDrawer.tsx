@@ -67,7 +67,6 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
   const { signMessageAsync } = useSignMessage()
   const { address } = useAccount()
   const toast = useToast()
-  const verifiedFile = !!it.file?.verified
   const unverifiedFile = !!it.file && !it.file.verified
 
   const remove = async () => {
@@ -177,10 +176,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
               {unverifiedFile && <button onClick={verify} style={textBtn(PINK)}>Verify</button>}
               {!featured && !unverifiedFile && <button onClick={() => setFeatured(it.key)} style={textBtn(PINK)}>Feature</button>}
               {featured && chosen && <button onClick={() => setFeatured(null)} title="Feature whichever site gets the most views" style={textBtn(TEXT2)}>Use most viewed</button>}
-              <button
-                onClick={() => verifiedFile ? setError('Remove the Markee markers from this file first, then it can be unlinked.') : setState('confirm')}
-                style={textBtn(verifiedFile ? MUTED : DANGER)}
-              >
+              <button onClick={() => setState('confirm')} style={textBtn(DANGER)}>
                 Remove
               </button>
             </>
@@ -192,7 +188,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
           {reportingTip}. Check the site sends the view call from the embed prompt&apos;s View tracking step.
         </div>
       )}
-      {error && <div style={{ fontSize: 12, color: verifiedFile ? MUTED : DANGER, padding: '0 0 10px' }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: DANGER, padding: '0 0 10px' }}>{error}</div>}
     </div>
   )
 }
