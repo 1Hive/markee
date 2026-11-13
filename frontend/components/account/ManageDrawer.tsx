@@ -19,6 +19,7 @@ import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
 import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
+import { useSiteVerify } from '@/hooks/useSiteVerify'
 import { alreadyVerifiedNote, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
 import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
@@ -202,6 +203,7 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
+  const verifySite = useSiteVerify()
   const normalized = url.trim() && !/^https?:\/\//i.test(url.trim()) ? `https://${url.trim()}` : url.trim()
   // Another page on an already-verified domain would add nothing: sites are one per domain.
   const alreadyVerified = verifiedOnSameDomain(url, verifiedUrls) !== null
@@ -212,13 +214,8 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/openinternet/verify-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: board, url: normalized }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.verified) throw new Error(body?.error ?? 'Could not verify this site.')
+      const result = await verifySite(board, normalized)
+      if (!result.verified) throw new Error(result.error ?? 'Could not verify this site.')
       toast('Site verified and added')
       onVerified()
     } catch (e) {

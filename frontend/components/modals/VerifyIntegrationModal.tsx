@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { X, CheckCircle2, AlertCircle, Loader2, ExternalLink, Globe2 } from 'lucide-react'
+import { useSiteVerify } from '@/hooks/useSiteVerify'
 
 interface VerifyIntegrationModalProps {
   isOpen: boolean
@@ -22,6 +23,7 @@ export function VerifyIntegrationModal({
   onVerified,
   onOpenIntegration,
 }: VerifyIntegrationModalProps) {
+  const verifySite = useSiteVerify()
   const [verifyUrl, setVerifyUrl] = useState('')
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
@@ -59,12 +61,7 @@ export function VerifyIntegrationModal({
     setVerifyError(null)
     setVerifying(true)
     try {
-      const res = await fetch('/api/openinternet/verify-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: leaderboard.address, url: verifyUrl.trim() }),
-      })
-      const data = await res.json()
+      const data = await verifySite(leaderboard.address, verifyUrl.trim())
       if (data.verified) {
         const urls: string[] = data.verifiedUrls ?? [...localVerifiedUrls, verifyUrl.trim()]
         setLocalVerifiedUrls(urls)

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useAccount, useSignMessage } from 'wagmi'
+import { useSiteVerify } from '@/hooks/useSiteVerify'
 import { Check, Copy } from 'lucide-react'
 import { CopyButton } from '@/components/board-detail/shared'
 import { TxSteps, TxRing } from '@/components/modals/StreamUI'
@@ -112,6 +113,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [policyError, setPolicyError] = useState<string | null>(null)
   const { address: owner } = useAccount()
   const { signMessageAsync } = useSignMessage()
+  const verifySite = useSiteVerify()
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
   const [showModerationInfo, setShowModerationInfo] = useState(false)
@@ -175,13 +177,14 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
     let detectOk = false
     try {
       const [res] = await Promise.all([
-        fetch('/api/openinternet/verify-url', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, url: siteUrl }),
-        }).then(r => r.json()).catch(() => ({ verified: false, error: 'Network error' })),
+        verifySite(address, siteUrl).catch(() => ({ verified: false, unauthorized: false, error: 'Network error' })),
         wait(STEP_MIN_MS),
       ])
       detectOk = !!res.verified
+      if (!detectOk && res.unauthorized) {
+        bail(res.error ?? "Only this board's admin can verify a site.")
+        return
+      }
       if (!detectOk) {
         const reachIssue = /reach|HTTP \d|network/i.test(res.error || '')
         bail(reachIssue
