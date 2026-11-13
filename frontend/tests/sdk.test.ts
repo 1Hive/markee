@@ -79,15 +79,12 @@ test('authorization nonce can be consumed exactly once', async () => {
   assert.equal(results.find(Boolean)!.amount, 123n);
 });
 test('community activations stop at each daily limit without counting refused requests', async () => {
-  clearMarkeeChallengesForTests();
-  const reserve = (requester: string) => reserveMarkeeActivation({ namespace: 'sdk-test', limits: [{ subject: 'global', max: 3 }, { subject: requester, max: 2 }] });
+  const reserve = (requester: string) => reserveMarkeeActivation({ namespace: 'sdk-activation-test', limits: [{ subject: 'global', max: 3 }, { subject: requester, max: 2 }] });
   await reserve('a');
   await reserve('a');
   await assert.rejects(reserve('a'), MarkeeChallengeRateLimitError);
   await reserve('b');
   await assert.rejects(reserve('c'), MarkeeChallengeRateLimitError);
-  clearMarkeeChallengesForTests();
-  await reserve('a');
 });
 test('replaying an admin request returns its saved result without executing a second time', async () => {
   let calls = 0;
