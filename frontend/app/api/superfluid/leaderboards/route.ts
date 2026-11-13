@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
@@ -71,12 +72,7 @@ async function loadListing(request: Request) {
     // Fetch S6 boosted list and any stored baselines in parallel with factory call
     const boostedListPromise = kv.get<BoostedMarkee[]>(BOOSTED_KEY).then(b => b ?? [])
 
-    const addresses = await client.readContract({
-      address: SUPERFLUID_FACTORY_ADDRESS,
-      abi: LeaderboardFactoryABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }) as `0x${string}`[]
+    const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.SUPERFLUID, [SUPERFLUID_FACTORY_ADDRESS, V14_FACTORIES.SUPERFLUID])
 
     if (addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage: null }, {
@@ -128,9 +124,9 @@ async function loadListing(request: Request) {
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses, {
+      resolveCreators(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'sf',
-        factories: [SUPERFLUID_FACTORY_ADDRESS],
+        factories: [SUPERFLUID_FACTORY_ADDRESS, V14_FACTORIES.SUPERFLUID],
         fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         logLabel: 'superfluid/leaderboards',
       }),
@@ -178,6 +174,7 @@ async function loadListing(request: Request) {
 
       return {
         address: addr,
+        migratedFrom: predecessorOf.get(addr.toLowerCase()) ?? null,
         name,
         totalFunds: formatEther(adjustedTotalFunds),
         totalFundsRaw: adjustedTotalFunds.toString(),
@@ -209,7 +206,7 @@ async function loadListing(request: Request) {
 
     let totalFundsRaw = 0n
     for (const l of leaderboards) {
-      if (!GAMED_LEADERBOARD_ADDRESSES.has(l.address.toLowerCase())) {
+      if (!GAMED_LEADERBOARD_ADDRESSES.has(originalBoard(l.address, predecessorOf).toLowerCase())) {
         totalFundsRaw += BigInt(l.totalFundsRaw)
       }
     }
@@ -221,7 +218,7 @@ async function loadListing(request: Request) {
 
     // Derive featuredMessage from the SF migration leaderboard entry
     const migrationEntry = leaderboards.find(
-      l => l.address.toLowerCase() === SF_MIGRATION_LEADERBOARD.toLowerCase()
+      l => originalBoard(l.address, predecessorOf).toLowerCase() === SF_MIGRATION_LEADERBOARD.toLowerCase()
     )
     const featuredMessage = migrationEntry?.topMessage ? {
       message: migrationEntry.topMessage,
@@ -233,8 +230,9 @@ async function loadListing(request: Request) {
 
     // Build boostedLeaderboards: ordered by the boostedList order, with full metadata merged in
     const leaderboardMap = new Map(leaderboards.map(l => [l.address.toLowerCase(), l]))
+    const successorOf = new Map([...predecessorOf].map(([successor, predecessor]) => [predecessor.toLowerCase(), successor]))
     const boostedLeaderboards = boostedList.map(b => {
-      const lb = leaderboardMap.get(b.address.toLowerCase())
+      const lb = leaderboardMap.get(b.address.toLowerCase()) ?? leaderboardMap.get(successorOf.get(b.address.toLowerCase()) ?? '')
       return { ...b, leaderboard: lb ?? null }
     })
 

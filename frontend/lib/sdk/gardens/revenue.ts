@@ -1,4 +1,5 @@
 import { recordAdminBroadcast } from '../operations';
+import { currentSdkBoard } from '../migration';
 // Adapted from Gardens V2 apps/web/services/markeeServer.ts at 078d17954ad38dba7a142eb3cee59002f44d303f.
 import {
   Address,
@@ -1556,8 +1557,8 @@ const getCommunityLeaderboard = async (chainId: number, community: Address) => {
     args: [getCommunityKey(chainId, community)],
     functionName: "communityIntegration",
   });
-  const leaderboardAddress = integration.leaderboard;
-  if (leaderboardAddress === zeroAddress) return null;
+  if (integration.leaderboard === zeroAddress) return null;
+  const leaderboardAddress = await currentSdkBoard(getMarkeeChainId(chainId), integration.leaderboard);
 
   const [
     minimumMonthlyRate,

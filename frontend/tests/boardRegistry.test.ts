@@ -24,6 +24,12 @@ test('every v1.3, For Sale and streaming factory is checked', () => {
   }
 })
 
+test('every v1.4 factory is checked', () => {
+  for (const factory of ['0xf504274DbB1054aABB055076C0052806be9A810b', '0xD7363FED82eD7fd6663243DFD7E2647d6BF02711', '0xf1cd0906820c42fC50b225D9adF9F6961C79Ca00', '0x048589C50bc1C6053cAC7B9d4463ddDc0973a06b']) {
+    assert.ok(BOARD_FACTORIES.includes(factory.toLowerCase() as `0x${string}`), factory)
+  }
+})
+
 test('minimal proxy code matches the board clone runtime', () => {
   assert.equal(
     minimalProxyCode('0xAbCdEf0123456789aBcDeF0123456789AbCdEf01'),

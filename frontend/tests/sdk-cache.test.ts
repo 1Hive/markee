@@ -144,7 +144,7 @@ test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads'
   t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
     reads++
     const results: Record<string, unknown> = { VERSION: version, factory: beaconVersions.has(version) ? factoryV14 : zeroAddress, isFactoryLeaderboard: true, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
-      ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council }
+      ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council, status: 0, markeeSuccessorOf: zeroAddress }
     if (!(functionName in results)) throw new Error(`Unexpected read ${functionName}`)
     return results[functionName]
   })
@@ -429,4 +429,138 @@ test('ecosystem refresh and concurrent marketplace read share one published list
   assert.equal(saleReads, 1, 'a concurrent cold reader must not start a second aggregate loader')
   await GET(new Request('https://markee.example/api/ecosystem/leaderboards'))
   assert.equal(saleReads, 1, 'subsequent marketplace reads must reuse the published snapshot')
+})
+
+test('migration resolution caches finished successors permanently and rechecks unmigrated boards', async t => {
+  const { currentSdkBoard, migrationDeps, clearMigrationMemoryForTests } = await import('../lib/sdk/migration')
+  const db = database()
+  t.mock.method(snapshotStorage, 'get', () => db.store)
+  const previousUrl = process.env.KV_REST_API_URL, previousToken = process.env.KV_REST_API_TOKEN
+  process.env.KV_REST_API_URL = 'https://unused.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.KV_REST_API_URL; else process.env.KV_REST_API_URL = previousUrl
+    if (previousToken === undefined) delete process.env.KV_REST_API_TOKEN; else process.env.KV_REST_API_TOKEN = previousToken
+    clearMigrationMemoryForTests()
+  })
+  const legacy = '0x4444444444444444444444444444444444444444' as const
+  const successor = '0x5555555555555555555555555555555555555555' as const
+  const unmigrated = '0x6666666666666666666666666666666666666666' as const
+  let clock = 1_000_000
+  let lookups = 0
+  t.mock.method(migrationDeps, 'now', () => clock)
+  t.mock.method(migrationDeps, 'boardSuccessor', async (board: string) => { lookups++; return board === legacy ? successor : null })
+  clearMigrationMemoryForTests()
+  assert.equal(await currentSdkBoard(8453, legacy), successor)
+  assert.equal(await currentSdkBoard(8453, unmigrated), unmigrated)
+  assert.equal(lookups, 2)
+  clearMigrationMemoryForTests()
+  assert.equal(await currentSdkBoard(8453, legacy), successor, 'a fresh instance reads the shared finished result')
+  assert.equal(lookups, 2)
+  db.advance(61_000); clock += 61_000
+  clearMigrationMemoryForTests()
+  assert.equal(await currentSdkBoard(8453, legacy), successor)
+  assert.equal(await currentSdkBoard(8453, unmigrated), unmigrated)
+  assert.equal(lookups, 3, 'only the unmigrated board is looked up again')
+  assert.equal(await currentSdkBoard(11155111, legacy), legacy)
+  assert.equal(lookups, 3)
+})
+
+test('legacy board and Markee addresses prepare on the successor while echoing the caller input', async t => {
+  const { prepare, verifyEnvelope } = await import('../lib/sdk/transactions')
+  const { snapshot, snapshotReaders } = await import('../lib/sdk/snapshot')
+  const { getEnvPublicClient } = await import('../lib/sdk/chains')
+  const { migrationDeps, clearMigrationMemoryForTests } = await import('../lib/sdk/migration')
+  const { checkoutDeps } = await import('../lib/sdk/checkout')
+  const { V14_FACTORIES, BASE_STREAMING_FACTORY } = await import('../lib/contracts/addresses')
+  const { getMarkeeEthxAddress, CFA_V1_FORWARDER_ADDRESS, cfaV1ForwarderABI } = await import('../lib/sdk/gardens/streaming')
+  const { boardABI } = await import('../lib/sdk/abi')
+  const { decodeFunctionData, zeroAddress } = await import('viem')
+  const flag = process.env.FLAG_AUTO_MODERATION
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  const previousUrl = process.env.KV_REST_API_URL
+  delete process.env.KV_REST_API_URL
+  t.after(() => {
+    if (flag === undefined) delete process.env.FLAG_AUTO_MODERATION; else process.env.FLAG_AUTO_MODERATION = flag
+    if (previousUrl !== undefined) process.env.KV_REST_API_URL = previousUrl
+    clearMigrationMemoryForTests()
+  })
+  clearMigrationMemoryForTests()
+  const account = '0x1111111111111111111111111111111111111111' as const
+  const legacySale = '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' as const
+  const successorSale = '0xe6fDab2eD2eE833b39d37504940A66695fb12f0B' as const
+  const legacyRent = '0x82cbe3BdFC4e01940D186Ac5EA151355647DE0d3' as const
+  const successorRent = '0x7F625449Bcda0E330B5C97312452F83F0e4b23ed' as const
+  const legacyMarkee = '0x7777777777777777777777777777777777777777' as const
+  const successorMarkee = '0x8888888888888888888888888888888888888888' as const
+  const legacyRentMarkee = '0x9999999999999999999999999999999999999999' as const
+  const successorRentMarkee = '0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa' as const
+  const ethx = getMarkeeEthxAddress(8453)!
+  const boards = new Set([successorSale, successorRent, legacyRent].map(a => a.toLowerCase()))
+  const markeeBoard: Record<string, string> = { [successorMarkee.toLowerCase()]: successorSale, [legacyRentMarkee.toLowerCase()]: legacyRent, [successorRentMarkee.toLowerCase()]: successorRent }
+  t.mock.method(migrationDeps, 'boardSuccessor', async (board: string) => ({ [legacySale]: successorSale, [legacyRent]: successorRent } as Record<string, string>)[board] ?? null)
+  t.mock.method(migrationDeps, 'markeeSuccessor', async (markee: string) => ({ [legacyMarkee]: successorMarkee, [legacyRentMarkee]: successorRentMarkee } as Record<string, string>)[markee] ?? null)
+  t.mock.method(snapshotReaders, 'presentation', async () => ({ flags: [], views: [], metadata: null }))
+  const client = getEnvPublicClient(8453)
+  t.mock.method(client, 'getBalance', async () => 10n ** 18n)
+  t.mock.method(client, 'getBlockNumber', async () => 100n)
+  t.mock.method(client, 'getGasPrice', async () => 1n)
+  t.mock.method(client, 'estimateGas', async () => 100_000n)
+  t.mock.method(client, 'readContract', async ({ address, functionName, args = [] }: { address: string; functionName: string; args?: readonly unknown[] }) => {
+    const target = address.toLowerCase()
+    const legacy = target === legacyRent.toLowerCase()
+    if (boards.has(target)) {
+      const rent = target !== successorSale.toLowerCase()
+      const values: Record<string, unknown> = { VERSION: rent ? 'streaming-1.0.0' : '1.4.0', factory: rent ? BASE_STREAMING_FACTORY : V14_FACTORIES.FOR_SALE, leaderboardName: 'Board', minimumPrice: 1n, minimumMonthlyRate: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: false, markeeCount: 1n, getTopMarkees: [[], []], topMarkee: zeroAddress, beneficiaryAddress: account,
+        isMarkeeOnLeaderboard: markeeBoard[String(args[0]).toLowerCase()]?.toLowerCase() === target, ETHX: ethx, HOST: zeroAddress, backerMarkee: legacy ? legacyRentMarkee : zeroAddress, backerDeposit: legacy ? 10n ** 18n : 0n, pendingSettlement: 0n, poolOf: zeroAddress, aggregateRate: 0n, currentLegacyFloor: 0n, effectiveRate: 0n }
+      if (functionName in values) return values[functionName]
+    }
+    if (markeeBoard[target]) {
+      const values: Record<string, unknown> = { pricingStrategy: markeeBoard[target], owner: account, message: 'Hello', name: 'Name', totalFundsAdded: 0n }
+      if (functionName in values) return values[functionName]
+    }
+    if (functionName === 'isFactoryLeaderboard') return boards.has(String(args[0]).toLowerCase())
+    if (functionName === 'getAgreementClass') return zeroAddress
+    if (functionName === 'realtimeBalanceOfNow') return [10n ** 18n, 0n, 0n, 123n]
+    if (functionName === 'getFlow') return [0n, String(args[2]).toLowerCase() === legacyRent.toLowerCase() ? 5n : 0n, 0n, 0n]
+    if (functionName === 'getNetFlow') return 0n
+    if (functionName === 'allowance' || functionName === 'balanceOf') return 0n
+    throw new Error(`Unexpected read ${functionName} on ${address}`)
+  })
+
+  const sale = { kind: 'board' as const, chainId: 8453, address: legacySale }
+  const fund = { kind: 'fund' as const, markee: legacyMarkee, amount: '1000' }
+  const prepared = await prepare(sale, account, fund)
+  assert.equal(prepared.transaction.to, successorSale)
+  assert.deepEqual(decodeFunctionData({ abi: boardABI, data: prepared.transaction.data }).args, [successorMarkee])
+  assert.deepEqual(prepared.placement, sale, 'old clients match pending records on their own placement')
+  assert.deepEqual(prepared.action, fund)
+  assert.equal(verifyEnvelope(prepared.id).board, successorSale)
+
+  const saleView = await snapshot(sale)
+  assert.equal(saleView.board, successorSale)
+  assert.deepEqual(saleView.placement, sale)
+
+  const rent = { kind: 'board' as const, chainId: 8453, address: legacyRent }
+  const rentView = await snapshot(rent, account)
+  assert.equal(rentView.board, successorRent)
+  assert.equal(rentView.wallet?.flowRate, '5', 'an open legacy stream stays visible so the backer can exit it')
+  assert.equal(rentView.wallet?.backedMarkee, successorRentMarkee)
+  const stop = await prepare(rent, account, { kind: 'stop' })
+  assert.equal(stop.transaction.to, CFA_V1_FORWARDER_ADDRESS)
+  assert.deepEqual(decodeFunctionData({ abi: cfaV1ForwarderABI, data: stop.transaction.data }).args, [ethx, legacyRent, 0n])
+  const withdraw = await prepare(rent, account, { kind: 'withdraw-buffer' })
+  assert.equal(withdraw.transaction.to, legacyRent, 'buffers are recovered from the board holding them')
+  const claimTop = await prepare(rent, account, { kind: 'claim-top', markee: legacyRentMarkee })
+  assert.equal(claimTop.transaction.to, successorRent, 'new activity never reaches the legacy streaming board')
+  assert.deepEqual(decodeFunctionData({ abi: boardABI, data: claimTop.transaction.data }).args, [successorRentMarkee])
+
+  t.mock.method(checkoutDeps, 'create', async () => undefined)
+  const { boardPolicyDeps } = await import('../lib/moderation/board-policy')
+  t.mock.method(boardPolicyDeps, 'get', async () => null)
+  await assert.rejects(
+    (await import('../lib/sdk/checkout')).createCheckout({ placement: sale, action: fund }, 'https://sample.example'),
+    (e: unknown) => (e as { code?: string }).code === 'REWARDS_UNAVAILABLE',
+    'checkout membership passes on the successor before the rewards gate',
+  )
 })

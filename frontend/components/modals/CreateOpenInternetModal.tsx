@@ -7,11 +7,11 @@ import { useAccount, useSwitchChain } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
-import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { beneficiaryError } from '@/lib/beneficiary'
 
-const OI_FACTORY_ADDRESS = '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c' as const
+const OI_FACTORY_ADDRESS = V14_FACTORIES.OPEN_INTERNET
 
 const FACTORY_ABI = [
   {

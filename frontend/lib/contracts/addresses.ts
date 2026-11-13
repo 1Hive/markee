@@ -39,6 +39,25 @@ export const FACTORIES = {
   FOR_SALE: '0x861D9897eC47421aAFB6321Ee219E88ab485121f' as const,
 } as const
 
+// Beacon-backed v1.4 factories. New boards of each platform are created here, and each legacy v1.3 board
+// is copied here by its platform's migrator.
+export const V14_FACTORIES = {
+  SUPERFLUID: '0xf504274DbB1054aABB055076C0052806be9A810b' as const,
+  OPEN_INTERNET: '0xD7363FED82eD7fd6663243DFD7E2647d6BF02711' as const,
+  GITHUB: '0xf1cd0906820c42fC50b225D9adF9F6961C79Ca00' as const,
+  FOR_SALE: '0x048589C50bc1C6053cAC7B9d4463ddDc0973a06b' as const,
+} as const
+
+export const BOARD_MIGRATORS = {
+  STREAMING: '0xF714A057cf44E0371A9B6C766FF5A140595C5aE4' as const,
+  SUPERFLUID: '0x51395da8b7C0CfA5C95Ac629F44728F8B1404933' as const,
+  OPEN_INTERNET: '0xB1f771aAcEAd2949DFe041675F30c57CBDa3BA94' as const,
+  GITHUB: '0x0bBB1f80bB8A32086D306AAcC83b92539FfA765C' as const,
+  FOR_SALE: '0xb40Ede4AB15b429c52e168908a49089D6e04035B' as const,
+} as const
+
+export const V14_FACTORIES_DEPLOY_BLOCK = 56_993_907n
+
 // Block the "For Sale" factory was deployed at — scopes its creation-event getLogs scan instead of
 // walking the whole chain from genesis (tx 0x769a81d4f2be60a9e2dbb278358cf7d19abfcfe2d0a56187c5d7aa21f151c983).
 export const FOR_SALE_FACTORY_DEPLOY_BLOCK = 49_981_127n

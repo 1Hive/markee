@@ -9,6 +9,7 @@ const SANS = "Manrope,system-ui,sans-serif"
 
 interface EmbedData {
   address: string
+  currentAddress?: string
   leaderboardName: string
   topMarkeeAddress: string | null
   message: string
@@ -36,7 +37,7 @@ export default function EmbedPage() {
     return () => clearInterval(t)
   }, [address])
 
-  const pageUrl   = `https://markee.xyz/markee/${address}`
+  const pageUrl   = `https://markee.xyz/markee/${data?.currentAddress ?? address}`
   const hasMsg    = !!data?.message
 
   return (

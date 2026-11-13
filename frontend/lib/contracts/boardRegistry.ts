@@ -2,12 +2,12 @@
 
 import { useReadContracts } from 'wagmi'
 import { isAddress, parseAbi, type Address, type PublicClient } from 'viem'
-import { CANONICAL_CHAIN_ID, FACTORIES, STREAMING_FACTORY } from '@/lib/contracts/addresses'
+import { CANONICAL_CHAIN_ID, FACTORIES, STREAMING_FACTORY, V14_FACTORIES } from '@/lib/contracts/addresses'
 
 const PRODUCTION_STREAMING_FACTORY = '0x37f420fdE5c98e611EB7cb9b74ef579D84697039'
 
 export const BOARD_FACTORIES: Address[] = [...new Set(
-  [...Object.values(FACTORIES), PRODUCTION_STREAMING_FACTORY, STREAMING_FACTORY]
+  [...Object.values(FACTORIES), ...Object.values(V14_FACTORIES), PRODUCTION_STREAMING_FACTORY, STREAMING_FACTORY]
     .filter(a => isAddress(a))
     .map(a => a.toLowerCase()),
 )] as Address[]

@@ -3,7 +3,8 @@ import { autoEnabled, evaluateObservedBatch } from './automatic'
 import { trustedMembership } from './membership'
 import { kv } from '@vercel/kv'
 import { parseAbi } from 'viem'
-import { FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
+import { BOARD_MIGRATORS, FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { MIGRATION_FINISHED } from '@/lib/contracts/migration'
 import { SCOPES, isPendingIn, observeMessage, type MessageObservation } from '@/lib/moderation/queue'
 import { BASELINE_KEY, flagKey, getModerationClient, itemKey, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
 import { recordActivity, type BoardTop } from '@/lib/activity/server'
@@ -26,6 +27,11 @@ const PAGE_ABI = [
     name: 'getTopMarkees', outputs: [{ type: 'address[]' }, { type: 'uint256[]' }], stateMutability: 'view', type: 'function',
   },
 ] as const
+
+const MIGRATOR_ABI = parseAbi([
+  'function status(address) view returns (uint8)',
+  'function predecessorOf(address) view returns (address)',
+])
 
 const STRATEGY_ABI = [
   { inputs: [], name: 'pricingStrategy', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
@@ -113,10 +119,50 @@ function count(result: CallResult | undefined): bigint | null {
 const call = (address: string, functionName: (typeof PAGE_ABI)[number]['name'], args: readonly bigint[] = []) =>
   ({ address: address as `0x${string}`, abi: PAGE_ABI, functionName, args })
 
-// The same boards the listing routes show: the v1.3 factories (earlier versions were migrated
-// into them), the migrated partner boards, and the streaming factory. Every page is read.
+type LumpSumPlatform = keyof typeof V14_FACTORIES
+const LUMP_SUM_PLATFORMS = Object.keys(V14_FACTORIES) as LumpSumPlatform[]
+const LUMP_SUM_MIGRATORS = LUMP_SUM_PLATFORMS.map(platform => BOARD_MIGRATORS[platform])
+
+function migratorByFactory(): Map<string, string> {
+  const entries: [string, string][] = LUMP_SUM_PLATFORMS.flatMap(platform => [
+    [FACTORIES[platform].toLowerCase(), BOARD_MIGRATORS[platform]],
+    [V14_FACTORIES[platform].toLowerCase(), BOARD_MIGRATORS[platform]],
+  ])
+  if (STREAMING_ENABLED) entries.push([STREAMING_FACTORY.toLowerCase(), BOARD_MIGRATORS.STREAMING])
+  return new Map(entries)
+}
+
+const knownStatus = (r: CallResult | undefined) => r?.status === 'success' && typeof r.result === 'number' ? r.result : null
+const knownPredecessor = (r: CallResult | undefined) =>
+  r?.status === 'success' && typeof r.result === 'string' && r.result.toLowerCase() !== ZERO_ADDRESS ? r.result.toLowerCase() : null
+
+// Mirrors the listing routes: a finished legacy board and a successor whose migration is still
+// running are hidden. Only a positive on-chain answer hides a board, so a failed read keeps it scanned.
+async function hiddenByMigration(client: Client, candidates: { board: string; migrator: string }[], blockNumber: bigint): Promise<Set<string>> {
+  const firstPass = await multicallChunked(client, candidates.flatMap(({ board, migrator }) => [
+    { address: migrator as `0x${string}`, abi: MIGRATOR_ABI, functionName: 'status', args: [board] },
+    { address: migrator as `0x${string}`, abi: MIGRATOR_ABI, functionName: 'predecessorOf', args: [board] },
+  ]), BOARD_CHUNK, blockNumber)
+  const hidden = new Set<string>()
+  const pending: { board: string; migrator: string; predecessor: string }[] = []
+  candidates.forEach((candidate, i) => {
+    if (knownStatus(firstPass[i * 2]) === MIGRATION_FINISHED) hidden.add(candidate.board)
+    const predecessor = knownPredecessor(firstPass[i * 2 + 1])
+    if (predecessor) pending.push({ ...candidate, predecessor })
+  })
+  const predecessorStatuses = await multicallChunked(client, pending.map(({ migrator, predecessor }) =>
+    ({ address: migrator as `0x${string}`, abi: MIGRATOR_ABI, functionName: 'status', args: [predecessor] })), BOARD_CHUNK, blockNumber)
+  pending.forEach(({ board }, i) => {
+    const status = knownStatus(predecessorStatuses[i])
+    if (status !== null && status !== MIGRATION_FINISHED) hidden.add(board)
+  })
+  return hidden
+}
+
+// The same boards the listing routes show: the v1.3 and v1.4 factories, the migrated partner boards,
+// and the streaming factory, minus boards hidden by an in-place migration. Every page is read.
 async function listBoards(client: Client, blockNumber: bigint): Promise<{ boards: string[]; streaming: Set<string> }> {
-  const factories: string[] = [...Object.values(FACTORIES), ...(STREAMING_ENABLED ? [STREAMING_FACTORY] : [])]
+  const factories: string[] = [...Object.values(FACTORIES), ...Object.values(V14_FACTORIES), ...(STREAMING_ENABLED ? [STREAMING_FACTORY] : [])]
   const counts = await multicallChunked(client, factories.map(f => call(f, 'leaderboardCount')), BOARD_CHUNK, blockNumber)
   const pageOwners: string[] = []
   const pageCalls = factories.flatMap((f, i) => {
@@ -129,9 +175,17 @@ async function listBoards(client: Client, blockNumber: bigint): Promise<{ boards
     return offsets.map(offset => call(f, 'getLeaderboards', [offset, PAGE_SIZE]))
   })
   const pages = await multicallChunked(client, pageCalls, BOARD_CHUNK, blockNumber)
-  const boards = [...pages.flatMap(addresses), ...Object.values(V13_LEADERBOARDS).map(b => b.toLowerCase())]
-  const streaming = new Set(STREAMING_ENABLED ? pages.flatMap((p, i) => pageOwners[i] === STREAMING_FACTORY ? addresses(p) : []) : [])
-  return { boards: [...new Set(boards)], streaming }
+  const migrators = migratorByFactory()
+  const listed = new Map(pages.flatMap((p, i) => addresses(p).map(board => [board, migrators.get(pageOwners[i].toLowerCase())] as const)))
+  const roots = Object.values(V13_LEADERBOARDS).map(b => b.toLowerCase())
+  const candidates = [
+    ...[...listed].flatMap(([board, migrator]) => migrator ? [{ board, migrator }] : []),
+    ...roots.filter(root => !listed.has(root)).flatMap(board => LUMP_SUM_MIGRATORS.map(migrator => ({ board, migrator }))),
+  ]
+  const hidden = await hiddenByMigration(client, candidates, blockNumber)
+  const boards = [...new Set([...listed.keys(), ...roots])].filter(board => !hidden.has(board))
+  const streaming = new Set(STREAMING_ENABLED ? pages.flatMap((p, i) => pageOwners[i] === STREAMING_FACTORY ? addresses(p).filter(board => !hidden.has(board)) : []) : [])
+  return { boards, streaming }
 }
 
 export async function listMarkees(client: Client, boards: string[], blockNumber: bigint, at: number) {

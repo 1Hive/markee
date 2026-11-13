@@ -2,7 +2,7 @@ import type { ModerationSeverity } from '../moderation/severity';
 import { automaticDeps, autoEnabled, evaluateObservedBatch } from '../moderation/automatic';
 import { getAddress, parseAbi, zeroAddress, type Abi, type Address, type PublicClient } from 'viem';
 import type { CommunityState, Entry, Placement, Snapshot, WalletState } from '../../../packages/sdk/src/types';
-import { MARKEE_TOKEN } from '../contracts/addresses';
+import { MARKEE_TOKEN, V14_FACTORIES } from '../contracts/addresses';
 import { boardABI, cfaABI, gdaABI, messageABI, poolABI, tokenABI } from './abi';
 import { getEnvPublicClient, registryCommunityABI } from './chains';
 import { markeeAdapter } from './gardens/revenue';
@@ -11,6 +11,7 @@ import { SDKError } from './validation';
 import { strategyForBoardVersion, type Strategy } from '../strategy';
 import { readPresentationData } from './presentation-data';
 import { displayCache, displayCacheConfigured, displayKey } from './cached-display';
+import { currentSdkBoard, currentSdkMarkee } from './migration';
 
 const SDK_STRATEGY: Record<Strategy, 'sale' | 'rent'> = { fixed: 'sale', streaming: 'rent' };
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -39,7 +40,9 @@ export async function resolvePlacement(p: Placement, account?: Address) {
   return { board: community.integration.leaderboardAddress, chainId: community.markeeChainId, community };
 }
 
-export async function boardContext(chainId: number, board: Address, trustedCommunity = false) {
+export async function boardContext(chainId: number, requestedBoard: Address, trustedCommunity = false, followMigration = true) {
+  const board = followMigration ? await currentSdkBoard(chainId, requestedBoard) : requestedBoard;
+  const legacyBoard = same(board, requestedBoard) ? null : requestedBoard;
   const client = getEnvPublicClient(chainId);
   const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
   const r = <T>(fn: string, args: readonly unknown[] = []) => read<T>(client, board, boardABI, fn, args, blockNumber);
@@ -52,9 +55,10 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
     process.env[`MARKEE_SDK_FACTORIES_${chainId}`] || '',
     process.env[chainId === 8453 ? 'MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE' : 'MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_SEPOLIA'] || '',
     chainId === 8453 ? process.env.NEXT_PUBLIC_STREAMING_FACTORY || '' : '',
+    ...(chainId === 8453 ? Object.values(V14_FACTORIES) : []),
   ].flatMap(s => s.split(',')).filter(Boolean);
   const roots = ['0x2768BC6e90266248BD8bCF5401C36D8049CdF671', '0x0590b56430426A38D0fA065b839c10D542E75CCD'];
-  const trustedRoot = chainId === 8453 && roots.some(a => same(a, board));
+  const trustedRoot = chainId === 8453 && roots.some(a => same(a, requestedBoard));
   if (!trustedCommunity && !trustedRoot) {
     if (!factories.some(a => same(a.trim(), factory))) throw new SDKError('UNTRUSTED_FACTORY', 'This board factory has not been enabled by Markee.', 422);
     if (!await read<boolean>(client, factory, parseAbi(['function isFactoryLeaderboard(address) view returns (bool)']), 'isFactoryLeaderboard', [board], blockNumber)) throw new SDKError('INVALID_BOARD', 'The factory does not recognize this board.', 422);
@@ -66,7 +70,7 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
   ]);
   const top = strategy === 'rent' ? await r<Address>('topMarkee') : ranked[0][0] || zeroAddress;
   const token = chainId === 8453 ? MARKEE_TOKEN : process.env.MARKEE_SDK_TOKEN_SEPOLIA as Address | undefined;
-  return { client, blockNumber, r, chainId, board, strategy, beneficiary, name, minimum, maxMessageBytes: Number(maxMessage), maxNameBytes: Number(maxName), revnetEnabled, count: Number(count), ranked, top, token: token || null };
+  return { client, blockNumber, r, chainId, board, legacyBoard, strategy, beneficiary, name, minimum, maxMessageBytes: Number(maxMessage), maxNameBytes: Number(maxName), revnetEnabled, count: Number(count), ranked, top, token: token || null };
 }
 export type BoardContext = Awaited<ReturnType<typeof boardContext>>;
 
@@ -108,6 +112,18 @@ export async function walletState(c: BoardContext, account: Address): Promise<Wa
   };
 }
 
+export const hasStreamState = (w: WalletState) =>
+  BigInt(w.flowRate) > 0n || BigInt(w.deposit) > 0n || BigInt(w.pendingSettlement) > 0n || BigInt(w.poolClaimable) > 0n;
+
+/** Open streams and deposits stay on a migrated streaming board until the backer exits it. */
+export async function walletStateWithLegacyStream(c: BoardContext, account: Address): Promise<WalletState> {
+  const wallet = await walletState(c, account);
+  if (!c.legacyBoard || c.strategy !== 'rent' || hasStreamState(wallet)) return wallet;
+  const legacy = await walletState(await boardContext(c.chainId, c.legacyBoard, true, false), account);
+  if (!hasStreamState(legacy)) return wallet;
+  return { ...legacy, backedMarkee: legacy.backedMarkee && await currentSdkMarkee(c.chainId, legacy.backedMarkee) };
+}
+
 async function loadSnapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
   const resolved = await resolvePlacement(p);
   const warnings: string[] = [];
@@ -115,7 +131,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
   const c = await boardContext(resolved.chainId, getAddress(resolved.board), p.kind === 'gardens-community');
   const [addresses, wallet] = await Promise.all([
     offset !== undefined ? c.r<Address[]>('getMarkees', [BigInt(offset), 20n]) : c.ranked[0],
-    account ? walletState(c, account) : null,
+    account ? walletStateWithLegacyStream(c, account) : null,
   ]);
   // Include the enforced winner and the wallet's backed message even outside this page.
   const all = [...new Set([...addresses, c.top, wallet?.backedMarkee].filter((a): a is Address => !!a && a !== zeroAddress).map(a => getAddress(a)))];
@@ -123,7 +139,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
   let views: (number | null)[] = [];
   let metadata: Snapshot['metadata'] = null;
   try {
-    const result = await snapshotReaders.presentation(c.board, all);
+    const result = await snapshotReaders.presentation(c.board, all, c.legacyBoard);
     flags = result.flags;
     views = result.views;
     const raw = result.metadata;

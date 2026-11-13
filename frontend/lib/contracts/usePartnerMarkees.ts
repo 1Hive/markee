@@ -1,12 +1,15 @@
 'use client'
 
 import { useReadContracts } from 'wagmi'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import { currentBoardFromResolution } from '@/lib/contracts/successorAliases'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import type { Markee } from '@/types'
 
 // Partner configuration.
-// leaderboardAddress — v1.1 Leaderboard to query and send new purchases to; null for unmigrated partners.
+// leaderboardAddress — original Leaderboard; null for unmigrated partners. Read and buy through
+// useCurrentLeaderboard, which follows a finished board migration to the successor.
 // strategyAddress — kept for reference only (no longer queried).
 export const PARTNERS = [
   {
@@ -119,6 +122,29 @@ export const PARTNERS = [
   },
 ]
 
+async function fetchCurrentBoard(address: `0x${string}`): Promise<`0x${string}`> {
+  try {
+    const res = await fetch(`/api/boards/resolve?address=${address}`)
+    return res.ok ? currentBoardFromResolution(address, await res.json()) : address
+  } catch {
+    return address
+  }
+}
+
+const currentBoardQuery = (address: `0x${string}`) => ({
+  queryKey: ['current-board', address.toLowerCase()],
+  queryFn: () => fetchCurrentBoard(address),
+  staleTime: 5 * 60_000,
+})
+
+export function useCurrentLeaderboard(address: `0x${string}` | null) {
+  const { data, isLoading } = useQuery({
+    ...currentBoardQuery(address ?? '0x'),
+    enabled: !!address,
+  })
+  return { leaderboardAddress: address ? data ?? null : null, isResolving: !!address && isLoading }
+}
+
 interface PartnerData {
   partner: typeof PARTNERS[number]
   winningMarkee: Markee | null
@@ -128,17 +154,20 @@ interface PartnerData {
 
 export function usePartnerMarkees() {
   const partnersWithLb = PARTNERS.filter(p => p.leaderboardAddress)
+  const resolutions = useQueries({ queries: partnersWithLb.map(p => currentBoardQuery(p.leaderboardAddress!)) })
+  const currentAddresses = partnersWithLb.map((p, i) => resolutions[i]?.data ?? p.leaderboardAddress!)
+  const isResolving = resolutions.some(r => r.isLoading)
 
   // Step 1: getTopMarkees(1) + totalLeaderboardFunds + markeeCount for each leaderboard
-  const step1Contracts = partnersWithLb.flatMap(p => [
-    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] as const, chainId: CANONICAL_CHAIN_ID },
-    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const, chainId: CANONICAL_CHAIN_ID },
+  const step1Contracts = currentAddresses.flatMap(address => [
+    { address, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] as const, chainId: CANONICAL_CHAIN_ID },
+    { address, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const, chainId: CANONICAL_CHAIN_ID },
+    { address, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const, chainId: CANONICAL_CHAIN_ID },
   ])
 
   const { data: step1Data, isLoading: isLoadingStep1 } = useReadContracts({
     contracts: step1Contracts,
-    query: { refetchInterval: 30_000 },
+    query: { enabled: !isResolving, refetchInterval: 30_000 },
   })
 
   // Extract top markee addresses from step 1
@@ -165,6 +194,7 @@ export function usePartnerMarkees() {
   // Assemble results
   let step2Index = 0
   const lbResults: Map<string, {
+    leaderboardAddress: `0x${string}`
     winningMarkee: Markee | null
     totalFunds: bigint
     markeeCount: bigint
@@ -193,13 +223,13 @@ export function usePartnerMarkees() {
       step2Index++
     }
 
-    lbResults.set(partner.slug, { winningMarkee, totalFunds: displayTotalFunds, markeeCount })
+    lbResults.set(partner.slug, { leaderboardAddress: currentAddresses[i], winningMarkee, totalFunds: displayTotalFunds, markeeCount })
   })
 
   const partnerData: PartnerData[] = PARTNERS.map(partner => {
     const r = lbResults.get(partner.slug)
     return {
-      partner,
+      partner: { ...partner, leaderboardAddress: r?.leaderboardAddress ?? partner.leaderboardAddress },
       winningMarkee: r?.winningMarkee ?? null,
       totalFunds: r?.totalFunds ?? 0n,
       markeeCount: r?.markeeCount ?? 0n,
@@ -215,7 +245,7 @@ export function usePartnerMarkees() {
 
   return {
     partnerData,
-    isLoading: isLoadingStep1 || isLoadingStep2,
+    isLoading: isResolving || isLoadingStep1 || isLoadingStep2,
     error: null,
   }
 }

@@ -10,7 +10,8 @@ import { cachedListing } from '@/lib/leaderboards/cached'
 import { NextResponse } from 'next/server'
 import { formatEther } from 'viem'
 import { kv } from '@vercel/kv'
-import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { BOARD_MIGRATORS, STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { listVisibleBoards } from '@/lib/contracts/migration'
 import { createStreamingClient } from '@/lib/streaming/client'
 import { getStreamingBoardMeta } from '@/lib/streaming/boardMeta'
 import { fetchBoardTotals } from '@/lib/streaming/subgraph'
@@ -51,12 +52,7 @@ async function loadListing(request: Request) {
     const client = createStreamingClient()
     const factory = STREAMING_FACTORY as `0x${string}`
 
-    const addresses = await client.readContract({
-      address: factory,
-      abi: StreamingLeaderboardFactoryABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }) as `0x${string}`[]
+    const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.STREAMING, [factory])
 
     if (addresses.length === 0) {
       const empty = { leaderboards: [] }
@@ -136,7 +132,7 @@ async function loadListing(request: Request) {
       kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...oiMetaKeys),
       // "Served On" falls back to a verified GitHub link when there's no verifiedUrl -- same
       // address-keyed github:markee:{address} KV namespace every other listing route reads.
-      getLinkedFilesBatch(addresses),
+      getLinkedFilesBatch(addresses, predecessorOf),
     ])
 
     const leaderboards = addresses.map((addr, i) => {
@@ -172,6 +168,7 @@ async function loadListing(request: Request) {
 
       return {
         address: addr,
+        migratedFrom: predecessorOf.get(addr.toLowerCase()) ?? null,
         name,
         // The listings read leaderboardName for labels and letter avatars; mirror name into it.
         leaderboardName: name,

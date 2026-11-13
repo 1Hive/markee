@@ -140,6 +140,7 @@ test('views reject malformed, oversized, unrelated, duplicate and rate-limited r
   t.mock.method(automaticDeps, 'read', async () => { reads++; throw new Error('Must not read chain') })
   t.mock.method(viewsWriteDeps, 'get', async (key: string) => key.startsWith('oi:meta:') ? { verifiedUrls: ['https://allowed.example'] } : true)
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
+  t.mock.method(viewsWriteDeps, 'currentAddress', async (address: string) => address)
   t.mock.method(viewsWriteDeps, 'mget', async () => [3, 2])
   t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   const request = (body: unknown, origin = 'https://allowed.example') => new NextRequest('https://www.markee.xyz/api/views', { method: 'POST', headers: { origin }, body: JSON.stringify(body) })
@@ -156,6 +157,7 @@ test('visible accepted views count; hidden and unavailable messages never increm
   setup(t)
   t.mock.method(viewsWriteDeps, 'get', async () => null)
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
+  t.mock.method(viewsWriteDeps, 'currentAddress', async (address: string) => address)
   t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(viewsWriteDeps, 'mget', async () => [3, 2])
   let increments = 0
