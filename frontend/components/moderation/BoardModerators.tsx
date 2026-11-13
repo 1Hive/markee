@@ -3,8 +3,8 @@
 /**
  * BoardModerators
  *
- * The Moderators section of a board's admin panel on /account. A board's owners (its on-chain admin
- * and its creator) always moderate it; here they add and remove other wallets. Edits are staged
+ * The Moderators section of a board's admin panel on /account. A board's owner (its current on-chain
+ * admin) always moderates it; here they add and remove other wallets. Edits are staged
  * locally and saved with one signature. Anyone can read the list from
  * GET /api/moderation/moderators?board=0x..., so other sites can show the same moderators.
  */
@@ -160,7 +160,7 @@ export function BoardModerators({ board }: { board: string }) {
         <div>
           {owners.map(o => (
             <Row key={o} address={o} you={o === me}>
-              <span title="Owners (the admin and creator) can add or remove moderators."><Chip>Owner</Chip></span>
+              <span title="The board admin can add or remove moderators."><Chip>Owner</Chip></span>
             </Row>
           ))}
           {list.map(m => (

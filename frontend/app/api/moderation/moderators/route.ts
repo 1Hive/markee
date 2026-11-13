@@ -1,14 +1,14 @@
 // GET  /api/moderation/moderators?board=0x...
-//   Who moderates a board: its owners (on-chain admin and creator, always moderators) and the
-//   moderators they added. Public and CORS-open so any site showing the board can read it.
+//   Who moderates a board: its owner (the current on-chain admin, always a moderator) and the
+//   moderators it added. Public and CORS-open so any site showing the board can read it.
 //
 // POST /api/moderation/moderators
 //   { board, moderators: Array<{wallet, email?}>, owner, signature, timestamp }
-//   Replaces the board's added moderators. Only an owner can sign it. The signature covers
-//   moderatorsMessage(8453, board, normalizeModerators(moderators), timestamp).
-//   When a new moderator is supplied with an email address a verification email is sent.
+//   Replaces the board's added moderators. Only the board admin can sign it. The signature covers
+//   moderatorsMessage(8453, board, normalizeModerators(moderators), timestamp). Any email is
+//   accepted for older callers but ignored: each wallet sets its own notification email through the
+//   signed /api/moderation/notify route.
 
-import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { verifyMessage } from 'viem'
@@ -18,23 +18,17 @@ import {
   MAX_BOARD_MODERATORS,
   moderatorsMessage,
   normalizeModerators,
-  EMAIL_FREQUENCIES,
   type EmailFrequency,
 } from '@/lib/moderation/queue'
 import {
   clearModeratedBoards,
   moderatorsKey,
   notifyStateKey,
-  verifyTokenKey,
   readBoardModerators,
   readBoardOwners,
   type BoardModerators,
   type ModeratorNotifyState,
-  type VerifyToken,
 } from '@/lib/moderation/server'
-import { sendVerificationEmail } from '@/lib/moderation/email'
-import { verifyEmailIpAllowed, verifyEmailRecipientAllowed } from '@/lib/moderation/email-throttle'
-import { clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,13 +38,9 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
-
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
 }
-
-const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -132,9 +122,6 @@ export async function POST(req: NextRequest) {
     if (moderators.some(m => !ADDRESS_PATTERN.test(m.wallet))) {
       return NextResponse.json({ error: 'Every moderator must have a valid wallet address' }, { status: 400 })
     }
-    if (moderators.some(m => m.email && (m.email.length > 254 || !EMAIL_RE.test(m.email)))) {
-      return NextResponse.json({ error: 'One or more email addresses are invalid' }, { status: 400 })
-    }
     if (moderators.length > MAX_BOARD_MODERATORS) {
       return NextResponse.json({ error: `A board can have at most ${MAX_BOARD_MODERATORS} moderators` }, { status: 400 })
     }
@@ -159,67 +146,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A newer moderator list was already saved. Reload and try again.' }, { status: 409 })
     }
 
-    // Determine which wallets are newly added (not already in the stored list).
-    const existingWallets = new Set(current.moderators.map(m => m.wallet))
-    const toAdd = moderators.filter(m => !owners.includes(m.wallet) && !existingWallets.has(m.wallet))
-
     const next: BoardModerators = {
-      moderators: moderators.filter(m => !owners.includes(m.wallet)),
+      moderators: moderators.filter(m => !owners.includes(m.wallet)).map(m => ({ wallet: m.wallet })),
       updatedAt: timestamp,
       updatedBy: owner,
     }
     await kv.set(moderatorsKey(board), next)
     await clearModeratedBoards()
-
-    // Board name for verification emails: the address unless the moderated boards listing names it.
-    let boardName = board
-
-    // Send verification emails to newly added moderators that have an email address.
-    const origin = req.nextUrl.origin
-    const moderatorsWithNewEmails = toAdd.filter(m => m.email)
-    if (moderatorsWithNewEmails.length > 0 && !await verifyEmailIpAllowed(clientIp(req))) {
-      console.warn('[moderation/moderators] verification emails skipped, sender over its hourly limit')
-      moderatorsWithNewEmails.length = 0
-    }
-    if (moderatorsWithNewEmails.length > 0) {
-      // Read any existing board name from the moderated boards listing for a friendlier email.
-      const { listModeratedBoards } = await import('@/lib/moderation/server')
-      const allBoards = await listModeratedBoards().catch(() => [])
-      const foundBoard = allBoards.find(b => b.address === board)
-      if (foundBoard) boardName = foundBoard.name
-
-      await Promise.all(moderatorsWithNewEmails.map(async m => {
-        const email = m.email!
-        const token = randomBytes(32).toString('hex')
-        const verifyUrl = `${origin}/api/moderation/notify/verify?token=${token}`
-        const tokenPayload: VerifyToken = {
-          wallet: m.wallet,
-          email,
-          board,
-          boardName,
-          expiresAt: now + VERIFY_TOKEN_TTL,
-        }
-        // Upsert notify state (verified=false, frequency='every') if not already set.
-        const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(m.wallet)).catch(() => null)
-        if (!existing || existing.email !== email) {
-          const notifyState: ModeratorNotifyState = {
-            email,
-            verified: false,
-            frequency: existing?.frequency ?? 'every',
-            setAt: now,
-          }
-          await kv.set(notifyStateKey(m.wallet), notifyState)
-        }
-        if (!await verifyEmailRecipientAllowed(email)) {
-          console.warn('[moderation/moderators] verification email skipped, recipient over its hourly limit')
-          return
-        }
-        await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })
-        await sendVerificationEmail(email, boardName, verifyUrl).catch(e => {
-          console.error('[moderation/moderators] verification email failed to', email, e)
-        })
-      }))
-    }
 
     return NextResponse.json(await boardState(board))
   } catch (error) {
