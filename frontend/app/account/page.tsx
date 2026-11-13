@@ -297,8 +297,8 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const toast = useToast()
   const { signMessageAsync } = useSignMessage()
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
-  const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
-  const [eventsDraft, setEventsDraft] = useState<NotifyEvents>(() => notifyEventsOf(null))
+  const [freqEdit, setFreqEdit]      = useState<EmailFrequency | null>(null)
+  const [eventsEdit, setEventsEdit]  = useState<NotifyEvents | null>(null)
   const [editEmail, setEditEmail]     = useState(false)
   const [emailInput, setEmailInput]   = useState('')
   const [saving, setSaving]           = useState(false)
@@ -311,30 +311,32 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
 
   useEffect(() => {
     if (!address) return
+    let cancelled = false
     fetch(`${MODERATION_API}/notify?wallet=${address}`)
       .then(r => r.ok ? r.json() : null)
       .then((data: NotifyState | null) => {
-        if (!data) return
+        if (cancelled || !data) return
         setNotifyState(data)
-        setFreqDraft((data.frequency ?? 'daily') as EmailFrequency)
-        setEventsDraft(notifyEventsOf(data))
         setEditEmail(!data.email)
       })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [address])
 
   const savedEmail   = notifyState?.email ?? null
   const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
   const emailChanged = editEmail && emailInput.trim().toLowerCase() !== (savedEmail ?? '')
-  const freqChanged  = freqDraft !== savedFreq
   const savedEvents  = notifyEventsOf(notifyState)
+  const freqDraft    = freqEdit ?? savedFreq
+  const eventsDraft  = eventsEdit ?? savedEvents
+  const freqChanged  = freqDraft !== savedFreq
   const eventsChanged = (Object.keys(savedEvents) as (keyof NotifyEvents)[]).some(k => savedEvents[k] !== eventsDraft[k])
   const isDirty      = emailChanged || freqChanged || eventsChanged
   const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(emailInput.trim())
 
   const discard = () => {
-    setFreqDraft(savedFreq)
-    setEventsDraft(savedEvents)
+    setFreqEdit(null)
+    setEventsEdit(null)
     setEmailInput('')
     setEditEmail(!savedEmail)
     setSaveError(null)
@@ -369,7 +371,9 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
         })
         const body2 = await res2.json().catch(() => null)
         if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
-        setNotifyState(prev => prev ? { ...prev, frequency: freqDraft, events: eventsDraft } : prev)
+        setNotifyState(prev => ({ ...prev ?? { email: null, verified: false }, frequency: freqDraft, events: eventsDraft }))
+        setFreqEdit(null)
+        setEventsEdit(null)
       }
       toast(emailChanged ? 'Saved · verification email sent' : 'Notification settings saved')
     } catch (err) {
@@ -469,7 +473,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: TEXT2 }}>{ev.label}</div>
                   <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{ev.sub}</div>
                 </div>
-                <SettingsSwitch on={eventsDraft[ev.k]} onChange={on => setEventsDraft(d => ({ ...d, [ev.k]: on }))} label={ev.label} />
+                <SettingsSwitch on={eventsDraft[ev.k]} onChange={on => setEventsEdit({ ...eventsDraft, [ev.k]: on })} label={ev.label} />
               </div>
             ))}
           </div>
@@ -487,7 +491,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
             {(['every', 'daily', 'off'] as const).map(f => (
               <button
                 key={f}
-                onClick={() => setFreqDraft(f)}
+                onClick={() => setFreqEdit(f)}
                 style={{ background: freqDraft === f ? 'rgba(123,106,244,0.55)' : 'transparent', color: freqDraft === f ? TEXT : MUTED, border: freqDraft === f ? `1px solid rgba(123,106,244,0.5)` : '1px solid transparent', borderRadius: 6, padding: '6px 12px', fontFamily: SANS, fontSize: 13, fontWeight: freqDraft === f ? 700 : 500, cursor: 'pointer', transition: 'all 150ms', whiteSpace: 'nowrap' as const }}
               >
                 {f === 'every' ? 'Every Time' : f === 'daily' ? 'Daily Round-up' : 'Off'}
@@ -1585,7 +1589,7 @@ function AccountDashboard() {
 
               {/* ── Settings ── */}
               {section === 'settings' && activeAddress && (
-                <SettingsSection address={activeAddress} verifyOk={verifyOk} />
+                <SettingsSection key={activeAddress} address={activeAddress} verifyOk={verifyOk} />
               )}
             </main>
           </div>
