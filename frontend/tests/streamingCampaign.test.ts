@@ -4,6 +4,8 @@ import {
   activeBoostsAt,
   addWeightedDeltas,
   calculateNetDeltas,
+  deltaBoards,
+  excludeBoardControllerDeltas,
   deserializeSnapshot,
   pointTargets,
   serializeSnapshot,
@@ -117,4 +119,23 @@ test('selects the last boost version effective at a block boundary', () => {
 test('snapshot persistence round-trips bigint cumulative values', () => {
   const original = snapshot([[account, board, 1234567890123456789n, 987654321n]])
   assert.deepEqual(deserializeSnapshot(serializeSnapshot(original)), original)
+})
+
+test('spending on a board by its admin or beneficiary earns no points', () => {
+  const admin = '0x3333333333333333333333333333333333333333'
+  const deltas = calculateNetDeltas(
+    new Map(),
+    snapshot([[account, board, 10n, 0n], [admin, board, 20n, 0n], [otherAccount, boostedBoard, 30n, 0n]]),
+  )
+  assert.deepEqual(deltaBoards(deltas).sort(), [board, boostedBoard])
+  const eligible = excludeBoardControllerDeltas(deltas, new Map([
+    [board, new Set([admin, otherAccount])],
+    [boostedBoard, new Set([otherAccount])],
+  ]))
+  assert.deepEqual([...eligible.entries()], [[snapshotKey(account, board), 10n]])
+})
+
+test('fails closed when a scored board has no controller data', () => {
+  const deltas = calculateNetDeltas(new Map(), snapshot([[account, board, 10n, 0n]]))
+  assert.throws(() => excludeBoardControllerDeltas(deltas, new Map()), /Missing controllers/)
 })

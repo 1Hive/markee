@@ -206,6 +206,59 @@ export const reserveMarkeeChallengeIssue = async ({
   if (allowed !== 1) throw new MarkeeChallengeRateLimitError();
 };
 
+const ACTIVATION_WINDOW_SECONDS = 24 * 60 * 60;
+
+export type MarkeeActivationLimit = { subject: string; max: number };
+
+/**
+ * Counts one keeper-funded activation against every limit in a rolling day
+ * window. Nothing is counted unless all limits still have room, so a refused
+ * request never uses up capacity for others.
+ */
+export const reserveMarkeeActivation = async ({
+  namespace,
+  limits,
+}: {
+  namespace: string;
+  limits: MarkeeActivationLimit[];
+}) => {
+  requireDurableStoreInProduction();
+  const bucket = Math.floor(Date.now() / 1000 / ACTIVATION_WINDOW_SECONDS);
+  const keys = limits.map(
+    ({ subject }) => `${KEY_PREFIX}:activation:{${namespace}}:${bucket}:${subject}`,
+  );
+  const config = getRedisConfig();
+
+  let allowed: number;
+  if (config != null) {
+    allowed = await redisCommand<number>([
+      "EVAL",
+      "for i, key in ipairs(KEYS) do if tonumber(redis.call('GET', key) or '0') >= tonumber(ARGV[i + 1]) then return 0; end; end; for _, key in ipairs(KEYS) do if redis.call('INCR', key) == 1 then redis.call('EXPIRE', key, ARGV[1]); end; end; return 1",
+      keys.length,
+      ...keys,
+      ACTIVATION_WINDOW_SECONDS * 2,
+      ...limits.map(({ max }) => max),
+    ]);
+  } else {
+    const now = Math.floor(Date.now() / 1000);
+    const current = keys.map((key) => {
+      const stored = memoryIssueCounts.get(key);
+      return stored == null || stored.expiresAt <= now ? 0 : stored.count;
+    });
+    allowed = current.every((count, i) => count < limits[i].max) ? 1 : 0;
+    if (allowed === 1) {
+      keys.forEach((key, i) =>
+        memoryIssueCounts.set(key, {
+          count: current[i] + 1,
+          expiresAt: now + ACTIVATION_WINDOW_SECONDS * 2,
+        }),
+      );
+    }
+  }
+
+  if (allowed !== 1) throw new MarkeeChallengeRateLimitError();
+};
+
 export const consumeMarkeeChallenge = async <T>({
   namespace,
   nonce,
@@ -243,6 +296,8 @@ export const clearMarkeeChallengesForTests = (namespace?: string) => {
     if (key.startsWith(namespacePrefix)) memoryChallenges.delete(key);
   }
   for (const key of memoryIssueCounts.keys()) {
-    if (key.startsWith(`${KEY_PREFIX}:rate:`)) memoryIssueCounts.delete(key);
+    if (key.startsWith(`${KEY_PREFIX}:rate:`) || key.startsWith(`${KEY_PREFIX}:activation:`)) {
+      memoryIssueCounts.delete(key);
+    }
   }
 };

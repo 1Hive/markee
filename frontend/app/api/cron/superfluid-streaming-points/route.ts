@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/server/logger'
 import { kv } from '@vercel/kv'
 import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
-import { StreamingLeaderboardFactoryABI } from '@/lib/contracts/abis'
+import { StreamingLeaderboardABI, StreamingLeaderboardFactoryABI } from '@/lib/contracts/abis'
 import { createStreamingClient } from '@/lib/streaming/client'
 import { fetchCampaignSnapshot, fetchStreamingSubgraphHead } from '@/lib/streaming/subgraph'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
@@ -15,11 +15,14 @@ import {
   calculateNetDeltas,
   campaignStateKey,
   deserializeSnapshot,
+  deltaBoards,
+  excludeBoardControllerDeltas,
   farcasterAwardKey,
   getStreamingCampaignConfig,
   pointTargets,
   pushCampaignEvents,
   serializeSnapshot,
+  type BoardControllers,
   type BoostConfigVersion,
   type CampaignPointsEvent,
   type CampaignSnapshot,
@@ -31,6 +34,7 @@ export const maxDuration = 300
 const REORG_SAFETY_BLOCKS = 100n
 const API_BATCH_SIZE = 100
 const FARCASTER_SCAN_INTERVAL = 6 * 60 * 60
+const CONTROLLER_READ_CHUNK = 200
 
 interface CampaignState {
   lastBlock: string
@@ -66,6 +70,33 @@ async function findBlockAtOrBefore(
     else high = mid - 1n
   }
   return low
+}
+
+async function fetchBoardControllers(
+  client: ReturnType<typeof createStreamingClient>,
+  boards: readonly string[],
+  blockNumber: bigint,
+): Promise<BoardControllers> {
+  const controllers: BoardControllers = new Map()
+  for (let index = 0; index < boards.length; index += CONTROLLER_READ_CHUNK) {
+    const chunk = boards.slice(index, index + CONTROLLER_READ_CHUNK)
+    const results = await client.multicall({
+      blockNumber,
+      contracts: chunk.flatMap((board) => (['admin', 'beneficiaryAddress'] as const).map((functionName) => ({
+        address: board as `0x${string}`,
+        abi: StreamingLeaderboardABI,
+        functionName,
+      }))),
+    })
+    chunk.forEach((board, offset) => {
+      const pair = results.slice(offset * 2, offset * 2 + 2)
+      if (pair.some((result) => result.status !== 'success')) {
+        throw new Error(`Could not read controllers for ${board}`)
+      }
+      controllers.set(board, new Set(pair.map((result) => String(result.result).toLowerCase())))
+    })
+  }
+  return controllers
 }
 
 async function fetchFollowerFids(): Promise<Follower[]> {
@@ -271,7 +302,11 @@ export async function GET(request: NextRequest) {
         checkpoint,
         BigInt(checkpointTimestamp),
       )
-      const deltas = calculateNetDeltas(previousSnapshot, currentSnapshot)
+      const netDeltas = calculateNetDeltas(previousSnapshot, currentSnapshot)
+      const deltas = excludeBoardControllerDeltas(
+        netDeltas,
+        await fetchBoardControllers(client, deltaBoards(netDeltas), checkpoint),
+      )
       pointNumerators = addWeightedDeltas(
         pointNumerators,
         deltas,

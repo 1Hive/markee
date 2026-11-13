@@ -71,7 +71,7 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
       if (path === 'community/activate' || path === 'community/claim') {
         const body = object(await readLimitedJsonBody(request, 16 * 1024));
         const handler = path === 'community/activate' ? activate.POST : claim.POST;
-        const rebuilt = new Request(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const rebuilt = new Request(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': request.headers.get('x-forwarded-for') || '' }, body: JSON.stringify(body) });
         if (body.action !== 'verify') return cors(await handler(rebuilt), request);
         if (typeof body.nonce !== 'string' || !/^[1-9][0-9]{0,77}$/.test(body.nonce) || typeof body.signature !== 'string' || !isHex(body.signature)) throw new SDKError('INVALID_AUTHORIZATION', 'Invalid authorization.');
         return cors(await executeAdmin(path, rebuilt, { nonce: body.nonce, signature: body.signature }, handler), request);

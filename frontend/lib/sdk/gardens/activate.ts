@@ -22,9 +22,11 @@ import {
   consumeMarkeeChallenge,
   MarkeeChallengeRateLimitError,
   MarkeeChallengeStoreUnavailableError,
+  reserveMarkeeActivation,
   reserveMarkeeChallengeIssue,
   saveMarkeeChallenge,
 } from "./challenge-store";
+import { getCommunityKey } from "./revenue";
 import {
   readLimitedJsonBody,
   RequestBodyTooLargeError,
@@ -51,11 +53,14 @@ const LEADERBOARD_METADATA_HASH = keccak256(
 const MARKEE_SEPOLIA_CHAIN_ID = 11155111;
 const MARKEE_BASE_CHAIN_ID = 8453;
 const LEADERBOARD_NAME = "Gardens Community";
+const MAX_ACTIVATIONS_PER_DAY = 25;
+const MAX_ACTIVATIONS_PER_REQUESTER_PER_DAY = 3;
 const PLATFORM_ID = "Gardens";
 
 const gardensMarkeeRouterABI = parseAbi([
   "function createCommunityLeaderboard(uint256 communityChainId, address registryCommunity, string leaderboardName, string platformId) returns (address vault, address leaderboard, address seedMarkee)",
   "function keepers(address keeper) view returns (bool)",
+  "function communityIntegration(bytes32 communityKey) view returns ((uint256 communityChainId, address registryCommunity, address vault, address factory, address leaderboard, address seedMarkee) integration)",
 ]);
 
 const safeOwnerABI = parseAbi([
@@ -232,6 +237,22 @@ const getKeeperAccount = () => {
   return privateKeyToAccount(privateKey as Hex);
 };
 
+const hasCommunityLeaderboard = async (chainId: number, community: Address) => {
+  const execution = getMarkeeExecutionConfig(chainId);
+  if (!execution.router) {
+    throw new Error("Markee router is not configured for this environment");
+  }
+  const integration = await getEnvPublicClient(execution.chainId).readContract({
+    abi: gardensMarkeeRouterABI,
+    address: execution.router,
+    args: [getCommunityKey(chainId, community)],
+    functionName: "communityIntegration",
+  });
+  return integration.leaderboard !== zeroAddress;
+};
+
+const ALREADY_ACTIVE_ERROR = "This community already has a Markee leaderboard.";
+
 const executeRouterCreation = async (challenge: Challenge) => {
   const execution = getMarkeeExecutionConfig(challenge.chainId);
   if (!execution.router) {
@@ -366,6 +387,9 @@ const issueChallenge = async (body: ChallengeRequest) => {
     if (councilSafe === zeroAddress) {
       return jsonError("This community does not have a council Safe.", 409);
     }
+    if (await hasCommunityLeaderboard(body.chainId, body.community)) {
+      return jsonError(ALREADY_ACTIVE_ERROR, 409);
+    }
     const keeperAccount = getKeeperAccount();
     const isKeeper = keeperAccount?.address === body.account;
     const isSafe = body.account === councilSafe;
@@ -457,7 +481,32 @@ const issueChallenge = async (body: ChallengeRequest) => {
   }
 };
 
-const verifyChallenge = async (body: VerifyRequest) => {
+const requesterAddress = (request: Request) =>
+  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+const reserveActivation = async (challenge: Challenge, requester: string) => {
+  if (challenge.authorizationRole === "keeper") return;
+  await reserveMarkeeActivation({
+    namespace: CHALLENGE_NAMESPACE,
+    limits: [
+      { subject: "global", max: MAX_ACTIVATIONS_PER_DAY },
+      {
+        subject: `council:${challenge.councilSafe.toLowerCase()}`,
+        max: MAX_ACTIVATIONS_PER_REQUESTER_PER_DAY,
+      },
+      {
+        subject: `authorizer:${challenge.authorizer.toLowerCase()}`,
+        max: MAX_ACTIVATIONS_PER_REQUESTER_PER_DAY,
+      },
+      {
+        subject: `ip:${requester}`,
+        max: MAX_ACTIVATIONS_PER_REQUESTER_PER_DAY,
+      },
+    ],
+  });
+};
+
+const verifyChallenge = async (body: VerifyRequest, requester: string) => {
   let challenge: Challenge | null;
   try {
     challenge = await consumeMarkeeChallenge<Challenge>({
@@ -545,6 +594,26 @@ const verifyChallenge = async (body: VerifyRequest) => {
     if (!signatureIsValid) {
       return jsonError("Invalid Markee authorization signature.", 401);
     }
+    if (await hasCommunityLeaderboard(challenge.chainId, challenge.community)) {
+      return jsonError(ALREADY_ACTIVE_ERROR, 409);
+    }
+    try {
+      await reserveActivation(challenge, requester);
+    } catch (error) {
+      if (error instanceof MarkeeChallengeRateLimitError) {
+        return jsonError(
+          "Markee has reached its community activation limit for today. Please try again tomorrow.",
+          429,
+        );
+      }
+      if (error instanceof MarkeeChallengeStoreUnavailableError) {
+        return jsonError(
+          "Markee authorization is temporarily unavailable. Please try again shortly.",
+          503,
+        );
+      }
+      throw error;
+    }
 
     const routerExecution = await executeRouterCreation(challenge);
 
@@ -583,7 +652,7 @@ export async function POST(request: Request) {
 
   return body.action === "challenge" ?
       issueChallenge(body)
-    : verifyChallenge(body);
+    : verifyChallenge(body, requesterAddress(request));
 }
 
 export async function GET(request: Request) {
