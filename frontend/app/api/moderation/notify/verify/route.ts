@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
+import { claimNotifyEmail } from '@/lib/moderation/emailIndex'
+import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +37,13 @@ export async function GET(req: NextRequest) {
   // frequency) since the token was issued, preserve their frequency preference.
   const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(payload.wallet)).catch(() => null)
   if (existing && existing.email === payload.email) {
+    const claim = await claimNotifyEmail(kvEmailIndexStore(notifyStateKey), payload.email, payload.wallet, { verified: true })
+    if (!claim.ok) {
+      const url = new URL('/account', req.nextUrl.origin)
+      url.searchParams.set('section', 'settings')
+      url.searchParams.set('verifyError', 'in-use')
+      return NextResponse.redirect(url, 302)
+    }
     const updated: ModeratorNotifyState = {
       ...existing,
       verified: true,

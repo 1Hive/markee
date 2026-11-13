@@ -7,6 +7,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, Info } from 'lucide-react'
 import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
+import { usePrivy } from '@privy-io/react-auth'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { notifyEmailMessage, notifyPrefsMessage, notifyResendMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
 import type { ActivityEvent } from '@/lib/activity/events'
@@ -294,9 +295,11 @@ function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: bo
   )
 }
 
-function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
+function SettingsSection({ address, verifyOk, verifyError }: { address: string; verifyOk?: boolean; verifyError?: string | null }) {
   const toast = useToast()
   const walletFetch = useWalletAuthFetch()
+  const { user } = usePrivy()
+  const privyEmail = user?.email?.address ?? user?.linkedAccounts.find(a => a.type === 'email')?.address ?? null
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
   const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
   const [eventsDraft, setEventsDraft] = useState<NotifyEvents>(() => notifyEventsOf(null))
@@ -304,11 +307,17 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const [emailInput, setEmailInput]   = useState('')
   const [saving, setSaving]           = useState(false)
   const [saveError, setSaveError]     = useState<string | null>(null)
+  const [emailInUse, setEmailInUse]   = useState(false)
+  const privyPrefilledRef = useRef(false)
   const [showVerifyBanner, setShowVerifyBanner] = useState(!!verifyOk)
 
   useEffect(() => {
     if (verifyOk) { setShowVerifyBanner(true); setTimeout(() => setShowVerifyBanner(false), 6000) }
   }, [verifyOk])
+
+  useEffect(() => {
+    if (verifyError === 'in-use') setEmailInUse(true)
+  }, [verifyError])
 
   useEffect(() => {
     if (!address) return
@@ -323,6 +332,12 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
       })
       .catch(() => {})
   }, [address])
+
+  useEffect(() => {
+    if (privyPrefilledRef.current || !notifyState || notifyState.email || !privyEmail) return
+    privyPrefilledRef.current = true
+    setEmailInput(prev => prev || privyEmail)
+  }, [notifyState, privyEmail])
 
   const savedEmail   = notifyState?.email ?? null
   const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
@@ -339,6 +354,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
     setEmailInput('')
     setEditEmail(!savedEmail)
     setSaveError(null)
+    setEmailInUse(false)
   }
 
   const save = async () => {
@@ -355,7 +371,12 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
           message: () => notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp),
         })
         const body = await res.json().catch(() => null)
+        if (res.status === 409) {
+          setEmailInUse(true)
+          return
+        }
         if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+        setEmailInUse(false)
         setNotifyState(prev => ({ ...prev ?? { frequency: freqDraft }, email: body.email, verified: false }))
         setEmailInput('')
         setEditEmail(false)
@@ -420,6 +441,9 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
             {!editEmail && savedEmail && !notifyState?.verified && (
               <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>Awaiting verification. Check your inbox for the link.</div>
             )}
+            {emailInUse && (
+              <div role="alert" style={{ fontSize: 12, color: DANGER, marginTop: 3 }}>Email already in use. Use a different address.</div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
             {editEmail ? (
@@ -428,10 +452,10 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
                   autoFocus
                   type="email"
                   value={emailInput}
-                  onChange={e => setEmailInput(e.target.value)}
+                  onChange={e => { setEmailInput(e.target.value); setEmailInUse(false) }}
                   onKeyDown={e => { if (e.key === 'Escape') { setEmailInput(''); setEditEmail(!savedEmail) } }}
                   placeholder="name@example.com"
-                  style={{ background: 'rgba(6,10,42,0.6)', border: `1px solid ${badEmail ? '#FF8A9B' : BORDER}`, borderRadius: 7, padding: '7px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none', width: 220 }}
+                  style={{ background: 'rgba(6,10,42,0.6)', border: `1px solid ${badEmail || emailInUse ? '#FF8A9B' : BORDER}`, borderRadius: 7, padding: '7px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none', width: 220 }}
                 />
                 {savedEmail && (
                   <button onClick={() => { setEmailInput(''); setEditEmail(false) }} style={{ ...ghostBtn, border: 'none' }}>Cancel</button>
@@ -1306,6 +1330,7 @@ function AccountDashboard() {
 
   // Read initial section and verifyOk from URL params (e.g. after email verification redirect).
   const [verifyOk, setVerifyOk] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
   const sectionAppliedRef = useRef(false)
   useEffect(() => {
     if (sectionAppliedRef.current || typeof window === 'undefined') return
@@ -1318,6 +1343,7 @@ function AccountDashboard() {
     }
     if (raw && map[raw]) setSectionState(map[raw])
     if (params.get('verifyOk') === '1') setVerifyOk(true)
+    setVerifyError(params.get('verifyError'))
     const clean = new URL(window.location.href)
     if (raw && map[raw]) clean.searchParams.set('section', map[raw])
     else clean.searchParams.delete('section')
@@ -1631,7 +1657,7 @@ function AccountDashboard() {
 
               {/* ── Settings ── */}
               {section === 'settings' && activeAddress && (
-                <SettingsSection address={activeAddress} verifyOk={verifyOk} />
+                <SettingsSection address={activeAddress} verifyOk={verifyOk} verifyError={verifyError} />
               )}
             </main>
           </div>

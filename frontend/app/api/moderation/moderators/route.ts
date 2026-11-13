@@ -34,6 +34,8 @@ import {
   type VerifyToken,
 } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
+import { claimNotifyEmail, releaseNotifyEmail } from '@/lib/moderation/emailIndex'
+import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +46,7 @@ const CORS = {
 }
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
+const emailIndex = kvEmailIndexStore(notifyStateKey)
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
@@ -200,6 +203,14 @@ export async function POST(req: NextRequest) {
             setAt: now,
           }
           await kv.set(notifyStateKey(m.wallet), notifyState)
+          const claim = await claimNotifyEmail(emailIndex, email, m.wallet, { verified: false })
+          if (!claim.ok) {
+            if (existing) await kv.set(notifyStateKey(m.wallet), existing)
+            else await kv.del(notifyStateKey(m.wallet))
+            console.warn('[moderation/moderators] email already in use, not assigned to', m.wallet)
+            return
+          }
+          await releaseNotifyEmail(emailIndex, existing?.email, m.wallet, email)
         }
         await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })
         await sendVerificationEmail(email, boardName, verifyUrl).catch(e => {
