@@ -268,6 +268,7 @@ function RegularServedOnCell({ lb }: { lb: SuperfluidLeaderboard }) {
 
 // ── Shared grid ───────────────────────────────────────────────────────────────
 const ROW_COLS = '190px 110px 1fr 74px 120px 24px'
+const ROW_MIN_WIDTH = 780
 
 // ── Live (integrated) table row -- mirrors /marketplace's For Rent row ─────────
 function LiveTableRow({
@@ -294,7 +295,7 @@ function LiveTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: ROW_COLS,
+        gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -368,7 +369,7 @@ function BoostedTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: ROW_COLS,
+        gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -434,7 +435,7 @@ function RegularTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: ROW_COLS,
+        gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -480,7 +481,7 @@ function TableHeaders({ actionLabel = 'Action' }: { actionLabel?: string }) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: ROW_COLS,
+      gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
       gap: 16,
       padding: '11px 14px',
       borderBottom: `1px solid ${BORDER}`,
@@ -502,7 +503,7 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: ROW_COLS, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
           {[1, 2, 3, 4, 5].map(j => (
             <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
           ))}
@@ -691,7 +692,7 @@ export default function SuperfluidCampaignPage() {
             </div>
 
             {/* Right CTAs */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <button
                 onClick={() => setRewardsOpen(true)}
                 style={{
@@ -784,7 +785,7 @@ export default function SuperfluidCampaignPage() {
             </span>
           </div>
 
-          <div style={{ background: BG, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ background: BG, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
             <TableHeaders />
             {loading ? (
               <SkeletonRows count={4} />
@@ -818,7 +819,7 @@ export default function SuperfluidCampaignPage() {
             Verified, embedded on a real site -- the same table shown for For Rent signs on /marketplace.
           </p>
 
-          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
             <TableHeaders actionLabel="Rate" />
             {loading ? (
               <SkeletonRows count={4} />
@@ -878,7 +879,7 @@ export default function SuperfluidCampaignPage() {
             <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All Superfluid Markees</span>
           </div>
 
-          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
             <TableHeaders />
             {loading ? (
               <SkeletonRows count={4} />
