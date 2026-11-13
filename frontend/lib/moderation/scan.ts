@@ -5,6 +5,7 @@ import { kv } from '@vercel/kv'
 import { parseAbi } from 'viem'
 import { BOARD_MIGRATORS, FACTORIES, STREAMING_ENABLED, STREAMING_FACTORY, V13_LEADERBOARDS, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { MIGRATION_FINISHED } from '@/lib/contracts/migration'
+import { COPIED_BOARDS_KEY } from '@/lib/migration/boardKv'
 import { SCOPES, isPendingIn, observeMessage, type MessageObservation } from '@/lib/moderation/queue'
 import { BASELINE_KEY, flagKey, getModerationClient, itemKey, pendingKey, readAllFlagged, readItems } from '@/lib/moderation/server'
 import { recordActivity, type BoardTop } from '@/lib/activity/server'
@@ -70,6 +71,7 @@ export const scanDeps = {
   set: (key: string, value: unknown) => kv.set(key, value),
   mget: <T extends unknown[]>(...keys: string[]) => kv.mget<T>(...keys),
   pipeline: () => kv.pipeline(), readItems, readAllFlagged,
+  kvCopied: (boards: string[]) => boards.length ? kv.smismember(COPIED_BOARDS_KEY, boards).then(flags => flags.map(Boolean)) : Promise.resolve([] as boolean[]),
 }
 type Client = ReturnType<typeof getModerationClient>
 interface BoardScanState { count: string; ids: string[]; reconciledAt: number }
@@ -152,10 +154,14 @@ async function hiddenByMigration(client: Client, candidates: { board: string; mi
   })
   const predecessorStatuses = await multicallChunked(client, pending.map(({ migrator, predecessor }) =>
     ({ address: migrator as `0x${string}`, abi: MIGRATOR_ABI, functionName: 'status', args: [predecessor] })), BOARD_CHUNK, blockNumber)
-  pending.forEach(({ board }, i) => {
+  const finishedSuccessors: { board: string; predecessor: string }[] = []
+  pending.forEach(({ board, predecessor }, i) => {
     const status = knownStatus(predecessorStatuses[i])
     if (status !== null && status !== MIGRATION_FINISHED) hidden.add(board)
+    if (status === MIGRATION_FINISHED) finishedSuccessors.push({ board, predecessor })
   })
+  const copied = await scanDeps.kvCopied(finishedSuccessors.map(({ predecessor }) => predecessor.toLowerCase())).catch(() => [] as boolean[])
+  finishedSuccessors.forEach(({ board }, i) => { if (!copied[i]) hidden.add(board) })
   return hidden
 }
 

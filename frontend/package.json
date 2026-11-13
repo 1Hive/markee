@@ -15,6 +15,7 @@
     "test:beneficiary": "tsx --test tests/beneficiary.test.ts",
     "test:board-registry": "tsx --test tests/boardRegistry.test.ts tests/boardMigration.test.ts tests/successorAliases.test.ts",
     "test:board-migration-redirects": "tsx --test tests/boardMigrationRedirects.test.ts",
+    "test:board-kv": "tsx --test tests/boardKvMigration.test.ts",
     "test:tx-tracking": "tsx --test tests/txTracking.test.ts",
     "test:streaming-deposit": "tsx --test tests/streamingDeposit.test.ts",
     "test:review-regressions": "tsx --tsconfig tsconfig.moderation-tests.json --test tests/review-regressions.test.ts",
