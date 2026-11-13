@@ -165,8 +165,8 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
           </span>
         )}
         {canEdit && (
-          state === 'removing' ? <WalletPending label={it.file ? 'Removing…' : 'Confirm in wallet…'} />
-          : state === 'featuring' ? <WalletPending label="Confirm in wallet…" />
+          state === 'removing' ? <WalletPending label="Removing…" />
+          : state === 'featuring' ? <WalletPending label="Saving…" />
           : state === 'verifying' ? <WalletPending label="Checking…" />
           : state === 'confirm' ? (
             <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>

@@ -19,7 +19,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { MAX_BOARD_MODERATORS, moderatorsMessage, normalizeModerators } from '@/lib/moderation/queue'
 import { moderationQueueKey } from '@/hooks/useModerationQueue'
-import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG, SANS, DANGER as RED } from '@/lib/design-tokens'
+import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED, BORDER, BG, SANS, AMBER, DANGER as RED } from '@/lib/design-tokens'
 
 interface ModeratorsState {
   board: string
@@ -90,6 +90,7 @@ export function BoardModerators({ board }: { board: string }) {
   const [inputError, setInputError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveWarning, setSaveWarning] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
   const [adding, setAdding] = useState(false)
 
@@ -127,6 +128,7 @@ export function BoardModerators({ board }: { board: string }) {
     if (!me) return
     setSaving(true)
     setSaveError(null)
+    setSaveWarning(null)
     try {
       const moderators = normalizeModerators(list)
       const timestamp = Math.floor(Date.now() / 1000)
@@ -142,7 +144,7 @@ export function BoardModerators({ board }: { board: string }) {
       setDraft((body.moderators ?? []).map((m: { wallet: string }) => m.wallet))
       setJustSaved(true)
       if (Array.isArray(body.emailInUse) && body.emailInUse.length > 0) {
-        setSaveError(`Saved, but the email for ${body.emailInUse.map((w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`).join(', ')} is already in use by another wallet, so no notifications will be sent to it.`)
+        setSaveWarning(`The email for ${body.emailInUse.map((w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`).join(', ')} is already in use by another wallet, so no notifications will be sent to it.`)
       }
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(me) })
     } catch (err) {
@@ -219,7 +221,7 @@ export function BoardModerators({ board }: { board: string }) {
               )}
               {inputError && <p style={{ margin: '6px 0 0', color: RED, fontSize: 12 }}>{inputError}</p>}
 
-              {(dirty || justSaved || saveError) && (
+              {(dirty || justSaved || saveError || saveWarning) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
                   {dirty && (
                     <>
@@ -228,7 +230,7 @@ export function BoardModerators({ board }: { board: string }) {
                         disabled={saving}
                         style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.6 : 1 }}
                       >
-                        {saving ? 'Confirm in wallet…' : 'Save moderators'}
+                        {saving ? 'Saving…' : 'Save moderators'}
                       </button>
                       <button
                         onClick={() => { setDraft(savedWallets); setSaveError(null) }}
@@ -237,13 +239,13 @@ export function BoardModerators({ board }: { board: string }) {
                       >
                         Discard
                       </button>
-                      <span style={{ color: MUTED, fontSize: 12 }}>Saving asks for a free signature, not a transaction.</span>
                     </>
                   )}
                   {justSaved && !dirty && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: GREEN, fontSize: 12.5 }}><Check size={13} /> Moderators saved</span>
                   )}
                   {saveError && <span style={{ color: RED, fontSize: 12.5 }}>{saveError}</span>}
+                  {saveWarning && !dirty && <span style={{ color: AMBER, fontSize: 12.5 }}>{saveWarning}</span>}
                 </div>
               )}
 
