@@ -21,7 +21,7 @@ Markee is a cooperatively owned digital message board network. Anyone can pay to
                  ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 ```
-*Show the world you support this repo! [Change this message at markee.xyz](https://markee.xyz/ecosystem/platforms/github/0x72a8e1470ac4988248091e76f363a33f8563d10c) ^*
+*Show the world you support this repo! [Change this message at markee.xyz](https://markee.xyz/markee/0x72a8e1470ac4988248091e76f363a33f8563d10c) ^*
 <!-- MARKEE:END:0x72a8e1470ac4988248091e76f363a33f8563d10c -->
 
 ---
