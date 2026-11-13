@@ -13,6 +13,7 @@ import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { type Address, type Hex } from 'viem'
 import { ChevronDown } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { ownedMessageSpend } from '@/lib/account/spend'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
 import type { DepositManagerDeposit, DepositManagerStream } from '@/components/modals/DepositManagerModal'
 import { parseEthInput, sanitizeDecimalInput } from '@/components/modals/StreamUI'
@@ -398,26 +399,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   )
 }
 
-// Net ETH each owned Rent message has streamed (streamed - refunded), for its CPM.
-function useRentSpend(owner: string | undefined, bought: MyMessage[]): Record<string, bigint> {
-  const [spend, setSpend] = useState<Record<string, bigint>>({})
-  const rent = bought.filter(m => m.strategy === 'streaming')
-  const key = rent.map(m => `${m.strategyId}:${m.address}`).join(',')
-  useEffect(() => {
-    if (!owner || !key) return
-    let cancelled = false
-    Promise.all(key.split(',').map(async pair => {
-      const [board, markee] = pair.split(':')
-      const d = await fetch(`/api/streaming/lifetime-streamed?board=${board}&markee=${markee}&backer=${owner}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
-      return d ? [markee.toLowerCase(), BigInt(d.streamedWei) - BigInt(d.refundedWei)] as const : null
-    })).then(rows => { if (!cancelled) setSpend(Object.fromEntries(rows.filter((r): r is readonly [string, bigint] => !!r))) })
-    return () => { cancelled = true }
-  }, [owner, key])
-  return spend
-}
-
-export function YourMessages({ owner, bought, funded, loading, boardViews, ethPrice, onAddFunds, onChangeBid, onEditStreaming, onPriceButton, onEdited }: {
-  owner: string | undefined
+export function YourMessages({ bought, funded, loading, boardViews, ethPrice, onAddFunds, onChangeBid, onEditStreaming, onPriceButton, onEdited }: {
   bought: MyMessage[]
   funded: FundedMessage[]
   loading: boolean
@@ -438,7 +420,6 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
   }, [])
   const [sort, setSort] = useState<{ k: MsgSortKey | null; dir: 'asc' | 'desc' }>({ k: null, dir: 'desc' })
   const [editing, setEditing] = useState<string | null>(null)
-  const rentSpend = useRentSpend(owner, bought)
 
   const rows = useMemo<MsgRow[]>(() => {
     const own = new Set(bought.map(m => m.address.toLowerCase()))
@@ -447,11 +428,11 @@ export function YourMessages({ owner, bought, funded, loading, boardViews, ethPr
       ...bought.map(m => ({
         m, own: true, bid: m.totalFundsAdded, top: m.topFunds, rate: BigInt(m.flowRateRaw ?? '0'), views: views(m),
         inactive: m.strategy === 'streaming' && m.markeeRateRaw === '0',
-        spent: m.strategy === 'streaming' ? (rentSpend[m.address.toLowerCase()] ?? 0n) : m.totalFundsAdded,
+        spent: ownedMessageSpend(m) ?? 0n,
       })),
-      ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalFundsAdded), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m), inactive: false })),
+      ...funded.filter(m => !own.has(m.address.toLowerCase())).map(m => ({ m, own: false, bid: BigInt(m.totalContributed), spent: BigInt(m.totalContributed), top: BigInt(m.topFundsRaw), rate: BigInt(m.flowRateRaw ?? '0'), views: views(m), inactive: false })),
     ]
-  }, [bought, funded, boardViews, rentSpend])
+  }, [bought, funded, boardViews])
 
   const cpmOf = useCallback((r: MsgRow) => ethPrice && r.views && r.spent > 0n ? (Number(r.spent) / 1e18 * ethPrice) / r.views * 1000 : null, [ethPrice])
   const bidWei = (r: MsgRow) => r.m.strategy === 'streaming' ? r.rate * SECONDS_PER_MONTH : r.bid
