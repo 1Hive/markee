@@ -42,7 +42,7 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
   })
 
   // Step 2: ordered markee list
-  const { data: topData, isLoading: topLoading, refetch: refetchTop } = useReadContracts({
+  const { data: topData, isLoading: topLoading, error: topError, refetch: refetchTop } = useReadContracts({
     contracts: [{
       address: addr, abi: LeaderboardV11ABI, functionName: 'getTopMarkees',
       args: [100n], chainId: CANONICAL_CHAIN_ID,
@@ -61,13 +61,17 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
     { address: a as `0x${string}`, abi: MarkeeABI, functionName: 'pricingStrategy'as const, chainId: CANONICAL_CHAIN_ID },
   ]), [topAddresses.join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: markeeData, isLoading: markeesLoading, refetch: refetchMarkees } = useReadContracts({
+  const { data: markeeData, isLoading: markeesLoading, error: markeesError, refetch: refetchMarkees } = useReadContracts({
     contracts: markeeContracts,
     query: { enabled: topAddresses.length > 0 },
   })
 
-  const metaComplete = !!metaData && metaData.every(r => r.status === 'success')
-  const meta: LeaderboardMeta | null = metaComplete && !metaError ? {
+  const metaComplete = !!metaData && metaData.every(r => r.status === 'success') && !metaError
+  const topComplete = !!topData && topData[0]?.status === 'success' && !topError
+  const markeesComplete = topAddresses.length === 0 || (!!markeeData && markeeData.every(r => r.status === 'success') && !markeesError)
+  const isLoading = metaLoading || topLoading || markeesLoading
+  const unavailable = enabled && !isLoading && !(metaComplete && topComplete && markeesComplete)
+  const meta: LeaderboardMeta | null = metaComplete && topComplete && markeesComplete ? {
     address: addr,
     leaderboardName:       (metaData[0]?.result as string)  ?? '',
     totalLeaderboardFunds: (metaData[1]?.result as bigint)  ?? 0n,
@@ -103,8 +107,9 @@ export function useLeaderboardDetail(leaderboardAddress: string | undefined) {
   return {
     meta,
     markees,
-    isLoading: metaLoading || topLoading || markeesLoading,
-    error: metaError ?? null,
+    isLoading,
+    unavailable,
+    error: metaError ?? topError ?? markeesError ?? null,
     refetch,
   }
 }

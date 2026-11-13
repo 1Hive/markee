@@ -332,7 +332,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
+  const { meta, markees, unavailable: boardDataUnavailable, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
   const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
   const { trust } = useBoardTrust(isOpen ? leaderboardAddress : undefined)
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN_ID })
@@ -340,6 +340,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     : trust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
     : trust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
     : 'Checking this Markee board…'
+  const boardDataReason = meta ? null
+    : boardDataUnavailable ? 'Could not load this Markee board. Check your connection and try again.'
+    : 'Loading this Markee board…'
 
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
@@ -492,11 +495,11 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // floor price when there's no competition yet. Only runs while the user hasn't touched the field
   // (or a preset) themselves, and re-derives once the leaderboard data finishes loading.
   useEffect(() => {
-    if (!isOpen || view !== 'list' || hasUserEdited) return
+    if (!isOpen || view !== 'list' || hasUserEdited || !meta) return
     if (winForCreate) { setAmount(formatEthCeil(winForCreate)); setLastPreset('win') }
     else { setAmount(minimumAmountFormatted); setLastPreset('min') }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, view, hasUserEdited, minimumAmountFormatted, winForCreate])
+  }, [isOpen, view, hasUserEdited, minimumAmountFormatted, winForCreate, meta])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleBuyNew = async () => {
@@ -632,7 +635,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     </div>
   )
 
-  const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
+  const activating = !!meta && view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
     : activating ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
 
@@ -712,6 +715,19 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
             >
               Switch to Base
             </button>
+          </div>
+
+        ) : view !== 'edit' && boardDataReason ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>{boardDataReason}</p>
+            {boardDataUnavailable && (
+              <button
+                onClick={() => { void refetchLeaderboard() }}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+              >
+                Try again
+              </button>
+            )}
           </div>
 
         ) : (
