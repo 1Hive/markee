@@ -174,7 +174,7 @@ Styles are scoped to the modal's Shadow DOM and do not change the host app or it
 
 `new MarkeeClient(options)` provides `snapshot`, `prepare`, `send`, `verify`, `pending`, `recordView`, `quote`, `authorize`, `executeAuthorization`, `resumeAuthorization`, and `bridgeStatus`. Exported TypeScript types describe the complete request/response contract.
 
-- `snapshot(placement, account?, offset?)`: chain state, metadata, moderation, views, rewards and wallet balances. The first page is ranked; subsequent pages browse the registry. Enforced winner and the wallet's current backing remain included.
+- `snapshot(placement, account?, offset?)`: chain state, metadata, moderation, views, rewards and wallet balances. The first page is ranked; subsequent pages browse the registry. Enforced winner and the wallet's current backing remain included. `count` is the board's on-chain `markeeCount`, which includes the empty seed Markee every board starts with. `entries` leaves that seed out while it has no message and no funds, so a one-page board returns `count - 1` entries.
 - `prepare(placement, action)`: validates membership/ownership, simulates and estimates the exact transaction, and returns a five-minute review. All financial inputs are decimal **wei strings**; use `parseEth` for user input.
 - `send(preparation)`: rechecks account, requests a chain switch when necessary, and sends through the host wallet. It never signs with a backend key.
 - `verify(pending)`: binds the submitted hash to the prepared sender, recipient, calldata and value, waits for two block confirmations, and reports actual token transfers. A reverted transaction or deferred settlement is not a reward success.
