@@ -22,10 +22,10 @@ export function useActiveWallet() {
   const externalWallet = wallets.find(w => w.walletClientType !== 'privy' && w.walletClientType !== 'privy-v2')
   const rawAddress = address ?? externalWallet?.address ?? wallets[0]?.address
   const activeAddress: `0x${string}` | undefined =
-    rawAddress && isAddress(rawAddress) ? rawAddress : undefined
+    authenticated && rawAddress && isAddress(rawAddress) ? rawAddress : undefined
 
-  const hasWallet = !!activeAddress || isConnected
-  const hasActiveWalletConnection = isConnected && !!address
+  const hasWallet = !!activeAddress
+  const hasActiveWalletConnection = authenticated && isConnected && !!address
   const isWalletConnectionPending = authenticated && hasWallet && !hasActiveWalletConnection
 
   return { activeAddress, authenticated, privyReady, hasWallet, hasActiveWalletConnection, isWalletConnectionPending }
