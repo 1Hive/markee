@@ -7,6 +7,8 @@
 //   { wallet, email, signature, timestamp }
 //   Moderator sets or updates their notification email. Triggers a verification email.
 //   Signature covers notifyEmailMessage(8453, wallet, email, timestamp).
+//   Emails are unique across wallets (trimmed, lowercased). 409 { error: 'Email already in use' } if
+//   another wallet holds it. Re-saving the wallet's own email succeeds.
 //
 // PATCH /api/moderation/notify
 //   { wallet, frequency, events?, signature, timestamp }
@@ -37,12 +39,16 @@ import {
 } from '@/lib/moderation/queue'
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
+import { claimNotifyEmail, releaseNotifyEmail, EMAIL_IN_USE_ERROR } from '@/lib/moderation/emailIndex'
+import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
 // Domain labels can't contain dots, so there's only one way to match and no catastrophic backtracking.
 const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/
 
 export const dynamic = 'force-dynamic'
+
+const emailIndex = kvEmailIndexStore(notifyStateKey)
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -104,6 +110,13 @@ export async function POST(req: NextRequest) {
       setAt: now,
     }
     await kv.set(notifyStateKey(wallet), notifyState)
+    const claim = await claimNotifyEmail(emailIndex, email, wallet, { verified: false })
+    if (!claim.ok) {
+      if (existing) await kv.set(notifyStateKey(wallet), existing)
+      else await kv.del(notifyStateKey(wallet))
+      return NextResponse.json({ error: EMAIL_IN_USE_ERROR, code: 'EMAIL_IN_USE' }, { status: 409 })
+    }
+    await releaseNotifyEmail(emailIndex, existing?.email, wallet, email)
 
     const token = randomBytes(32).toString('hex')
     // The deployment's own origin, as the moderators route uses -- not the caller's Origin header.
@@ -205,7 +218,9 @@ export async function DELETE(req: NextRequest) {
     }).catch(() => false)
     if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
 
+    const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
     await kv.del(notifyStateKey(wallet))
+    await releaseNotifyEmail(emailIndex, existing?.email, wallet)
     return NextResponse.json({ email: null, verified: false, frequency: 'every' })
   } catch (e) {
     console.error('[moderation/notify] DELETE error:', e)

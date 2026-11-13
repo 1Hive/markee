@@ -9,6 +9,14 @@ import {
   type EmailFrequency,
   type ModeratorEntry,
 } from '../lib/moderation/queue'
+import {
+  claimNotifyEmail,
+  releaseNotifyEmail,
+  normalizeNotifyEmail,
+  notifyEmailIndexKey,
+  UNVERIFIED_CLAIM_TTL,
+  type EmailIndexStore,
+} from '../lib/moderation/emailIndex'
 
 // Pure key-derivation helpers (mirrors lib/moderation/server.ts -- kept here to avoid server-only)
 const notifyStateKey = (wallet: string) => `moderation:notify:${wallet.toLowerCase()}`
@@ -154,4 +162,103 @@ test('verifyTokenKey produces a distinct prefix from notifyStateKey', () => {
 test('EMAIL_FREQUENCIES contains every valid value', () => {
   const expected: EmailFrequency[] = ['every', 'daily', 'off']
   assert.deepEqual([...EMAIL_FREQUENCIES].sort(), [...expected].sort())
+})
+
+// ── Unique notification emails ───────────────────────────────────────────────
+
+function memoryEmailIndex() {
+  const index = new Map<string, { wallet: string; ttl: number | null }>()
+  const emails = new Map<string, string>()
+  const store: EmailIndexStore = {
+    claim: async (key, wallet, ttl) => {
+      const cur = index.get(key)
+      if (cur && cur.wallet !== wallet) return cur.wallet
+      index.set(key, { wallet, ttl })
+      return wallet
+    },
+    releaseIfHeld: async (key, wallet) => { if (index.get(key)?.wallet === wallet) index.delete(key) },
+    currentEmail: async wallet => emails.get(wallet) ?? null,
+  }
+  const save = async (wallet: string, email: string, verified = false) => {
+    const previous = emails.get(wallet)
+    emails.set(wallet, normalizeNotifyEmail(email))
+    const claim = await claimNotifyEmail(store, email, wallet, { verified })
+    if (!claim.ok) {
+      if (previous) emails.set(wallet, previous)
+      else emails.delete(wallet)
+      return claim
+    }
+    await releaseNotifyEmail(store, previous, wallet, email)
+    return claim
+  }
+  const remove = async (wallet: string) => {
+    const previous = emails.get(wallet)
+    emails.delete(wallet)
+    await releaseNotifyEmail(store, previous, wallet)
+  }
+  return { index, emails, store, save, remove }
+}
+
+const ALICE = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const BOB = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+test('a second wallet cannot save an email another wallet holds', async () => {
+  const m = memoryEmailIndex()
+  assert.deepEqual(await m.save(ALICE, 'shared@example.com'), { ok: true })
+  assert.deepEqual(await m.save(BOB, 'shared@example.com'), { ok: false, holder: ALICE })
+  assert.equal(m.emails.get(BOB), undefined)
+  assert.equal(m.index.get(notifyEmailIndexKey('shared@example.com'))?.wallet, ALICE)
+})
+
+test('re-saving your own email succeeds', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'me@example.com')
+  assert.deepEqual(await m.save(ALICE, 'me@example.com'), { ok: true })
+  assert.deepEqual(await m.save(ALICE, ' ME@Example.com '), { ok: true })
+  assert.equal(m.index.get(notifyEmailIndexKey('me@example.com'))?.wallet, ALICE)
+})
+
+test('uniqueness ignores case and surrounding whitespace', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'Mixed@Example.COM')
+  assert.equal(notifyEmailIndexKey('  mixed@example.com '), notifyEmailIndexKey('MIXED@EXAMPLE.COM'))
+  assert.deepEqual(await m.save(BOB, ' mixed@example.com'), { ok: false, holder: ALICE })
+})
+
+test('changing an email releases the old one for other wallets', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'old@example.com')
+  await m.save(ALICE, 'new@example.com')
+  assert.equal(m.index.has(notifyEmailIndexKey('old@example.com')), false)
+  assert.deepEqual(await m.save(BOB, 'old@example.com'), { ok: true })
+  assert.deepEqual(await m.save(BOB, 'new@example.com'), { ok: false, holder: ALICE })
+})
+
+test('removing an email releases it', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'gone@example.com')
+  await m.remove(ALICE)
+  assert.deepEqual(await m.save(BOB, 'gone@example.com'), { ok: true })
+})
+
+test('a stale index entry whose holder moved on is taken over', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'stale@example.com')
+  m.emails.set(ALICE, 'elsewhere@example.com')
+  assert.deepEqual(await m.save(BOB, 'stale@example.com'), { ok: true })
+  assert.equal(m.index.get(notifyEmailIndexKey('stale@example.com'))?.wallet, BOB)
+})
+
+test('unverified claims expire, verified claims persist', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'pending@example.com')
+  assert.equal(m.index.get(notifyEmailIndexKey('pending@example.com'))?.ttl, UNVERIFIED_CLAIM_TTL)
+  await claimNotifyEmail(m.store, 'pending@example.com', ALICE, { verified: true })
+  assert.equal(m.index.get(notifyEmailIndexKey('pending@example.com'))?.ttl, null)
+})
+
+test('claims compare wallets case-insensitively', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'case@example.com')
+  assert.deepEqual(await claimNotifyEmail(m.store, 'case@example.com', ALICE.toUpperCase().replace('0X', '0x'), { verified: true }), { ok: true })
 })
