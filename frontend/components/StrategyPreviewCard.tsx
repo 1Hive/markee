@@ -106,6 +106,10 @@ export function StrategyPreviewCard({
         </div>
       </div>
 
+      <div style={{ marginTop: 10, maxWidth: 320, color: C.text2, fontSize: 13, lineHeight: 1.45 }}>
+        {meta.recommendation}
+      </div>
+
       {/* Price pill — floats up from bottom center on hover */}
       <span style={{
         position: 'absolute' as const, bottom: -14, left: '50%',
