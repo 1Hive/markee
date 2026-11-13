@@ -109,14 +109,10 @@ export async function POST(req: NextRequest) {
     const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
     let notifyState: ModeratorNotifyState
     if (email) {
+      const claim = await claimNotifyEmail(emailIndex, email, wallet, { verified: false })
+      if (!claim.ok) return NextResponse.json({ error: EMAIL_IN_USE_ERROR, code: 'EMAIL_IN_USE' }, { status: 409 })
       notifyState = { email, verified: false, frequency: existing?.frequency ?? 'every', setAt: now }
       await kv.set(notifyStateKey(wallet), notifyState)
-      const claim = await claimNotifyEmail(emailIndex, email, wallet, { verified: false })
-      if (!claim.ok) {
-        if (existing) await kv.set(notifyStateKey(wallet), existing)
-        else await kv.del(notifyStateKey(wallet))
-        return NextResponse.json({ error: EMAIL_IN_USE_ERROR, code: 'EMAIL_IN_USE' }, { status: 409 })
-      }
       await releaseNotifyEmail(emailIndex, existing?.email, wallet, email)
     } else if (!existing?.email) {
       return NextResponse.json({ error: 'No notification email is saved for this wallet' }, { status: 404 })

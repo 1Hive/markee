@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { useIdentityToken, usePrivy } from '@privy-io/react-auth'
 import { useSignMessage } from 'wagmi'
 
@@ -21,6 +21,8 @@ const SESSION_REQUIRED = 'SESSION_REQUIRED'
 export function useWalletAuthFetch() {
   const { authenticated, user, getAccessToken } = usePrivy()
   const { identityToken } = useIdentityToken()
+  const identityTokenRef = useRef(identityToken)
+  identityTokenRef.current = identityToken
   const { signMessageAsync } = useSignMessage()
 
   return useCallback(async (url: string, { method, address, body, message }: WalletAuthRequest): Promise<Response> => {
@@ -33,6 +35,7 @@ export function useWalletAuthFetch() {
       account.type === 'wallet' && account.address.toLowerCase() === address.toLowerCase())
     if (linked) {
       const accessToken = await getAccessToken().catch(() => null)
+      const identityToken = identityTokenRef.current
       if (accessToken || identityToken) {
         const res = await send({
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -43,5 +46,5 @@ export function useWalletAuthFetch() {
       }
     }
     return send({}, { signature: await signMessageAsync({ message: message() }) })
-  }, [authenticated, user, getAccessToken, identityToken, signMessageAsync])
+  }, [authenticated, user, getAccessToken, signMessageAsync])
 }

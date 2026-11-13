@@ -697,7 +697,7 @@ interface ChartMetric {
   // First day with real history, or null when there's none yet.
   since: string | null
   format: (v: number) => string
-  pending?: boolean
+  awaitingPrice?: boolean
 }
 
 const RANGES: ChartRange[] = [7, 30, 90]
@@ -740,7 +740,7 @@ function StatsChart({ metrics, days, loading, failed }: { metrics: ChartMetric[]
   const innerH = H - PAD.t - PAD.b
 
   const metric = metrics[activeIdx]
-  const busy = loading || !!metric.pending
+  const busy = loading || !!metric.awaitingPrice
   const since = metric.since
   // Days of real history, counting today.
   const tracked = since ? days.filter(d => d >= since).length : 0
@@ -819,7 +819,7 @@ function StatsChart({ metrics, days, loading, failed }: { metrics: ChartMetric[]
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const }}>
         {metrics.map((m, i) => {
           const on = i === activeIdx
-          const delta = loading || m.pending ? null : deltaFor(m)
+          const delta = loading || m.awaitingPrice ? null : deltaFor(m)
           return (
             <button
               key={m.label}
@@ -1587,9 +1587,9 @@ function AccountDashboard() {
                     loading={!stats}
                     failed={statsFailed}
                     metrics={[
-                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', daily: stats?.creator.raised.map(weiToChart), since: stats?.creator.raisedSince ?? null, pending: !ethPrice, format: formatUsd },
+                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', daily: stats?.creator.raised.map(weiToChart), since: stats?.creator.raisedSince ?? null, awaitingPrice: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '-', daily: stats?.creator.views, since: stats?.creator.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
-                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.creator.raised.map(weiToChart), den: stats.creator.views, per: 1000 } : undefined, since: laterDay(stats?.creator.raisedSince, stats?.creator.viewsSince), pending: !ethPrice, format: v => `$${v.toFixed(2)}` },
+                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.creator.raised.map(weiToChart), den: stats.creator.views, per: 1000 } : undefined, since: laterDay(stats?.creator.raisedSince, stats?.creator.viewsSince), awaitingPrice: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
                   />
                   <YourMarkees
@@ -1621,9 +1621,9 @@ function AccountDashboard() {
                     loading={!stats}
                     failed={statsFailed}
                     metrics={[
-                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, pending: !ethPrice, format: formatUsd },
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, awaitingPrice: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', daily: stats?.buyer.views, since: stats?.buyer.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
-                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), pending: !ethPrice, format: v => `$${v.toFixed(2)}` },
+                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), awaitingPrice: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
                   />
                   <StreamBalanceCard
