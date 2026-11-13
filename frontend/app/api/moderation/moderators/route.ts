@@ -175,6 +175,7 @@ export async function POST(req: NextRequest) {
     // Send verification emails to newly added moderators that have an email address.
     const origin = req.nextUrl.origin
     const moderatorsWithNewEmails = toAdd.filter(m => m.email)
+    const emailInUse: string[] = []
     if (moderatorsWithNewEmails.length > 0) {
       // Read any existing board name from the moderated boards listing for a friendlier email.
       const { listModeratedBoards } = await import('@/lib/moderation/server')
@@ -196,6 +197,11 @@ export async function POST(req: NextRequest) {
         // Upsert notify state (verified=false, frequency='every') if not already set.
         const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(m.wallet)).catch(() => null)
         if (!existing || existing.email !== email) {
+          const claim = await claimNotifyEmail(emailIndex, email, m.wallet, { verified: false })
+          if (!claim.ok) {
+            emailInUse.push(m.wallet)
+            return
+          }
           const notifyState: ModeratorNotifyState = {
             email,
             verified: false,
@@ -203,13 +209,6 @@ export async function POST(req: NextRequest) {
             setAt: now,
           }
           await kv.set(notifyStateKey(m.wallet), notifyState)
-          const claim = await claimNotifyEmail(emailIndex, email, m.wallet, { verified: false })
-          if (!claim.ok) {
-            if (existing) await kv.set(notifyStateKey(m.wallet), existing)
-            else await kv.del(notifyStateKey(m.wallet))
-            console.warn('[moderation/moderators] email already in use, not assigned to', m.wallet)
-            return
-          }
           await releaseNotifyEmail(emailIndex, existing?.email, m.wallet, email)
         }
         await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })
@@ -219,7 +218,7 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    return NextResponse.json(await boardState(board))
+    return NextResponse.json({ ...await boardState(board), ...(emailInUse.length > 0 ? { emailInUse } : {}) })
   } catch (error) {
     console.error('[moderation/moderators] POST error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

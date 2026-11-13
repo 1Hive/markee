@@ -141,6 +141,9 @@ export function BoardModerators({ board }: { board: string }) {
       queryClient.setQueryData(queryKey, body)
       setDraft((body.moderators ?? []).map((m: { wallet: string }) => m.wallet))
       setJustSaved(true)
+      if (Array.isArray(body.emailInUse) && body.emailInUse.length > 0) {
+        setSaveError(`Saved, but the email for ${body.emailInUse.map((w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`).join(', ')} is already in use by another wallet, so no notifications will be sent to it.`)
+      }
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(me) })
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
