@@ -15,6 +15,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { beatsTop, formatEthCeil, shortfallToWin, winAmountWei } from '@/lib/leaderboard/winAmount'
 import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
@@ -31,7 +32,6 @@ import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/des
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
 const PURP   = '#7B6AF4'
 
-const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
 
 function fmtAddr(a: string): string {
   return `${a.slice(0, 6)}...${a.slice(-4)}`
@@ -379,7 +379,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const topFundsAdded = topMarkee?.totalFundsAdded ?? 0n
   const fundedMarkees = markees.filter(m => m.totalFundsAdded > 0n)
   const minimumAmount = meta?.minimumPrice || parseEther('0.001')
-  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
+  const minimumAmountFormatted = formatEthCeil(minimumAmount)
   const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
   const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
 
@@ -465,13 +465,12 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001 ? maxSpendableEth.toFixed(6) : maxSpendableEth.toFixed(3)
 
   // WIN target: for "buy new" it's overtaking the current #1; for "add funds" it's overtaking #1 from this specific target's current total.
-  const winRawForCreate = topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT : null
+  const winRawForCreate = winAmountWei(topFundsAdded)
   const winForCreate = winRawForCreate && winRawForCreate >= minimumAmount ? winRawForCreate : null
-  const winRawForTarget = target && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT - target.totalFundsAdded : null
-  const winForTarget = winRawForTarget && winRawForTarget > 0n ? winRawForTarget : null
+  const winForTarget = target ? winAmountWei(topFundsAdded, target.totalFundsAdded) : null
   const winAmountFormatted = view === 'addFunds'
-    ? (winForTarget ? Number(formatEther(winForTarget)).toFixed(3) : null)
-    : (winForCreate ? Number(formatEther(winForCreate)).toFixed(3) : null)
+    ? (winForTarget ? formatEthCeil(winForTarget) : null)
+    : (winForCreate ? formatEthCeil(winForCreate) : null)
   const targetIsTop = !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
   const isAlreadyTop = view === 'addFunds' && targetIsTop
   // 2X replaces WIN for a message that's already #1: adding its current total again doubles it.
@@ -481,13 +480,12 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // active instead of re-deriving the ranking math.
   // An edit pays nothing, so its shortfall is the top-up this message needs to reach #1.
   const reviewAmountWei = view === 'edit' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
-  const reviewWinTarget = view === 'addFunds' || view === 'edit' ? winForTarget : winForCreate
+  const reviewOwnTotal = view === 'addFunds' || view === 'edit' ? target?.totalFundsAdded ?? 0n : 0n
   const reviewWillWin = view === 'edit'
     ? targetIsTop
-    : isAlreadyTop || !reviewWinTarget || reviewAmountWei >= reviewWinTarget
-  const reviewShortfallWei = !reviewWillWin && reviewWinTarget && reviewWinTarget > reviewAmountWei
-    ? reviewWinTarget - reviewAmountWei : 0n
-  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
+    : isAlreadyTop || topFundsAdded === 0n || beatsTop(reviewAmountWei, reviewOwnTotal, topFundsAdded)
+  const reviewShortfallWei = reviewWillWin ? 0n : shortfallToWin(reviewAmountWei, reviewOwnTotal, topFundsAdded)
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${formatEthCeil(reviewShortfallWei)} ETH` : null
   const reviewMarkeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, parseFloat(amount || '0')))
 
   // Default the "buy a new message" amount to whatever it takes to win #1, falling back to the
@@ -495,7 +493,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // (or a preset) themselves, and re-derives once the leaderboard data finishes loading.
   useEffect(() => {
     if (!isOpen || view !== 'list' || hasUserEdited) return
-    if (winForCreate) { setAmount(Number(formatEther(winForCreate)).toFixed(3)); setLastPreset('win') }
+    if (winForCreate) { setAmount(formatEthCeil(winForCreate)); setLastPreset('win') }
     else { setAmount(minimumAmountFormatted); setLastPreset('min') }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, view, hasUserEdited, minimumAmountFormatted, winForCreate])
@@ -579,11 +577,10 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   const openFund = (m: LeaderboardMarkee) => {
     const alreadyTop = !!topMarkee && m.address.toLowerCase() === topMarkee.address.toLowerCase()
-    const winRaw = !alreadyTop && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT - m.totalFundsAdded : null
-    const win = winRaw && winRaw > 0n ? winRaw : null
+    const win = alreadyTop ? null : winAmountWei(topFundsAdded, m.totalFundsAdded)
     const defaultAmount = alreadyTop
       ? Number(formatEther(m.totalFundsAdded)).toFixed(3) // 2x: adding your current total again doubles it
-      : win ? Number(formatEther(win)).toFixed(3) : minimumAmountFormatted
+      : win ? formatEthCeil(win) : minimumAmountFormatted
     setTarget(m); setView('addFunds'); setAmount(defaultAmount); setLastPreset(alreadyTop || win ? 'win' : 'min')
     setError(null); setHasUserEdited(false); setReviewOpen(false)
   }

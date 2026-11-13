@@ -14,6 +14,7 @@ import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { beatsTop, formatEthCeil, shortfallToWin, winAmountWei } from '@/lib/leaderboard/winAmount'
 import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
@@ -197,24 +198,19 @@ export function BuyMessageModal({
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
   const minimumAmount = minimumPrice || parseEther('0.001')
 
-  const rawTakeFirstAmount = topFundsAdded && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT : null
+  const rawTakeFirstAmount = topFundsAdded ? winAmountWei(topFundsAdded) : null
   const takeFirstAmount = rawTakeFirstAmount
     ? rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount
     : null
 
-  const addFundsRawTakeFirst = topFundsAdded && topFundsAdded > 0n && userMarkee
-    ? topFundsAdded + MIN_INCREMENT - userMarkee.totalFundsAdded
-    : null
-  const addFundsTakeFirstAmount = addFundsRawTakeFirst && addFundsRawTakeFirst > 0n ? addFundsRawTakeFirst : null
+  const addFundsTakeFirstAmount = topFundsAdded && userMarkee ? winAmountWei(topFundsAdded, userMarkee.totalFundsAdded) : null
 
   const userIsTop = !!userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
   const userIsTopDawg = activeTab === 'addFunds' && userIsTop
   const activeTakeFirstAmount = activeTab === 'addFunds' ? addFundsTakeFirstAmount : takeFirstAmount
 
-  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
-  const takeFirstAmountFormatted = activeTakeFirstAmount
-    ? Number(formatEther(activeTakeFirstAmount)).toFixed(3)
-    : null
+  const minimumAmountFormatted = formatEthCeil(minimumAmount)
+  const takeFirstAmountFormatted = activeTakeFirstAmount ? formatEthCeil(activeTakeFirstAmount) : null
 
   const hasCompetition = activeTab === 'addFunds'
     ? !!addFundsTakeFirstAmount
@@ -454,13 +450,13 @@ export function BuyMessageModal({
   // so willWin/shortfall both fall straight out of it without re-deriving the ranking math.
   // An update pays nothing, so its shortfall is the top-up the user's message needs to reach #1.
   const reviewAmountWei = activeTab === 'updateMessage' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
-  const reviewTakeFirstAmount = activeTab === 'updateMessage' ? addFundsTakeFirstAmount : activeTakeFirstAmount
+  const reviewOwnTotal = activeTab === 'create' ? 0n : userMarkee?.totalFundsAdded ?? 0n
+  const reviewTopTotal = topFundsAdded ?? 0n
   const reviewWillWin = activeTab === 'updateMessage'
     ? userIsTop
-    : !activeTakeFirstAmount || reviewAmountWei >= activeTakeFirstAmount
-  const reviewShortfallWei = !reviewWillWin && reviewTakeFirstAmount && reviewTakeFirstAmount > reviewAmountWei
-    ? reviewTakeFirstAmount - reviewAmountWei : 0n
-  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
+    : reviewTopTotal === 0n || beatsTop(reviewAmountWei, reviewOwnTotal, reviewTopTotal)
+  const reviewShortfallWei = reviewWillWin ? 0n : shortfallToWin(reviewAmountWei, reviewOwnTotal, reviewTopTotal)
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${formatEthCeil(reviewShortfallWei)} ETH` : null
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
