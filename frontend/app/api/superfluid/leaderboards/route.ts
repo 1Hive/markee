@@ -10,7 +10,6 @@ import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contr
 import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
-const BASELINE_PREFIX = 'superfluid:s6:baseline:'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -68,7 +67,7 @@ async function loadListing(request: Request) {
 
     const client = getClient()
 
-    // Fetch S6 boosted list and any stored baselines in parallel with factory call
+    // Fetch S6 boosted list in parallel with factory call
     const boostedListPromise = kv.get<BoostedMarkee[]>(BOOSTED_KEY).then(b => b ?? [])
 
     const addresses = await client.readContract({
@@ -139,15 +138,6 @@ async function loadListing(request: Request) {
 
     const boostedAddrs = new Set(boostedList.map(b => b.address.toLowerCase()))
 
-    // Fetch baselines for any address that has one stored
-    const baselineKeys = addresses.map(a => `${BASELINE_PREFIX}${a.toLowerCase()}`)
-    const baselineValues = await kv.mget<(string | null)[]>(...baselineKeys)
-    const baselineMap = new Map<string, bigint>()
-    addresses.forEach((addr, i) => {
-      const val = baselineValues[i]
-      if (val) baselineMap.set(addr.toLowerCase(), BigInt(val))
-    })
-
     // 4. Assemble response
     let markeeCallIndex = 0
 
@@ -172,22 +162,19 @@ async function loadListing(request: Request) {
       }
 
       const addrLower = addr.toLowerCase()
-      const baseline = baselineMap.get(addrLower) ?? 0n
-      const adjustedTopFunds = topFunds0 > baseline ? topFunds0 - baseline : 0n
-      const adjustedTotalFunds = totalFunds > baseline ? totalFunds - baseline : 0n
 
       return {
         address: addr,
         name,
-        totalFunds: formatEther(adjustedTotalFunds),
-        totalFundsRaw: adjustedTotalFunds.toString(),
+        totalFunds: formatEther(totalFunds),
+        totalFundsRaw: totalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
         beneficiary,
         creator: creators[i] ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
-        topFundsAddedRaw: adjustedTopFunds.toString(),
+        topFundsAddedRaw: topFunds0.toString(),
         topMessage,
         topMessageOwner,
         topMarkeeAddress: topMarkeeAddresses[i] ?? null,
