@@ -14,7 +14,8 @@ export interface ModerationRules {
   /** ENS names such as name.eth. */
   ens?: boolean;
 }
-export interface ModerationOptions { severity?: ModerationSeverity; rules?: ModerationRules }
+/** Versioned policies are forwarded as a whole to Markee. The server validates the version and rules. */
+export interface ModerationOptions { version?: number; severity?: ModerationSeverity; rules?: ModerationRules & Record<string, boolean | undefined> }
 export interface MessageCheck { enabled: boolean; state: 'pass' | 'soft-flagged' | 'unavailable'; contentHash: string; engine: string; policyVersion: string; reason?: string; reasonCodes?: string[] }
 export interface EntryModeration { state: 'visible' | 'manual-flagged' | 'soft-flagged' | 'unavailable'; contentHash: string; reason?: string; reasonCodes?: string[]; policyVersion: string }
 export type Address = `0x${string}`;

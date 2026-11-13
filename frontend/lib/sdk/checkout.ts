@@ -1,4 +1,5 @@
-import { moderationPolicy, type ModerationSeverity } from '../moderation/severity';
+import { versionedModerationPolicy, type ModerationSeverity } from '../moderation/severity';
+import { boardModerationPolicy } from '../moderation/board-policy';
 import { createHash, randomBytes } from 'node:crypto';
 import { kv } from '@vercel/kv';
 import { isHash, type Address, type Hex } from 'viem';
@@ -62,9 +63,10 @@ export function checkoutAction(input: unknown): PaymentAction {
 }
 export async function createCheckout(body: Record<string, unknown>, origin: string) : Promise<CheckoutSession> {
   let severity: ModerationSeverity;
-  try { severity = moderationPolicy(body.severity, body.rules); } catch { throw new SDKError('INVALID_SEVERITY', 'Invalid moderation severity or rules.'); }
+  try { severity = versionedModerationPolicy(body.policy, body.severity, body.rules); } catch { throw new SDKError('INVALID_SEVERITY', 'Invalid moderation policy or rules.'); }
   const checkoutOriginOverride = hostedCheckoutOrigin();
   const p = placement(body.placement), action = checkoutAction(body.action);
+  if (p.kind === 'board') severity = await boardModerationPolicy(p.address, body.policy, body.severity, body.rules);
   if (p.kind !== 'board' || p.chainId !== 8453) throw new SDKError('UNSUPPORTED_CHECKOUT', 'Hosted checkout supports Base boards.');
   const c = await checkoutDeps.board(8453, p.address);
   if (c.strategy !== 'sale') throw new SDKError('UNSUPPORTED_CHECKOUT', 'Use the streaming flow for For Rent boards.');

@@ -13,6 +13,7 @@ import { approveMessage, falsePositiveMessage } from '../lib/moderation/automati
 import { POST } from '../app/api/moderation/false-positive/route'
 import { itemKey } from '../lib/moderation/server'
 import { moderationPolicy } from '../lib/moderation/severity'
+import { boardPolicyDeps } from '../lib/moderation/board-policy'
 
 const id = '0x1111111111111111111111111111111111111111'
 const board = '0x2222222222222222222222222222222222222222'
@@ -22,6 +23,7 @@ function enable(t: any) {
   t.after(() => previous === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = previous)
 }
 function storage(t: any) {
+  t.mock.method(boardPolicyDeps, 'get', async () => null)
   const records = new Map<string, any>()
   const soft = new Set<string>()
   t.mock.method(automaticDeps, 'membership', async (pairs: unknown[]) => pairs.map(() => true))

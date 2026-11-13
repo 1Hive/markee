@@ -119,13 +119,13 @@ async function evaluateTrusted(id: string, message: string, board: string, manua
     return { ...base, state: 'unavailable', siteState: manual.site ? 'manual-flagged' : 'unavailable', reason: 'Moderation check unavailable' }
   }
 }
-export async function checkPublished(ids: string[], severity: ModerationSeverity = 'standard'): Promise<PublishedModeration[]> {
+export async function checkPublished(ids: string[], severity: ModerationSeverity | ((board: string) => Promise<ModerationSeverity>) = 'standard'): Promise<PublishedModeration[]> {
   const [observations, flags] = await Promise.all([automaticDeps.read(ids), automaticDeps.flags()])
   const boardFlags = new Set(flags.board), siteFlags = new Set(flags.site)
   const byId = new Map(observations.map(o => [o.markee.toLowerCase(), o]))
-  return Promise.all(ids.map(id => {
+  return Promise.all(ids.map(async id => {
     const o = byId.get(id.toLowerCase())
-    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }, severity) : unavailable(id)
+    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }, typeof severity === 'function' ? await severity(o.board) : severity) : unavailable(id)
   }))
 }
 export async function softRecords(): Promise<PublishedModeration[]> {

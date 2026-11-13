@@ -36,11 +36,10 @@ export const EMBED_MODERATION_RULES: Record<keyof ModerationRuleSet, string> = {
 /** The minimum SDK release that understands `moderation.rules`. */
 export const SDK_RULES_VERSION = '0.1.0-beta.8'
 
-/** The selected moderation as SDK option source: a preset when the rules match one, else explicit rules. */
+/** Versioned policy object that the SDK forwards without interpreting rule names. */
 export function moderationOptionSource(policy: ModerationSeverity): string {
-  if (policy === 'relaxed' || policy === 'standard' || policy === 'strict') return `{ severity: '${policy}' }`
   const rules = moderationRules(policy)
-  return `{ rules: { ${RULE_ORDER.map(name => `${name}: ${rules[name]}`).join(', ')} } }`
+  return `{ version: 1, rules: { ${RULE_ORDER.map(name => `${name}: ${rules[name]}`).join(', ')} } }`
 }
 
 /** Resolves the wizard's toggles (or a preset) to a policy key. */
@@ -856,7 +855,7 @@ Use placement = { kind: 'board', chainId: 8453, address: '${address}' }.
 Verify it with new MarkeeClient({ moderation: ${moderation} }).snapshot(placement). The API determines For Sale or For Rent automatically. Do not add a strategy option or ask me to create another board.
 
 Automatic moderation has already been selected: ${moderationSummary(policy)}
-Use moderation = ${moderation} on both the sign and modal and on any MarkeeClient instance. For vanilla JavaScript, pass it to both createMarkeeSign and createMarkee. Keep this exact ${custom ? 'rule selection' : 'preset'}; do not ask me to choose it again. Manual flags and unavailable-state hiding still apply; this configures the integration without changing Markee's own Standard policy.
+Use moderation = ${moderation} on both the sign and modal and on any MarkeeClient instance. For vanilla JavaScript, pass it to both createMarkeeSign and createMarkee. This is a versioned fallback; Markee's saved policy for this board takes precedence and can be changed later without updating the host app or SDK. Keep this exact ${custom ? 'rule selection' : 'preset'}; do not ask me to choose it again. Manual flags and unavailable-state hiding still apply.
 
 Ask only unanswered requirements:
 - Where should the sign appear and what should open the modal?

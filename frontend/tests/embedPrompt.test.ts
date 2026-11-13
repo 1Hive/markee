@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildEmbedPrompt, moderationFragment, SDK_RULES_VERSION, type EmbedStrategy, type EmbedWallet } from '../lib/embedPrompt/fragments'
+import { buildEmbedPrompt, moderationFragment, moderationOptionSource, SDK_RULES_VERSION, type EmbedStrategy, type EmbedWallet } from '../lib/embedPrompt/fragments'
 
 const address = '0x0000000000000000000000000000000000000001'
 for (const strategy of ['fixed', 'streaming'] as EmbedStrategy[]) {
@@ -48,8 +48,9 @@ test('legacy moderation instructions hide content until a trustworthy flag list 
 test('selected severity is an answered requirement applied to React, vanilla and direct client integrations', () => {
   for (const severity of ['relaxed', 'standard', 'strict'] as const) {
     const prompt = buildEmbedPrompt({ address, strategy: 'fixed', severity })
-    assert.ok(prompt.includes(`moderation = { severity: '${severity}' }`))
-    assert.ok(prompt.includes(`new MarkeeClient({ moderation: { severity: '${severity}' } }).snapshot(placement)`))
+    const source = moderationOptionSource(severity)
+    assert.ok(prompt.includes(`moderation = ${source}`))
+    assert.ok(prompt.includes(`new MarkeeClient({ moderation: ${source} }).snapshot(placement)`))
     assert.ok(prompt.includes('on both the sign and modal and on any MarkeeClient instance'))
     assert.ok(prompt.includes('pass it to both createMarkeeSign and createMarkee'))
     assert.ok(prompt.includes('do not ask me to choose it again'))
@@ -58,20 +59,20 @@ test('selected severity is an answered requirement applied to React, vanilla and
   assert.equal(buildEmbedPrompt({ address, strategy: 'fixed' }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'standard' }))
 })
 
-test('individually selected rules emit rules only for custom combinations; preset-equal toggles keep severity', () => {
+test('individually selected rules emit the versioned policy object', () => {
   const off = { profanity: false, links: false, addresses: false, ens: false }
-  // Toggles that match a preset produce exactly the preset prompt (works with every published SDK).
+  // Toggles that match a preset produce exactly the same policy object.
   assert.equal(buildEmbedPrompt({ address, strategy: 'fixed', rules: { ...off, profanity: true } }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'standard' }))
   assert.equal(buildEmbedPrompt({ address, strategy: 'fixed', rules: off }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'relaxed' }))
   assert.equal(buildEmbedPrompt({ address, strategy: 'fixed', rules: { profanity: true, links: true, addresses: true, ens: true } }), buildEmbedPrompt({ address, strategy: 'fixed', severity: 'strict' }))
 
   const prompt = buildEmbedPrompt({ address, strategy: 'fixed', rules: { ...off, profanity: true, ens: true } })
-  const rules = '{ rules: { profanity: true, links: false, addresses: false, ens: true } }'
+  const rules = '{ version: 1, rules: { profanity: true, links: false, addresses: false, ens: true } }'
   assert.ok(prompt.includes(`moderation = ${rules}`))
   assert.ok(prompt.includes(`new MarkeeClient({ moderation: ${rules} }).snapshot(placement)`))
   assert.ok(prompt.includes('messages with profanity, ENS names are also blocked'))
   assert.ok(prompt.includes('Allowed: links and domains, wallet and contract addresses.'))
   assert.ok(prompt.includes(`@markee_team/sdk ${SDK_RULES_VERSION} or later`))
   assert.ok(prompt.includes('Keep this exact rule selection'))
-  assert.ok(!prompt.includes("severity: '"))
+  assert.ok(prompt.includes('saved policy for this board takes precedence'))
 })

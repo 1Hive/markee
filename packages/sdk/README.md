@@ -371,6 +371,7 @@ Both React components and `createMarkee`, `createMarkeeSign`, and `MarkeeClient`
 
 ```ts
 const moderation = {
+  version: 1,
   rules: { profanity: true, links: false, addresses: false, ens: true },
 } as const;
 // <MarkeeSign placement={placement} moderation={moderation} />
@@ -386,7 +387,7 @@ const moderation = {
 | `addresses` | Wallet and contract addresses, full or abbreviated (`0x1234…abcd`) |
 | `ens` | ENS names such as `name.eth` |
 
-Per-rule options require 0.1.0-beta.8 or later.
+Versioned policy objects require 0.1.0-beta.8 or later. The SDK forwards the object to Markee without maintaining a rule-name allowlist; Markee validates its version and fields. Board owners can save a policy in **Add to your site**. That saved policy takes precedence over an older embed's supplied rules and is applied on the next sign refresh, without changing the host app or publishing another SDK version. When no board policy is saved, supplied rules and presets retain their existing behavior.
 
 ### Presets
 

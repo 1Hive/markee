@@ -200,7 +200,7 @@ export class MarkeeModal {
     await this.reload();
   }
   private async checkMessage(message: string): Promise<MessageCheck> {
-    try { return await this.client.checkMessage(message); }
+    try { return await this.client.checkMessage(message, this.options?.placement); }
     catch { return { enabled: true, state: 'unavailable', reason: 'Moderation check unavailable', contentHash: '', engine: '', policyVersion: '' }; }
   }
   private scheduleMessageCheck() {

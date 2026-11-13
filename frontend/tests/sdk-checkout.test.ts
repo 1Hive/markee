@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { checkoutEnabled, checkoutDeps, checkoutRequest, createCheckout, checkoutOrigin, hostedCheckoutOrigin, type CheckoutRecord } from '../lib/sdk/checkout';
+import { boardPolicyDeps } from '../lib/moderation/board-policy';
 import { conversionDeps, conversionTransaction, type ConversionStep } from '../lib/sdk/conversion';
 import type { PreparedAction, TransactionResult } from '../../packages/sdk/src/types';
 const board = '0x1111111111111111111111111111111111111111' as const;
@@ -10,6 +11,7 @@ const hash = `0x${'ab'.repeat(32)}` as const;
 const placement = { kind: 'board', chainId: 8453, address: board } as const;
 const action = { kind: 'create', amount: '1000', message: 'A real message', name: 'Test' } as const;
 const records = new Map<string, CheckoutRecord>();
+boardPolicyDeps.get = async () => null;
 const receipts = new Map<string, string>();
 const preparation: PreparedAction = { id: 'signed', expiresAt: Date.now() + 300000, placement, action, transaction: { from: account, to: board, chainId: 8453, data: '0x1234', value: '0x3e8', gas: '0x10000' }, review: { title: 'Pay', lines: [], estimatedGasCost: '1', reward: 'MARKEE' } };
 let result: TransactionResult = { status: 'pending', hash, explorerUrl: `https://basescan.org/tx/${hash}` };
