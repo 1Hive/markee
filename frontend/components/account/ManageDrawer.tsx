@@ -4,7 +4,8 @@
 // Markee Settings (contract setters) and Transfer Admin.
 
 import { useEffect, useState } from 'react'
-import { useAccount, useReadContract, useSignMessage } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import type { Abi } from 'viem'
 import { ArrowUpRight, ExternalLink, Eye, EyeOff, Info, Link2 } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -63,8 +64,8 @@ function FeaturedTag() {
 function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; reportingTip: string | null; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
   const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const { signMessageAsync } = useSignMessage()
-  const { address } = useAccount()
+  const walletFetch = useWalletAuthFetch()
+  const { address = '' } = useAccount()
   const toast = useToast()
   const verifiedFile = !!it.file?.verified
   const unverifiedFile = !!it.file && !it.file.verified
@@ -76,20 +77,20 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
       const res = it.file
         ? await (async (file) => {
             const timestamp = Math.floor(Date.now() / 1000)
-            const signature = await signMessageAsync({ message: unlinkFileMessage(CANONICAL_CHAIN_ID, board, file.repoFullName, file.filePath, timestamp) })
-            return fetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`, {
+            return walletFetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`, {
               method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ owner: address, signature, timestamp }),
+              address,
+              body: { owner: address, timestamp },
+              message: () => unlinkFileMessage(CANONICAL_CHAIN_ID, board, file.repoFullName, file.filePath, timestamp),
             })
           })(it.file)
         : await (async () => {
             const timestamp = Math.floor(Date.now() / 1000)
-            const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, board, { removeVerifiedUrl: it.url }, timestamp) })
-            return fetch('/api/openinternet/meta', {
+            return walletFetch('/api/openinternet/meta', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url, signatureVersion: 2, owner: address, signature, timestamp }),
+              address,
+              body: { leaderboardAddress: board, removeVerifiedUrl: it.url, signatureVersion: 2, owner: address, timestamp },
+              message: () => metaUpdateMessage(CANONICAL_CHAIN_ID, board, { removeVerifiedUrl: it.url }, timestamp),
             })
           })()
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
@@ -128,11 +129,11 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
     setError(null)
     try {
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: featuredIntegrationMessage(CANONICAL_CHAIN_ID, board, key, timestamp) })
-      const res = await fetch('/api/boards/integrations', {
+      const res = await walletFetch('/api/boards/integrations', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ board, key, owner: address, signature, timestamp }),
+        address,
+        body: { board, key, owner: address, timestamp },
+        message: () => featuredIntegrationMessage(CANONICAL_CHAIN_ID, board, key, timestamp),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
       toast(key ? 'Featured site updated' : 'Featuring the most viewed site')

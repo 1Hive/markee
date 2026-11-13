@@ -6,9 +6,9 @@ import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, Info } from 'lucide-react'
-import { useSignMessage } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { notifyEmailMessage, notifyPrefsMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
+import { notifyEmailMessage, notifyPrefsMessage, notifyResendMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
 import type { ActivityEvent } from '@/lib/activity/events'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
@@ -295,7 +295,7 @@ function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: bo
 
 function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
   const toast = useToast()
-  const { signMessageAsync } = useSignMessage()
+  const walletFetch = useWalletAuthFetch()
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
   const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
   const [eventsDraft, setEventsDraft] = useState<NotifyEvents>(() => notifyEventsOf(null))
@@ -347,11 +347,11 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
       const timestamp = Math.floor(Date.now() / 1000)
       if (emailChanged) {
         const newEmail = emailInput.trim().toLowerCase()
-        const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp) })
-        const res = await fetch(`${MODERATION_API}/notify`, {
+        const res = await walletFetch(`${MODERATION_API}/notify`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: address, email: newEmail, signature: sig, timestamp }),
+          address,
+          body: { wallet: address, email: newEmail, timestamp },
+          message: () => notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp),
         })
         const body = await res.json().catch(() => null)
         if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
@@ -361,11 +361,11 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
       }
       if (freqChanged || eventsChanged) {
         const ts2 = Math.floor(Date.now() / 1000)
-        const sig2 = await signMessageAsync({ message: notifyPrefsMessage(CANONICAL_CHAIN_ID, address, freqDraft, eventsDraft, ts2) })
-        const res2 = await fetch(`${MODERATION_API}/notify`, {
+        const res2 = await walletFetch(`${MODERATION_API}/notify`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: address, frequency: freqDraft, events: eventsDraft, signature: sig2, timestamp: ts2 }),
+          address,
+          body: { wallet: address, frequency: freqDraft, events: eventsDraft, timestamp: ts2 },
+          message: () => notifyPrefsMessage(CANONICAL_CHAIN_ID, address, freqDraft, eventsDraft, ts2),
         })
         const body2 = await res2.json().catch(() => null)
         if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
@@ -382,16 +382,16 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
 
   const resendVerification = async () => {
     if (!savedEmail) return
-    // Re-POST with current email triggers a new verification email
+    // The client only holds the masked email, so the server resends to the one it stored.
     try {
       const timestamp = Math.floor(Date.now() / 1000)
-      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, savedEmail, timestamp) })
-      await fetch(`${MODERATION_API}/notify`, {
+      const res = await walletFetch(`${MODERATION_API}/notify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: address, email: savedEmail, signature: sig, timestamp }),
+        address,
+        body: { wallet: address, resend: true, timestamp },
+        message: () => notifyResendMessage(CANONICAL_CHAIN_ID, address, timestamp),
       })
-      toast('Verification email re-sent')
+      if (res.ok) toast('Verification email re-sent')
     } catch {
       // best effort: a rejected or failed resend leaves the Resend link to try again
     }

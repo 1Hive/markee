@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { useAccount, useSignMessage } from 'wagmi'
+import { useAccount } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 
@@ -28,8 +29,8 @@ export function EditWebsiteMetaModal({
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { address } = useAccount()
-  const { signMessageAsync } = useSignMessage()
+  const { address = '' } = useAccount()
+  const walletFetch = useWalletAuthFetch()
 
   useEffect(() => {
     if (isOpen) {
@@ -66,11 +67,11 @@ export function EditWebsiteMetaModal({
     try {
       const update = { siteUrl: siteUrl.trim(), logoUrl: logoUrl.trim() }
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, leaderboardAddress, update, timestamp) })
-      const res = await fetch('/api/openinternet/meta', {
+      const res = await walletFetch('/api/openinternet/meta', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress, ...update, signatureVersion: 2, owner: address, signature, timestamp }),
+        address,
+        body: { leaderboardAddress, ...update, signatureVersion: 2, owner: address, timestamp },
+        message: () => metaUpdateMessage(CANONICAL_CHAIN_ID, leaderboardAddress, update, timestamp),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Failed to save')
       setSaved(true)
