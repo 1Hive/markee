@@ -9,6 +9,7 @@ import { useAccount, useReadContract, useSwitchChain } from 'wagmi'
 import { MARKEE_TOKEN, CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { Emoji } from '@/components/ui/Emoji'
 import { ModeratedContent, FlagButton } from '@/components/moderation'
+import { ALL_EMOJIS } from '@/lib/reactions'
 
 interface MarkeeCardProps {
   markee: Markee
@@ -25,7 +26,6 @@ interface MarkeeCardProps {
   topFundsAdded?: bigint
 }
 
-const ALL_EMOJIS = ['❤️', '👍', '👎', '💯', '😂', '🎉', '😮', '💩', '😠', '🚀', '👑', '🤔', '🪧']
 const MARKEE_THRESHOLD = 100n * 10n**18n // 100 MARKEE tokens
 
 // ERC20 ABI for balanceOf
