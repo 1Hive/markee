@@ -386,12 +386,13 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
     try {
       const timestamp = Math.floor(Date.now() / 1000)
       const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, savedEmail, timestamp) })
-      await fetch(`${MODERATION_API}/notify`, {
+      const res = await fetch(`${MODERATION_API}/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet: address, email: savedEmail, signature: sig, timestamp }),
       })
-      toast('Verification email re-sent')
+      const body = await res.json().catch(() => null)
+      toast(res.ok ? 'Verification email re-sent' : body?.error ?? 'Could not resend the verification email')
     } catch {
       // best effort: a rejected or failed resend leaves the Resend link to try again
     }
