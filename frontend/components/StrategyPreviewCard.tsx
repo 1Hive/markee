@@ -24,9 +24,9 @@ function fmtViews(n: number): string {
 }
 
 export function StrategyPreviewCard({
-  strategyKey, selected, disabled, onSelect, viewCount,
+  strategyKey, selected, disabled, onSelect, viewCount, showRecommendation = false,
 }: {
-  strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void; viewCount?: number
+  strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void; viewCount?: number; showRecommendation?: boolean
 }) {
   const [hovering, setHovering] = useState(false)
   const [pressing, setPressing] = useState(false)
@@ -106,9 +106,11 @@ export function StrategyPreviewCard({
         </div>
       </div>
 
-      <div style={{ marginTop: 10, maxWidth: 320, color: C.text2, fontSize: 13, lineHeight: 1.45 }}>
-        {meta.recommendation}
-      </div>
+      {showRecommendation && (
+        <div style={{ marginTop: 10, maxWidth: 320, color: C.text2, fontSize: 13, lineHeight: 1.45 }}>
+          {meta.recommendation}
+        </div>
+      )}
 
       {/* Price pill — floats up from bottom center on hover */}
       <span style={{
