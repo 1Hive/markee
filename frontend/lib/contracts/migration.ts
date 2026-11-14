@@ -1,4 +1,4 @@
-import { parseAbi, zeroAddress, type Address, type PublicClient, type Transport } from 'viem'
+import { BaseError, ContractFunctionZeroDataError, parseAbi, zeroAddress, type Address, type PublicClient, type Transport } from 'viem'
 import type { base } from 'viem/chains'
 import { BOARD_MIGRATORS } from '@/lib/contracts/addresses'
 
@@ -21,6 +21,18 @@ export function isVisibleBoard(state: MigrationState): boolean {
   return state.predecessor === zeroAddress || state.predecessorStatus === MIGRATION_FINISHED
 }
 
+export function isUndeployedContract(error: unknown): boolean {
+  return error instanceof BaseError && !!error.walk(cause => cause instanceof ContractFunctionZeroDataError)
+}
+
+type MulticallResult = { status: 'success'; result: unknown } | { status: 'failure'; error: Error }
+
+function valueOrUndeployed<T>(result: MulticallResult, undeployed: T): T {
+  if (result.status === 'success') return result.result as T
+  if (isUndeployedContract(result.error)) return undeployed
+  throw result.error
+}
+
 function read<T>(client: BaseClient, migrator: Address, functionName: 'status' | 'successorOf' | 'predecessorOf' | 'markeeSuccessorOf', address: Address) {
   return client.readContract({ address: migrator, abi: MIGRATOR_ABI, functionName, args: [address] }) as Promise<T>
 }
@@ -28,23 +40,21 @@ function read<T>(client: BaseClient, migrator: Address, functionName: 'status' |
 async function migrationStates(client: BaseClient, migrator: Address, boards: Address[], blockNumber?: bigint): Promise<MigrationState[]> {
   if (boards.length === 0) return []
   const firstPass = await client.multicall({
-    allowFailure: false,
     blockNumber,
     contracts: boards.flatMap(board => [
       { address: migrator, abi: MIGRATOR_ABI, functionName: 'status' as const, args: [board] },
       { address: migrator, abi: MIGRATOR_ABI, functionName: 'predecessorOf' as const, args: [board] },
     ]),
   })
-  const predecessors = boards.map((_, i) => firstPass[i * 2 + 1] as Address)
+  const predecessors = boards.map((_, i) => valueOrUndeployed<Address>(firstPass[i * 2 + 1], zeroAddress))
   const pending = predecessors.filter(p => p !== zeroAddress)
   const predecessorStatuses = pending.length === 0 ? [] : await client.multicall({
-    allowFailure: false,
     blockNumber,
     contracts: pending.map(p => ({ address: migrator, abi: MIGRATOR_ABI, functionName: 'status' as const, args: [p] })),
   })
-  const statusOf = new Map(pending.map((p, i) => [p.toLowerCase(), Number(predecessorStatuses[i])]))
+  const statusOf = new Map(pending.map((p, i) => [p.toLowerCase(), Number(valueOrUndeployed(predecessorStatuses[i], 0))]))
   return boards.map((_, i) => ({
-    status: Number(firstPass[i * 2]),
+    status: Number(valueOrUndeployed(firstPass[i * 2], 0)),
     predecessor: predecessors[i],
     predecessorStatus: statusOf.get(predecessors[i].toLowerCase()) ?? 0,
   }))
@@ -71,8 +81,10 @@ async function readEveryMigrator(client: BaseClient, functionName: 'status' | 's
   const results = await client.multicall({
     contracts: MIGRATORS.map(migrator => ({ address: migrator, abi: MIGRATOR_ABI, functionName, args: [address] })),
   })
-  if (results.every(r => r.status === 'failure')) throw new Error(`Every migrator failed ${functionName}(${address})`)
-  return results.map(r => r.status === 'success' ? r.result as number | Address : (functionName === 'status' ? 0 : zeroAddress))
+  const undeployed = functionName === 'status' ? 0 : zeroAddress
+  const failed = results.filter(r => r.status === 'failure' && !isUndeployedContract(r.error))
+  if (failed.length === results.length) throw new Error(`Every migrator failed ${functionName}(${address})`)
+  return results.map(r => r.status === 'success' ? r.result as number | Address : undeployed)
 }
 
 export async function finishedBoardSuccessor(client: BaseClient, board: Address): Promise<Address | null> {
@@ -98,7 +110,8 @@ const LISTING_CAP = 1000n
 export async function listVisibleBoards(client: BaseClient, migrator: Address, factories: readonly Address[], blockNumber?: bigint): Promise<VisibleBoards> {
   const uniqueFactories = [...new Set(factories)]
   const registered = await Promise.all(uniqueFactories.map(factory =>
-    client.readContract({ address: factory, abi: GET_LEADERBOARDS_ABI, functionName: 'getLeaderboards', args: [0n, LISTING_CAP], blockNumber }),
+    client.readContract({ address: factory, abi: GET_LEADERBOARDS_ABI, functionName: 'getLeaderboards', args: [0n, LISTING_CAP], blockNumber })
+      .catch(error => { if (isUndeployedContract(error)) return [] as readonly Address[]; throw error }),
   ))
   for (const [i, boards] of registered.entries()) {
     if (BigInt(boards.length) === LISTING_CAP) console.warn(`[migration] ${uniqueFactories[i]} hit the ${LISTING_CAP}-board getLeaderboards cap`)

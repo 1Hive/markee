@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { zeroAddress } from 'viem'
-import { isVisibleBoard, originalBoard, MIGRATION_FINISHED } from '../lib/contracts/migration'
+import { BaseError, ContractFunctionExecutionError, ContractFunctionZeroDataError, parseAbi, zeroAddress } from 'viem'
+import { isUndeployedContract, isVisibleBoard, originalBoard, MIGRATION_FINISHED } from '../lib/contracts/migration'
 
 const legacy = '0x00000000000000000000000000000000000000aa'
 const IMPORTING = 1
@@ -25,4 +25,13 @@ test('original board falls back to the address itself', () => {
   const predecessors = new Map([[successor.toLowerCase(), legacy as `0x${string}`]])
   assert.equal(originalBoard(successor, predecessors), legacy)
   assert.equal(originalBoard(legacy, predecessors), legacy)
+})
+
+test('a contract with no code at the read block counts as undeployed, other errors do not', () => {
+  const zeroData = new ContractFunctionZeroDataError({ functionName: 'status' })
+  const wrapped = new ContractFunctionExecutionError(zeroData, { abi: parseAbi(['function status(address) view returns (uint8)']), functionName: 'status' })
+  assert.equal(isUndeployedContract(zeroData), true)
+  assert.equal(isUndeployedContract(wrapped), true)
+  assert.equal(isUndeployedContract(new BaseError('rate limited')), false)
+  assert.equal(isUndeployedContract(new Error('network')), false)
 })
