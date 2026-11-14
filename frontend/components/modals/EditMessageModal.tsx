@@ -14,8 +14,9 @@ import { ModeratedContent } from '@/components/moderation'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, BG2, BG, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { DEFAULT_MAX_MESSAGE_BYTES, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 
-const MAX_LEN = 222
+const MAX_LEN = DEFAULT_MAX_MESSAGE_BYTES
 
 interface EditMessageModalProps {
   isOpen: boolean
@@ -147,7 +148,7 @@ export function EditMessageModal({
                 <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Your Message</div>
                 <textarea
                   value={message}
-                  onChange={e => setMessage(e.target.value.slice(0, MAX_LEN))}
+                  onChange={e => setMessage(truncateUtf8(e.target.value, MAX_LEN))}
                   placeholder="Enter your new message..."
                   rows={3}
                   style={{ width: '100%', boxSizing: 'border-box', background: BG, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', fontFamily: MONO, fontSize: 13, outline: 'none', resize: 'vertical' }}
@@ -155,7 +156,7 @@ export function EditMessageModal({
                   onBlur={e => { e.target.style.borderColor = BORDER }}
                   disabled={isPending || isConfirming}
                 />{messageModeration.ui}
-                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{message.length}/{MAX_LEN}</div>
+                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{utf8Length(message)}/{MAX_LEN} bytes</div>
               </div>
 
               {error && <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{error}</p>}

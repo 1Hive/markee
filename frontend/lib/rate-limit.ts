@@ -24,3 +24,20 @@ export async function underRateLimit(
 export function clientIp(request: Request): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
+
+// For public read routes: a KV outage should not take reads down with it, so a failed counter
+// lets the request through.
+export async function readRateLimited(
+  request: Request,
+  scope: string,
+  max: number,
+  windowSeconds = 60,
+  limit: typeof underRateLimit = underRateLimit,
+): Promise<boolean> {
+  try {
+    return !await limit(scope, clientIp(request), max, windowSeconds)
+  } catch (error) {
+    console.error(`[rate-limit] ${scope} check failed:`, error)
+    return false
+  }
+}

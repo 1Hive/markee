@@ -341,7 +341,7 @@ test('development public-data proxy cannot forward an automatically hidden impre
   t.mock.method(viewsWriteDeps, 'mget', async () => [12, 4])
   t.mock.method(globalThis, 'fetch', async () => { throw Error('Must not forward hidden views to the public API') })
   const request = new NextRequest('http://localhost/api/sdk/v1/views', { method: 'POST', body: JSON.stringify({ address: id, message: 'shit' }) })
-  const response = await sdkPost(request, { params: { path: ['views'] } })
+  const response = await sdkPost(request, { params: Promise.resolve({ path: ['views'] }) })
   assert.equal(response.status, 200)
   assert.deepEqual(await response.json(), { totalViews: 12, messageViews: 4, counted: false })
 })

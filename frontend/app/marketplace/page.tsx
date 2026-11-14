@@ -41,9 +41,8 @@ interface Leaderboard {
   streamedAt?: number
   topFundsAddedRaw: string
   markeeCount: number
-  // Both already come through in /api/ecosystem/leaderboards' response (every platform route
-  // returns them); only used for moderation eligibility (FlagButton/ModeratedContent's boardAdmin/
-  // boardCreator props), not currently displayed.
+  // Both come through in /api/ecosystem/leaderboards. admin gates moderation (FlagButton and
+  // ModeratedContent boardAdmin); neither is displayed.
   admin?: string
   creator?: string | null
   topMessage: string | null
@@ -56,6 +55,7 @@ interface Leaderboard {
   logoUrl?: string
   status?: string
   isLegacy?: boolean
+  gamed?: boolean
   // Populated for boards with no inherent platform tag (the shared "For Sale" factory) so Served On
   // can be derived from actual verification instead of a creation-time tag.
   linkedFiles?: { verified: boolean; repoOwner?: string; repoFullName?: string }[]
@@ -135,6 +135,9 @@ function useCountUp(target: number, started: boolean, duration = 1600) {
   return val
 }
 
+const TABLE_COLS = '190px 110px 1fr 74px 64px 120px 100px'
+const TABLE_MIN_WIDTH = 940
+
 function useNarrow() {
   const [narrow, setNarrow] = useState(false)
   useEffect(() => {
@@ -167,7 +170,7 @@ function SkeletonStatCell() {
         <span className="skeleton" style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
         <div className="skeleton" style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
       </span>
-      <div className="skeleton" style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+      <div className="skeleton" style={{ width: 110, maxWidth: 'calc(100% - 17px)', height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
     </div>
   )
 }
@@ -438,7 +441,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin}>
               {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
               {lb.topMarkeeOwner && (
                 <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
@@ -559,7 +562,7 @@ function TableRow({ lb, featured, views, viewsLoading, ethPrice, position, onBuy
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px',
+        display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH,
         gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
         background: isTop
@@ -777,6 +780,7 @@ export default function MarketplacePage() {
       }
       // default (raised) — rank by cumulative funds: fixed boards' lump-sum total, streaming boards'
       // total streamed-in. One cumulative-$ axis so the "Total raised" column and its sort are honest.
+      if (!!a.gamed !== !!b.gamed) return a.gamed ? 1 : -1
       const at = BigInt(a.totalFundsRaw || '0')
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
@@ -798,7 +802,7 @@ export default function MarketplacePage() {
   const pageCount  = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
 
   // Top leaderboard for featured hero (by totalFunds, must have a message)
-  const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage).sort((a, b) => {
+  const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage && !lb.gamed).sort((a, b) => {
     const at = BigInt(a.totalFundsRaw || '0'), bt = BigInt(b.totalFundsRaw || '0')
     return bt > at ? 1 : bt < at ? -1 : 0
   })[0] ?? null, [leaderboards])
@@ -902,9 +906,9 @@ export default function MarketplacePage() {
         </div>
 
         {/* table */}
-        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
@@ -919,7 +923,7 @@ export default function MarketplacePage() {
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5, 6].map(j => (
                   <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}

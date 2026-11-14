@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http, isAddress, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { readRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -204,6 +205,9 @@ export async function GET(request: NextRequest) {
       { error: 'Valid leaderboardAddress and markeeAddress are required' },
       { status: 400, headers: NO_CACHE },
     )
+  }
+  if (await readRateLimited(request, 'markee-history', 30)) {
+    return NextResponse.json({ error: 'Too many requests, try again shortly' }, { status: 429, headers: NO_CACHE })
   }
 
   const client = getClient()

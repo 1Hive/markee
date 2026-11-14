@@ -1,10 +1,6 @@
-import { parseAbi, zeroAddress, type Address } from 'viem';
+import { zeroAddress, type Address, type PublicClient } from 'viem';
 import type { BoardContext } from './snapshot';
-
-const terminalABI = parseAbi([
-  'function pay(uint256 projectId,address token,uint256 amount,address beneficiary,uint256 minReturnedTokens,string memo,bytes metadata) payable returns (uint256 beneficiaryTokenCount)',
-]);
-const nativeToken = '0x000000000000000000000000000000000000EEEe' as Address;
+import { markeePayPlan, quotePayPlan, settlementPayPlan, type RevnetRoute } from '../markee/quote';
 
 /** Mirrors Markee.pay's two splits before asking the current RevNet terminal for its output. */
 export function buyerPayment(amount: bigint, beneficiaryBps: bigint, platformFeeBps: bigint, hasFeeReceiver: boolean): bigint {
@@ -13,19 +9,15 @@ export function buyerPayment(amount: bigint, beneficiaryBps: bigint, platformFee
   return hasFeeReceiver ? revnetAmount - revnetAmount * platformFeeBps / 10_000n : revnetAmount;
 }
 
+/** Simulates every terminal payment the board makes, in its order, so the buyer's quote sees the pool after the fee payment. */
 export async function quoteReward(c: BoardContext, amount: bigint, account: Address): Promise<bigint | null> {
   if (!c.revnetEnabled || !c.token || amount === 0n) return null;
-  const [beneficiaryBps, platformFeeBps, feeReceiver, terminal, projectId] = await Promise.all([
+  const [beneficiaryBps, feeBps, feeReceiver, terminal, projectId] = await Promise.all([
     c.r<bigint>('percentToBeneficiary'), c.r<bigint>('percentToPlatformFeeReceiver'),
     c.r<Address>('platformFeeReceiver'), c.r<Address>('revNetTerminal'), c.r<bigint>('revNetProjectId'),
   ]);
   if (terminal === zeroAddress || projectId === 0n) return null;
-  const payment = buyerPayment(amount, beneficiaryBps, platformFeeBps, feeReceiver !== zeroAddress);
-  if (payment === 0n) return 0n;
-  const { result } = await c.client.simulateContract({
-    address: terminal, abi: terminalABI, functionName: 'pay',
-    args: [projectId, nativeToken, payment, account, 0n, '', '0x'],
-    account, value: payment, blockNumber: c.blockNumber,
-  });
-  return result;
+  const route: RevnetRoute = { revnetEnabled: true, beneficiary: c.beneficiary, beneficiaryBps, feeReceiver, feeBps, terminal, projectId };
+  const plan = c.strategy === 'rent' ? settlementPayPlan(amount, route, account) : markeePayPlan(amount, route, account);
+  return quotePayPlan(c.client as PublicClient, plan, account, c.blockNumber);
 }

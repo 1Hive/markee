@@ -28,6 +28,7 @@ import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import { useTopSince } from '@/hooks/useTopSince'
 import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
+import { DEFAULT_MAX_MESSAGE_BYTES, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
@@ -440,7 +441,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
-  const MAX_LEN = 222
+  const MAX_LEN = DEFAULT_MAX_MESSAGE_BYTES
 
   useEffect(() => {
     if (!isOpen) { setMessage(''); setError(null); setTxHash(undefined); reset() }
@@ -512,13 +513,13 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
                 <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Your Message</div>
                 <textarea
                   value={message}
-                  onChange={e => setMessage(e.target.value.slice(0, MAX_LEN))}
+                  onChange={e => setMessage(truncateUtf8(e.target.value, MAX_LEN))}
                   placeholder="Enter your new message..."
                   rows={3}
                   style={{ width: '100%', boxSizing: 'border-box', background: BG, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', fontFamily: MONO, fontSize: 13, outline: 'none', resize: 'vertical' }}
                   disabled={busy}
                 />{messageModeration.ui}
-                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{message.length}/{MAX_LEN}</div>
+                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{utf8Length(message)}/{MAX_LEN} bytes</div>
               </div>
               {error && <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{error}</p>}
             </div>

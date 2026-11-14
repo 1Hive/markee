@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
+import { useSiteVerify } from '@/hooks/useSiteVerify'
 import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { Check, Copy } from 'lucide-react'
 import { CopyButton } from '@/components/board-detail/shared'
@@ -112,6 +113,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [savingPolicy, setSavingPolicy] = useState(false)
   const [policyError, setPolicyError] = useState<string | null>(null)
   const { address: owner } = useAccount()
+  const verifySite = useSiteVerify()
   const walletFetch = useWalletAuthFetch()
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
@@ -177,13 +179,14 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
     let detectOk = false
     try {
       const [res] = await Promise.all([
-        fetch('/api/openinternet/verify-url', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, url: siteUrl }),
-        }).then(r => r.json()).catch(() => ({ verified: false, error: 'Network error' })),
+        verifySite(address, siteUrl).catch(() => ({ verified: false, unauthorized: false, error: 'Network error' })),
         wait(STEP_MIN_MS),
       ])
       detectOk = !!res.verified
+      if (!detectOk && res.unauthorized) {
+        bail(res.error ?? "Only this board's admin can verify a site.")
+        return
+      }
       if (!detectOk) {
         const reachIssue = /reach|HTTP \d|network/i.test(res.error || '')
         bail(reachIssue

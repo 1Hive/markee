@@ -56,9 +56,11 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
           <div className="flex-1" />
 
           <div className="flex items-center gap-3">
-            <MarkeeBalance />
+            <div className="hidden sm:block">
+              <MarkeeBalance />
+            </div>
             <AccountButton />
-            <ConnectButton />
+            <ConnectButton compactOnPhone />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden text-[#8A8FBF] hover:text-[#F897FE] p-2 transition-colors"
@@ -78,6 +80,9 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
                 </NavLink>
               ))}
             </nav>
+            <div className="sm:hidden mt-4 flex">
+              <MarkeeBalance />
+            </div>
           </div>
         )}
       </div>

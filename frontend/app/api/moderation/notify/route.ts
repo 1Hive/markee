@@ -43,6 +43,8 @@ import {
 } from '@/lib/moderation/queue'
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
+import { verifyEmailIpAllowed, verifyEmailRecipientAllowed, verifyEmailWalletAllowed } from '@/lib/moderation/email-throttle'
+import { clientIp } from '@/lib/rate-limit'
 import { authorizeWallet } from '@/lib/auth/wallet-session'
 import { releaseNotifyEmail, setNotifyEmail, EMAIL_IN_USE_ERROR } from '@/lib/moderation/emailIndex'
 import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
@@ -102,12 +104,23 @@ export async function POST(req: NextRequest) {
     if (Math.abs(now - timestamp) > 300) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     }
+    if (!await verifyEmailIpAllowed(clientIp(req))) {
+      return NextResponse.json({ error: 'Too many verification emails. Wait a few minutes and try again.' }, { status: 429 })
+    }
     const auth = await authorizeWallet(req, wallet, signature, () => email
       ? notifyEmailMessage(base.id, wallet, email, timestamp)
       : notifyResendMessage(base.id, wallet, timestamp))
     if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
 
+    if (!await verifyEmailWalletAllowed(wallet) || (email && !await verifyEmailRecipientAllowed(email))) {
+      return NextResponse.json({ error: 'Too many verification emails. Wait a few minutes and try again.' }, { status: 429 })
+    }
+
     const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(wallet)).catch(() => null)
+    // A resend goes to the stored address, which is throttled here instead.
+    if (!email && existing?.email && !existing.verified && !await verifyEmailRecipientAllowed(existing.email)) {
+      return NextResponse.json({ error: 'Too many verification emails. Wait a few minutes and try again.' }, { status: 429 })
+    }
     let notifyState: ModeratorNotifyState
     if (email) {
       const next: ModeratorNotifyState = { email, verified: false, frequency: existing?.frequency ?? 'every', setAt: now }

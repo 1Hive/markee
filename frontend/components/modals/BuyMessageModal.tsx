@@ -12,8 +12,11 @@ import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID, V13_LEADERBOARDS } from '@/lib/con
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd, formatMarkeeAmount } from '@/lib/utils'
-import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { formatUsd } from '@/lib/utils'
+import { formatMarkeeEstimate, markeeEstimateHeadline } from '@/lib/markee/quote'
+import { useMarkeePurchaseQuote } from '@/hooks/useMarkeeQuote'
+import { beatsTop, formatEthCeil, shortfallToWin, winAmountWei } from '@/lib/leaderboard/winAmount'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
@@ -196,24 +199,19 @@ export function BuyMessageModal({
   const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
   const minimumAmount = minimumPrice || parseEther('0.001')
 
-  const rawTakeFirstAmount = topFundsAdded && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT : null
+  const rawTakeFirstAmount = topFundsAdded ? winAmountWei(topFundsAdded) : null
   const takeFirstAmount = rawTakeFirstAmount
     ? rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount
     : null
 
-  const addFundsRawTakeFirst = topFundsAdded && topFundsAdded > 0n && userMarkee
-    ? topFundsAdded + MIN_INCREMENT - userMarkee.totalFundsAdded
-    : null
-  const addFundsTakeFirstAmount = addFundsRawTakeFirst && addFundsRawTakeFirst > 0n ? addFundsRawTakeFirst : null
+  const addFundsTakeFirstAmount = topFundsAdded && userMarkee ? winAmountWei(topFundsAdded, userMarkee.totalFundsAdded) : null
 
   const userIsTop = !!userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
   const userIsTopDawg = activeTab === 'addFunds' && userIsTop
   const activeTakeFirstAmount = activeTab === 'addFunds' ? addFundsTakeFirstAmount : takeFirstAmount
 
-  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
-  const takeFirstAmountFormatted = activeTakeFirstAmount
-    ? Number(formatEther(activeTakeFirstAmount)).toFixed(3)
-    : null
+  const minimumAmountFormatted = formatEthCeil(minimumAmount)
+  const takeFirstAmountFormatted = activeTakeFirstAmount ? formatEthCeil(activeTakeFirstAmount) : null
 
   const hasCompetition = activeTab === 'addFunds'
     ? !!addFundsTakeFirstAmount
@@ -365,7 +363,8 @@ export function BuyMessageModal({
     const amountWei = parseEther(amount)
     const minPrice = minimumPrice || BigInt(0)
     if (amountWei < minPrice) { setError(`Minimum payment is ${formatEther(minPrice)} ETH`); return }
-    if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen) ?? textLimitError('Name', name.trim(), maxNameLen)
+    if (textError) { setError(textError); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
@@ -399,7 +398,8 @@ export function BuyMessageModal({
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!strategyAddress || !isCorrectChain || !userMarkee) { setError('Please switch to Base and ensure you have a Markee'); return }
     if (!message.trim()) { setError('Please enter a message'); return }
-    if (maxMessageLength && message.length > Number(maxMessageLength)) { setError(`Message must be ${maxMessageLength} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen)
+    if (textError) { setError(textError); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: strategyABI, functionName: 'updateMessage', args: [userMarkee.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
@@ -408,6 +408,10 @@ export function BuyMessageModal({
       setError(formatTransactionError(err))
     }
   }
+
+  const quoteAmountWei = (() => { try { return activeTab !== 'updateMessage' && amount ? parseEther(amount) : 0n } catch { return 0n } })()
+  const markeeQuote = useMarkeePurchaseQuote(strategyAddress, quoteAmountWei, activeAddress as `0x${string}` | undefined, isOpen && activeTab !== 'updateMessage')
+  const markeeHeadline = markeeEstimateHeadline(markeeQuote)
 
   if (!isOpen) return null
 
@@ -430,8 +434,8 @@ export function BuyMessageModal({
     : (activeTab !== 'updateMessage' && insufficientBalance) ? 'Insufficient ETH balance'
     : ((activeTab === 'create' || activeTab === 'updateMessage') && !message.trim()) ? 'Enter a message to continue'
     : null
-  const maxLen = Number(maxMessageLength || 223)
-  const maxNameLen = Number(maxNameLength || 32)
+  const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const stepLabel =
@@ -442,7 +446,6 @@ export function BuyMessageModal({
   // Amount section (create + addFunds)
   const parsedBid = parseFloat(amount || '0')
   const bidNum = Number.isFinite(parsedBid) ? parsedBid : 0
-  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, bidNum))
   const selFeatured = takeFirstAmountFormatted !== null && amount === takeFirstAmountFormatted
   const selMin = amount === minimumAmountFormatted
 
@@ -451,13 +454,13 @@ export function BuyMessageModal({
   // so willWin/shortfall both fall straight out of it without re-deriving the ranking math.
   // An update pays nothing, so its shortfall is the top-up the user's message needs to reach #1.
   const reviewAmountWei = activeTab === 'updateMessage' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
-  const reviewTakeFirstAmount = activeTab === 'updateMessage' ? addFundsTakeFirstAmount : activeTakeFirstAmount
+  const reviewOwnTotal = activeTab === 'create' ? 0n : userMarkee?.totalFundsAdded ?? 0n
+  const reviewTopTotal = topFundsAdded ?? 0n
   const reviewWillWin = activeTab === 'updateMessage'
     ? userIsTop
-    : !activeTakeFirstAmount || reviewAmountWei >= activeTakeFirstAmount
-  const reviewShortfallWei = !reviewWillWin && reviewTakeFirstAmount && reviewTakeFirstAmount > reviewAmountWei
-    ? reviewTakeFirstAmount - reviewAmountWei : 0n
-  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
+    : reviewTopTotal === 0n || beatsTop(reviewAmountWei, reviewOwnTotal, reviewTopTotal)
+  const reviewShortfallWei = reviewWillWin ? 0n : shortfallToWin(reviewAmountWei, reviewOwnTotal, reviewTopTotal)
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${formatEthCeil(reviewShortfallWei)} ETH` : null
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box' as const, background: BG, color: TEXT,
@@ -581,7 +584,7 @@ export function BuyMessageModal({
                   message={activeTab === 'addFunds' ? (userMarkee?.message ?? '') : message}
                   amountLabel={activeTab === 'updateMessage' ? 'Free — message update only' : `${amount || '0'} ETH`}
                   amountUsd={activeTab !== 'updateMessage' && ethPrice && bidNum > 0 ? formatUsd(bidNum * ethPrice) : null}
-                  markeeEarnedLabel={activeTab === 'updateMessage' ? '0 MARKEE' : `${formatMarkeeAmount(markeeEarned)} MARKEE`}
+                  markeeEarnedLabel={activeTab === 'updateMessage' ? '0 MARKEE' : formatMarkeeEstimate(markeeQuote) ?? (markeeQuote.loading ? 'Estimating MARKEE…' : 'MARKEE estimate unavailable')}
                   willWin={reviewWillWin}
                   editing={activeTab === 'updateMessage'}
                   alreadyWinning={!!userIsTopDawg}
@@ -619,21 +622,21 @@ export function BuyMessageModal({
                   <ModalField label={messageLabel}>
                     <textarea
                       value={message}
-                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
+                      onChange={e => { setHasUserEdited(true); setMessage(truncateUtf8(e.target.value, maxLen)) }}
                       placeholder={messagePlaceholder}
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
                       disabled={isPending || isConfirming}
                     />{messageModeration.ui}
                     <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
-                      {message.length}/{maxLen}
+                      {utf8Length(message)}/{maxLen} bytes
                     </div>
                   </ModalField>
                   <ModalField label="Your Name (optional)">
                     <input
                       type="text"
                       value={name}
-                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      onChange={e => { setHasUserEdited(true); setName(truncateUtf8(e.target.value, maxNameLen)) }}
                       placeholder="tell the world who wrote this..."
                       style={inputStyle}
                       disabled={isPending || isConfirming}
@@ -668,7 +671,7 @@ export function BuyMessageModal({
                   <ModalField label="New Message">
                     <textarea
                       value={message}
-                      onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)) }}
+                      onChange={e => { setHasUserEdited(true); setMessage(truncateUtf8(e.target.value, maxLen)) }}
                       placeholder="Enter your new message..."
                       rows={3}
                       style={{ ...messageBoxStyle, resize: 'vertical' }}
@@ -812,10 +815,11 @@ export function BuyMessageModal({
                     border: `1px solid rgba(248,151,254,0.35)`,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                   }}>
-                    <div style={{ overflowX: 'auto' }}>
+                    <div style={{ overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
                       <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
-                        {formatMarkeeAmount(markeeEarned)}
+                        {markeeHeadline.headline}
                       </span>
+                      {markeeHeadline.note && <span style={{ color: PINK, fontSize: 11, fontFamily: 'Manrope, system-ui, sans-serif', opacity: 0.8, whiteSpace: 'nowrap' }}>{markeeHeadline.note}</span>}
                     </div>
                     <span style={{ color: PINK, fontSize: 11.5, fontWeight: 400, fontFamily: 'Manrope, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}>MARKEE earned</span>
                   </div>

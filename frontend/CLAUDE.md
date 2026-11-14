@@ -34,7 +34,7 @@ Targeted tests are configured in package.json. Run the relevant suites and TypeS
 
 ## Architecture
 
-**Next.js 14 App Router** frontend for the Markee protocol — a leaderboard of on-chain "markees" (smart contracts) ranked by total funds added.
+**Next.js 15 App Router** (React 19) frontend for the Markee protocol — a leaderboard of on-chain "markees" (smart contracts) ranked by total funds added.
 
 ### Routing
 
@@ -100,7 +100,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 | `views:github:{address}` | Cached traffic data | 1 hour |
 | `cache:superfluid:leaderboards` | Cached Superfluid leaderboard API response | 60 s |
 | `cache:github:leaderboards` | Cached GitHub leaderboard API response | 60 s |
-| `creator:sf:{address}` | Creator (msg.sender) of a Superfluid leaderboard | permanent |
+| `creator:sf:{address}` | Creator (msg.sender) of a Superfluid leaderboard, for display only and never for authorization | permanent |
 
 ## Integrations
 
@@ -110,12 +110,15 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 
 ## Pages
 
-- `/account` — "My Markees": shows all leaderboards the connected wallet created across Superfluid and GitHub. Uses shared listing snapshots on normal loads; explicit post-mutation refreshes use `?bust=1`. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
+- `/account` — "My Markees": shows all leaderboards the connected wallet currently administers across Superfluid and GitHub. Uses shared listing snapshots on normal loads; explicit post-mutation refreshes use `?bust=1`. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
 
 ## Patterns
 
+### Board ownership
+The board's live on-chain `admin()` is its only owner. Creator Hub lists boards by `admin`, the Manage drawer re-reads `admin()` before showing controls, and moderation, unlink, metadata and featured-site checks go through `readBoardOwners` in `lib/moderation/server.ts`, which returns only the admin. Never authorize anything by the cached creator. Routes that attach a site or repo or unlink one go through `boardAdminDenial` in `lib/boards/admin-auth.ts`: the current admin proves itself with a Privy session for its wallet or a fresh signature (5-minute window), and contract admins such as multisigs sign through ERC-1271. Other owner routes use `authorizeWallet` from `lib/auth/wallet-session.ts` and then check `readBoardOwners`.
+
 ### Leaderboard creator (Superfluid)
-The `admin` field on Superfluid leaderboard contracts is the beneficiary address, not the creator. To determine the creator, the API calls `eth_getLogs` on the factory to find creation events, then `eth_getTransaction` to read the `from` address. Results are cached permanently in KV as `creator:sf:{address}`. Filter "My Markees" by `creator`, falling back to `admin` if not yet resolved. Once a board's `admin` differs from the admin it was created with (`initialAdmin`, from the same creation log, cached as `initial-admin:{prefix}:{address}`), the admin was transferred and the board belongs to the current `admin` instead.
+`creator` is display-only. The API finds it with `eth_getLogs` on the factory's creation events and `eth_getTransaction` for the `from` address, and caches it permanently in KV as `creator:sf:{address}` (the admin it was created with as `initial-admin:{prefix}:{address}`).
 
 ### Cache bust
 Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation or a successful mutation. Normal `/account` hydration and regular listing page loads must use cached responses. Distributed refresh leases coalesce simultaneous refresh requests.

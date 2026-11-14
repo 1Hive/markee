@@ -7,11 +7,8 @@ export interface BaseLeaderboard {
   totalFundsRaw: string
   markeeCount: number
   admin: string
-  // Address-resolved creator (lib/leaderboards/resolveCreators.ts) -- distinct from admin, which for
-  // some platforms (Superfluid) is the beneficiary, and for migrated boards is the Cooperative
-  // multisig, not whoever actually created the board. Populated for superfluid/github/openinternet/
-  // forsale; streaming boards have no separate creator resolution, so callers fall back to admin
-  // (matches the existing lb.creator ?? lb.admin convention already used elsewhere on this page).
+  // Address-resolved creator (lib/leaderboards/resolveCreators.ts), kept for display only. Ownership
+  // follows admin, the board's current on-chain admin().
   creator?: string | null
   initialAdmin?: string | null
   topMessage: string | null
@@ -84,6 +81,8 @@ export interface MyMessage {
   markeeRateRaw?: string
   // Streaming boards only: the current #1's rate in wei/sec.
   topRateRaw?: string
+  // Streaming boards only: net ETH this wallet streamed to its own message, null when unavailable.
+  rentSpent?: bigint | null
   // From the board's #1 history (lib/leaderboard/topHistory.ts): since when this message has been
   // #1 (unix seconds, while it is), and its total time at #1. null where the board has no history.
   winningSince?: number | null

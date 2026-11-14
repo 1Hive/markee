@@ -63,7 +63,7 @@ export async function openBuyModal(page: Page, board: string) {
 // A new message on a For Sale board at the modal's default amount (enough to win).
 export async function buySale(page: Page, board: string, message: string, amount?: string) {
   await openBuyModal(page, board)
-  await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ max\)$/).fill(message)
+  await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ bytes max\)$/).fill(message)
   if (amount !== undefined) await page.locator('input[inputmode="decimal"]').first().fill(amount)
   await page.getByRole('button', { name: 'Review Payment Info' }).click()
   await page.getByRole('button', { name: 'Confirm Payment' }).click()
@@ -75,7 +75,7 @@ export async function buySale(page: Page, board: string, message: string, amount
 // than the fork, so where the two differ an explicit rate is the reliable way to win.
 export async function bidRent(page: Page, board: string, message: string, rate: 'MIN' | 'WIN' | { monthly: string }) {
   await openBuyModal(page, board)
-  await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ max\)$/).fill(message)
+  await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ bytes max\)$/).fill(message)
   if (typeof rate === 'string') await page.getByRole('button', { name: rate, exact: true }).click()
   else await page.locator('input[inputmode="decimal"]').first().fill(rate.monthly)
   // "Buy Message" with enough ETHx, "Deposit X ETH and Buy" when the deposit has to be topped up.

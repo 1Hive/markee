@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, useSignMessage } from 'wagmi'
+import { reactionMessage, type ReactionAction } from '@/lib/reactions'
 import type { EmojiReaction } from '@/types'
 
 interface UseReactionsReturn {
@@ -15,9 +16,28 @@ interface UseReactionsReturn {
 
 export function useReactions(): UseReactionsReturn {
   const { address } = useAccount()
+  const { signMessageAsync } = useSignMessage()
   const [reactions, setReactions] = useState<Map<string, EmojiReaction[]>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const signedBody = useCallback(async (action: ReactionAction, markeeAddress: string, emoji: string) => {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = await signMessageAsync({ message: reactionMessage(action, markeeAddress, emoji, timestamp) })
+    return { markeeAddress, userAddress: address, signature, timestamp }
+  }, [address, signMessageAsync])
+
+  const deleteReaction = useCallback(async (markeeAddress: string) => {
+    const response = await fetch('/api/reactions', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await signedBody('remove', markeeAddress, '')),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      throw new Error(data?.error || 'Failed to remove reaction')
+    }
+  }, [signedBody])
 
   // Fetch all reactions
   const fetchReactions = useCallback(async () => {
@@ -81,15 +101,7 @@ export function useReactions(): UseReactionsReturn {
         // User has this emoji - remove it
         console.log(`[useReactions] Removing reaction: ${emoji} from ${markeeAddress}`)
         
-        const response = await fetch(
-          `/api/reactions?markeeAddress=${markeeAddress}&userAddress=${address}`,
-          { method: 'DELETE' }
-        )
-
-        if (!response.ok) {
-          throw new Error('Failed to remove reaction')
-        }
-
+        await deleteReaction(markeeAddress)
         console.log('[useReactions] Reaction removed successfully')
       } else {
         // User doesn't have this emoji - add/update it
@@ -98,12 +110,7 @@ export function useReactions(): UseReactionsReturn {
         const response = await fetch('/api/reactions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            markeeAddress,
-            userAddress: address,
-            emoji,
-            chainId
-          })
+          body: JSON.stringify({ ...await signedBody('react', markeeAddress, emoji), emoji, chainId })
         })
 
         const data = await response.json()
@@ -123,7 +130,7 @@ export function useReactions(): UseReactionsReturn {
       setError(err instanceof Error ? err.message : 'Failed to toggle reaction')
       throw err
     }
-  }, [address, reactions, fetchReactions])
+  }, [address, reactions, fetchReactions, deleteReaction, signedBody])
 
   // Remove a reaction
   const removeReaction = useCallback(async (markeeAddress: string) => {
@@ -135,14 +142,7 @@ export function useReactions(): UseReactionsReturn {
     try {
       setError(null)
 
-      const response = await fetch(
-        `/api/reactions?markeeAddress=${markeeAddress}&userAddress=${address}`,
-        { method: 'DELETE' }
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to remove reaction')
-      }
+      await deleteReaction(markeeAddress)
 
       // Refetch to update UI
       await fetchReactions()
@@ -151,7 +151,7 @@ export function useReactions(): UseReactionsReturn {
       setError(err instanceof Error ? err.message : 'Failed to remove reaction')
       throw err
     }
-  }, [address, fetchReactions])
+  }, [address, fetchReactions, deleteReaction])
 
   // Initial fetch
   useEffect(() => {

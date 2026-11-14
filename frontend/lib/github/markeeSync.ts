@@ -275,7 +275,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
     }
 
     if (!accessToken) {
-      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `GitHub token not found (linkedByUid="${file.linkedByUid || ''}")` })
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'GitHub connection not found. Reconnect GitHub and sync again.' })
       continue
     }
 
@@ -357,13 +357,14 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
       )
 
       if (!putRes.ok) {
-        const errBody = await putRes.text()
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `Write failed (${putRes.status}): ${errBody.slice(0, 200)}` })
+        console.error(`[update-markee-file] write failed for ${file.repoFullName}/${file.filePath}:`, putRes.status, (await putRes.text().catch(() => '')).slice(0, 500))
+        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `Write failed (${putRes.status})` })
       } else {
         results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: true })
       }
     } catch (err) {
-      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: String(err) })
+      console.error(`[update-markee-file] sync failed for ${file.repoFullName}/${file.filePath}:`, err)
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Sync failed' })
     }
   }
 

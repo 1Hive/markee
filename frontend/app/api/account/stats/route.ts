@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAddress } from 'viem'
 import {
   VIEWS_SINCE_KEY, boardAndMessageAddresses, boughtSnapshotKey, dailyGrowth, dailyViews, fundedSnapshotKey,
-  lastDays, raisedSnapshotKey,
+  lastDays, raisedSnapshotKey, rentSpentSnapshotKey,
 } from '@/lib/stats/daily'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       dailyViews(creatorAddrs, days),
       dailyViews(buyerAddrs, days),
       dailyGrowth(creator.map(raisedSnapshotKey), days),
-      dailyGrowth([boughtSnapshotKey(wallet), fundedSnapshotKey(wallet)], days),
+      dailyGrowth([boughtSnapshotKey(wallet), fundedSnapshotKey(wallet), rentSpentSnapshotKey(wallet)], days),
     ])
     return NextResponse.json({
       days,

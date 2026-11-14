@@ -42,20 +42,20 @@ interface ModerationContextValue {
   isAdmin: boolean
   /**
    * Whether the current wallet can moderate a specific markee -- true for global admins, or when
-   * the wallet matches the passed board's on-chain admin or KV-cached creator. This is a UI gate
+   * the wallet is the passed board's current on-chain admin. This is a UI gate
    * only (show/hide controls); the server independently re-derives and enforces the same rule from
    * markeeId alone on every actual flag/unflag request, so passing wrong/stale board info here can
    * only hide a control a wallet is actually entitled to use, never grant one it isn't.
    */
-  canModerate: (boardAdmin?: string | null, boardCreator?: string | null) => boolean
+  canModerate: (boardAdmin?: string | null) => boolean
   /** Check if a specific markee is flagged */
   isFlagged: (chainId: number | string, markeeId: string) => boolean
   /** Whether the current wallet sees this markee's message and author hidden: flagged, and not one of its moderators */
-  isHidden: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => boolean
+  isHidden: (chainId: number | string, markeeId: string, boardAdmin?: string | null) => boolean
   /** Whether the current wallet can lift this markee's flag. A board flag is only liftable by that board's moderators. */
-  canUnflag: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => boolean
+  canUnflag: (chainId: number | string, markeeId: string, boardAdmin?: string | null) => boolean
   /** Toggle flag state (must pass canModerate for the same board info). Returns new flag state. */
-  toggleFlag: (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) => Promise<boolean>
+  toggleFlag: (chainId: number | string, markeeId: string, boardAdmin?: string | null) => Promise<boolean>
   /** Replace the flagged sets with fresh lists from the moderation API */
   replaceFlagged: (lists: FlaggedLists) => void
   /** Loading state for initial fetch */
@@ -134,22 +134,22 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
   )
 
   const ownsBoard = useCallback(
-    (boardAdmin?: string | null, boardCreator?: string | null): boolean => {
+    (boardAdmin?: string | null): boolean => {
       const wallet = address?.toLowerCase()
-      return !!wallet && (boardAdmin?.toLowerCase() === wallet || boardCreator?.toLowerCase() === wallet)
+      return !!wallet && (boardAdmin?.toLowerCase() === wallet)
     },
     [address]
   )
 
   const canModerate = useCallback(
-    (boardAdmin?: string | null, boardCreator?: string | null): boolean =>
-      isAdminUser || ownsBoard(boardAdmin, boardCreator),
+    (boardAdmin?: string | null): boolean =>
+      isAdminUser || ownsBoard(boardAdmin),
     [isAdminUser, ownsBoard]
   )
 
   const isHidden = useCallback(
-    (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null) =>
-      isFlagged(chainId, markeeId) && !canModerate(boardAdmin, boardCreator),
+    (chainId: number | string, markeeId: string, boardAdmin?: string | null) =>
+      isFlagged(chainId, markeeId) && !canModerate(boardAdmin),
     [isFlagged, canModerate]
   )
 
@@ -157,20 +157,20 @@ export function ModerationProvider({ children }: { children: ReactNode }) {
   // Added moderators can lift board flags too (see authorizedScopes), but this provider does not know
   // them, so they work through the /account queue instead.
   const canUnflag = useCallback(
-    (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): boolean =>
-      boardFlagged.has(toKey(chainId, markeeId)) ? ownsBoard(boardAdmin, boardCreator) : canModerate(boardAdmin, boardCreator),
+    (chainId: number | string, markeeId: string, boardAdmin?: string | null): boolean =>
+      boardFlagged.has(toKey(chainId, markeeId)) ? ownsBoard(boardAdmin) : canModerate(boardAdmin),
     [boardFlagged, ownsBoard, canModerate, toKey]
   )
 
   const toggleFlag = useCallback(
-    async (chainId: number | string, markeeId: string, boardAdmin?: string | null, boardCreator?: string | null): Promise<boolean> => {
-      if (!address || !canModerate(boardAdmin, boardCreator)) return false
+    async (chainId: number | string, markeeId: string, boardAdmin?: string | null): Promise<boolean> => {
+      if (!address || !canModerate(boardAdmin)) return false
 
       const key = toKey(chainId, markeeId)
       const currentlyFlagged = flaggedSet.has(key)
-      if (currentlyFlagged && !canUnflag(chainId, markeeId, boardAdmin, boardCreator)) return true
+      if (currentlyFlagged && !canUnflag(chainId, markeeId, boardAdmin)) return true
       const action = currentlyFlagged ? 'unflag' : 'flag'
-      const owner = ownsBoard(boardAdmin, boardCreator)
+      const owner = ownsBoard(boardAdmin)
       const wasFlagged = { board: boardFlagged.has(key), site: siteFlagged.has(key) }
       const withKey = (on: boolean) => (prev: Set<string>) => {
         const next = new Set(prev)

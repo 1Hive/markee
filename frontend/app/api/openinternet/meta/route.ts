@@ -3,8 +3,8 @@
 // GET  /api/openinternet/meta?address=0x...  → fetch metadata for one leaderboard
 // POST /api/openinternet/meta                → set logoUrl/siteUrl or remove a verified URL
 //   { leaderboardAddress, logoUrl?, siteUrl?, removeVerifiedUrl?, owner, signature, timestamp, signatureVersion? }
-//   Only a board owner (on-chain admin or creator) can make it, proven by a Privy session for the
-//   owner wallet or by a signature over
+//   Only the board admin (its current on-chain admin()) can make it, proven by a Privy session for
+//   the admin wallet or by a signature over
 //   metaUpdateMessage(8453, leaderboardAddress, update, timestamp, signatureVersion).
 //   v2 binds explicit empty strings to clearing; legacy v1 keeps empty fields unchanged.
 //

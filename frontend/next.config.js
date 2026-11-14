@@ -96,6 +96,7 @@ const embedCspHeader = Object.entries({ ...cspDirectives, 'frame-ancestors': ['h
   .join('; ')
 
 const nextConfig = {
+  outputFileTracingRoot: __dirname,
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'img.logo.dev' },
