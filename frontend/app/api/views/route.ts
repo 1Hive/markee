@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof RequestBodyTooLargeError ? 'Request body is too large.' : 'Invalid JSON request.' }, { status: error instanceof RequestBodyTooLargeError ? 413 : 400, headers: corsHeaders(origin) })
   }
-  const address = body.address.toLowerCase()
+  const address = (await viewsWriteDeps.currentAddress(body.address)).toLowerCase()
   const msgHash = hashMessage(body.message)
   // Gate automatic-moderation work even when a request would not count a view.
   if (autoEnabled() && !await viewsWriteDeps.underRateLimit('views:moderation', clientIp(req), 120, 60)) {

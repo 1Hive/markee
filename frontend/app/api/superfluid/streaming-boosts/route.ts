@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { recoverMessageAddress } from 'viem'
-import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { BOARD_MIGRATORS, STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { visibleBoards } from '@/lib/contracts/migration'
+import { inheritBoosts } from '@/lib/contracts/successorAliases'
 import { StreamingLeaderboardFactoryABI } from '@/lib/contracts/abis'
 import { createStreamingClient } from '@/lib/streaming/client'
 import {
@@ -32,21 +34,23 @@ async function readContext() {
     }) as Promise<readonly string[]>,
     kv.get<BoostConfigVersion[]>(boostHistoryKey(campaign.id)),
   ])
+  const { predecessorOf } = await visibleBoards(client, BOARD_MIGRATORS.STREAMING, [...boards] as `0x${string}`[])
   return {
     campaign,
     client,
     head,
     boards: new Set(boards.map((board) => board.toLowerCase())),
+    predecessorOf,
     history: history ?? [],
   }
 }
 
 export async function GET() {
   try {
-    const { campaign, head, history } = await readContext()
+    const { campaign, head, history, predecessorOf } = await readContext()
     return NextResponse.json({
       campaignId: campaign.id,
-      multipliers: activeBoostsAt(history, Number(head)),
+      multipliers: inheritBoosts(activeBoostsAt(history, Number(head)), predecessorOf),
       history,
     })
   } catch (error) {
@@ -105,8 +109,10 @@ export async function POST(request: NextRequest) {
     const effectiveBlock = Number(context.head + 1n)
     const current = activeBoostsAt(context.history, Number(context.head))
     const multipliers = { ...current }
-    if (action === 'remove') delete multipliers[board]
-    else multipliers[board] = multiplier
+    const lineageRoot = context.predecessorOf.get(board)?.toLowerCase() ?? board
+    delete multipliers[board]
+    if (action === 'set') multipliers[lineageRoot] = multiplier
+    else delete multipliers[lineageRoot]
     const version: BoostConfigVersion = {
       effectiveBlock,
       multipliers,

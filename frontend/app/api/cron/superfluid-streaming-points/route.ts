@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/server/logger'
 import { kv } from '@vercel/kv'
-import { STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { BOARD_MIGRATORS, STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/contracts/addresses'
+import { visibleBoards } from '@/lib/contracts/migration'
+import { inheritBoosts } from '@/lib/contracts/successorAliases'
 import { StreamingLeaderboardFactoryABI } from '@/lib/contracts/abis'
 import { createStreamingClient } from '@/lib/streaming/client'
 import { fetchCampaignSnapshot, fetchStreamingSubgraphHead } from '@/lib/streaming/subgraph'
@@ -196,6 +198,7 @@ export async function GET(request: NextRequest) {
       kv.get<CampaignState>(campaignStateKey(campaign.id)),
     ])
     const boards = (boardsResult as readonly string[]).map((board) => board.toLowerCase())
+    const { predecessorOf } = await visibleBoards(client, BOARD_MIGRATORS.STREAMING, boards as `0x${string}`[])
     const history = historyResult ?? []
     const finalizedChainHead = chainHead > REORG_SAFETY_BLOCKS ? chainHead - REORG_SAFETY_BLOCKS : 0n
     const safeHeadBlock = finalizedChainHead < subgraphHead.number ? finalizedChainHead : subgraphHead.number
@@ -275,7 +278,7 @@ export async function GET(request: NextRequest) {
       pointNumerators = addWeightedDeltas(
         pointNumerators,
         deltas,
-        activeBoostsAt(history, Number(previousBlock + 1n)),
+        inheritBoosts(activeBoostsAt(history, Number(previousBlock + 1n)), predecessorOf),
         campaign.pointsPerEth,
       )
       previousSnapshot = currentSnapshot

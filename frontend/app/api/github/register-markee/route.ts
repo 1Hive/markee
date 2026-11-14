@@ -1,7 +1,7 @@
 // app/api/github/register-markee/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasBoardDelimiters, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
 import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 // @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
@@ -18,8 +18,7 @@ async function checkDelimiters(
 ): Promise<boolean> {
   const result = await fetchGithubFileContent(repoFullName, filePath, token)
   if (!result.ok) return false
-  const legacyAddrs = legacyAddressesFor(leaderboardAddress)
-  return hasDelimiterPair(result.content, leaderboardAddress) || legacyAddrs.some(old => hasDelimiterPair(result.content, old))
+  return hasBoardDelimiters(result.content, leaderboardAddress)
 }
 
 export async function POST(request: NextRequest) {

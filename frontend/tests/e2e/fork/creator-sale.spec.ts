@@ -195,5 +195,6 @@ test('transfer admin', async ({ page }) => {
   await drawer.getByPlaceholder('New admin wallet (0x…)').fill(OTHER)
   await drawer.getByRole('checkbox').check()
   await drawer.getByRole('button', { name: 'Transfer Admin' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'Admin transferred' })).toBeVisible({ timeout: TX_TIMEOUT })
+  await expect(page.getByRole('status').filter({ hasText: 'Admin transfer proposed' })).toBeVisible({ timeout: TX_TIMEOUT })
+  await expect(drawer.getByText('You stay admin until this wallet accepts')).toBeVisible({ timeout: TX_TIMEOUT })
 })

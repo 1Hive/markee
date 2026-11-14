@@ -9,6 +9,7 @@ import { boardContext, read } from './snapshot';
 import { messageABI } from './abi';
 import { prepare, verifyTransaction } from './transactions';
 import { getEnvPublicClient } from './chains';
+import { currentSdkMarkee } from './migration';
 
 import { conversionQuote, conversionStep, conversionDeps, verifyConversionReceipt, type ConversionStep } from './conversion';
 
@@ -32,7 +33,7 @@ export const checkoutDeps = {
     if (await kv.set(receiptKey, id, { nx: true, ex: 604800 })) return true;
     return await kv.get(receiptKey) === id;
   },
-  board: boardContext, prepare, verify: verifyTransaction, conversionQuote, conversionStep,
+  board: boardContext, markee: currentSdkMarkee, prepare, verify: verifyTransaction, conversionQuote, conversionStep,
   balance: (account: Address) => getEnvPublicClient(8453).getBalance({ address: account }),
   nonce: (account: Address) => getEnvPublicClient(8453).getTransactionCount({ address: account, blockTag: 'pending' }),
   transaction: (hash: Hex) => getEnvPublicClient(8453).getTransaction({ hash }),
@@ -75,8 +76,9 @@ export async function createCheckout(body: Record<string, unknown>, origin: stri
     if (BigInt(action.amount!) < c.minimum) throw new SDKError('BELOW_MINIMUM', 'Amount is below this board’s minimum.');
   }
   if (action.kind === 'fund') {
-    if (!await c.r<boolean>('isMarkeeOnLeaderboard', [action.markee])) throw new SDKError('UNKNOWN_MARKEE', 'This message does not belong to the board.');
-    const strategy = await read<Address>(c.client, action.markee, messageABI, 'pricingStrategy');
+    const markee = await checkoutDeps.markee(8453, action.markee);
+    if (!await c.r<boolean>('isMarkeeOnLeaderboard', [markee])) throw new SDKError('UNKNOWN_MARKEE', 'This message does not belong to the board.');
+    const strategy = await read<Address>(c.client, markee, messageABI, 'pricingStrategy');
     if (strategy.toLowerCase() !== c.board.toLowerCase()) throw new SDKError('MIGRATED_MARKEE', 'This message has moved to another strategy.', 409);
   }
   if (!c.revnetEnabled || !c.token) throw new SDKError('REWARDS_UNAVAILABLE', 'Card checkout requires a board with MARKEE rewards enabled.');

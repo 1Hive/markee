@@ -1,5 +1,6 @@
 // lib/github/linkedFiles.ts
 import { kv } from '@vercel/kv'
+import { getAddress, isAddress } from 'viem'
 
 export interface LinkedFile {
   repoFullName: string
@@ -67,6 +68,37 @@ const GITHUB_NEW_TO_OLD: Record<string, string[]> = {
 
 export function legacyAddressesFor(newAddress: string): string[] {
   return GITHUB_NEW_TO_OLD[newAddress.toLowerCase()] ?? []
+}
+
+// A migrated successor board answers to its on-chain predecessor's delimiters (and that board's
+// own grandfathered aliases), since READMEs keep the legacy address until the first sync rewrites them.
+export function delimiterAliases(board: string, predecessor: string | null): string[] {
+  const own = legacyAddressesFor(board)
+  if (!predecessor) return own
+  const legacy = predecessor.toLowerCase()
+  return [...new Set([legacy, ...legacyAddressesFor(legacy), ...own])]
+}
+
+async function onChainPredecessor(board: string): Promise<string | null> {
+  if (!isAddress(board, { strict: false })) return null
+  const [{ boardPredecessor }, { createStreamingClient }] = await Promise.all([
+    import('@/lib/contracts/migration'),
+    import('@/lib/streaming/client'),
+  ])
+  return boardPredecessor(createStreamingClient(), getAddress(board))
+}
+
+export async function delimiterAliasesFor(board: string): Promise<string[]> {
+  const predecessor = await onChainPredecessor(board).catch(err => {
+    console.error(`[linkedFiles] predecessor lookup failed for ${board}:`, err)
+    return null
+  })
+  return delimiterAliases(board, predecessor)
+}
+
+export async function hasBoardDelimiters(content: string, board: string): Promise<boolean> {
+  if (hasDelimiterPair(content, board)) return true
+  return (await delimiterAliasesFor(board)).some(alias => hasDelimiterPair(content, alias))
 }
 
 // ── GitHub content fetch (with timeout) ─────────────────────────────────────
@@ -171,15 +203,19 @@ async function readLinkedFilesFromKV(addrs: string[]): Promise<LinkedFile[][]> {
 // Batched form of getLinkedFiles. Two round trips regardless of address count (one for the current
 // keys, one more only if some addresses missed and have legacy predecessors) instead of one per
 // address, which mattered once callers started passing 200 boards at a time.
-export async function getLinkedFilesBatch(leaderboardAddresses: readonly string[]): Promise<LinkedFile[][]> {
+export async function getLinkedFilesBatch(
+  leaderboardAddresses: readonly string[],
+  predecessorOf?: ReadonlyMap<string, string>,
+): Promise<LinkedFile[][]> {
   const addrs = leaderboardAddresses.map(a => a.toLowerCase())
   const current = await readLinkedFilesFromKV(addrs)
 
-  // Fall back to legacy predecessor addresses (v1.0→v1.1 and v1.2→v1.3 migrations).
+  // Fall back to legacy predecessor addresses (v1.0→v1.1 and v1.2→v1.3 migrations, plus the
+  // on-chain predecessor when the caller already knows it).
   // On first hit, lazily migrate the data to the current address key so future
   // reads are fast and don't need to check legacy keys.
   const legacyLookups = addrs.flatMap((addr, i) =>
-    current[i].length > 0 ? [] : legacyAddressesFor(addr).map(legacyAddr => ({ i, addr, legacyAddr })),
+    current[i].length > 0 ? [] : delimiterAliases(addr, predecessorOf?.get(addr) ?? null).map(legacyAddr => ({ i, addr, legacyAddr })),
   )
   if (legacyLookups.length === 0) return current
 

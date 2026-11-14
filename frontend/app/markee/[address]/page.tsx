@@ -20,6 +20,7 @@ import { StreamingBoardDetail } from '@/components/StreamingBoardDetail'
 import { AcceptAdminBanner } from '@/components/leaderboard/TwoStepAdmin'
 import { hasTwoStepAdmin } from '@/lib/strategy'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
+import { useCurrentBoardAddress } from '@/hooks/useCurrentBoardAddress'
 import { boardLabel } from '@/lib/leaderboards/label'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
@@ -440,7 +441,13 @@ const VERSION_ABI = [
 // detail; while VERSION loads we default to the (common) fixed detail, which shows its own skeletons.
 export default function MarkeeDetailPage() {
   const params = useParams()
-  const leaderboardAddress = params.address as string
+  const requestedAddress = params.address as string
+  const { ready } = useCurrentBoardAddress(requestedAddress, current => `/markee/${current}`)
+  if (!ready) return <BoardGateShell><BoardDetailSkeleton /></BoardGateShell>
+  return <CurrentMarkeeDetail leaderboardAddress={requestedAddress} />
+}
+
+function CurrentMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string }) {
   const { trust, refetch: refetchTrust } = useBoardTrust(leaderboardAddress)
   const { data: version } = useReadContract({
     address: leaderboardAddress as `0x${string}`,

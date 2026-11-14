@@ -25,7 +25,7 @@ function count(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
-export async function readPresentationData(board: string, addresses: string[]): Promise<{
+export async function readPresentationData(board: string, addresses: string[], legacyBoard?: string | null): Promise<{
   flags: string[]; views: (number | null)[]; metadata: Metadata | null;
 }> {
   if (!publicDataProxyEnabled()) {
@@ -34,7 +34,7 @@ export async function readPresentationData(board: string, addresses: string[]): 
       addresses.length ? kv.mget<(number | null)[]>(...addresses.map(a => `views:total:${a.toLowerCase()}`)) : [],
       kv.get<Metadata>(`oi:meta:${board.toLowerCase()}`),
     ]);
-    return { flags, views, metadata };
+    return { flags, views, metadata: metadata ?? (legacyBoard ? await kv.get<Metadata>(`oi:meta:${legacyBoard.toLowerCase()}`) : null) };
   }
 
   const [moderation, views, metadata] = await Promise.all([
