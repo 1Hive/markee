@@ -160,7 +160,10 @@ async function hiddenByMigration(client: Client, candidates: { board: string; mi
     if (status !== null && status !== MIGRATION_FINISHED) hidden.add(board)
     if (status === MIGRATION_FINISHED) finishedSuccessors.push({ board, predecessor })
   })
-  const copied = await scanDeps.kvCopied(finishedSuccessors.map(({ predecessor }) => predecessor.toLowerCase())).catch(() => [] as boolean[])
+  const copied = await scanDeps.kvCopied(finishedSuccessors.map(({ predecessor }) => predecessor.toLowerCase())).catch(error => {
+    console.warn(`[moderation/scan] KV copy status unavailable, skipping ${finishedSuccessors.length} migrated boards this run`, error)
+    return [] as boolean[]
+  })
   finishedSuccessors.forEach(({ board }, i) => { if (!copied[i]) hidden.add(board) })
   return hidden
 }

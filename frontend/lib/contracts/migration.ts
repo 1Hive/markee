@@ -65,43 +65,46 @@ export function originalBoard<T extends string>(board: T, predecessorOf: Map<str
   return predecessorOf.get(board.toLowerCase()) ?? board
 }
 
+const MIGRATORS = Object.values(BOARD_MIGRATORS)
+
+function readEveryMigrator(client: BaseClient, functionName: 'status' | 'successorOf' | 'predecessorOf' | 'markeeSuccessorOf', address: Address) {
+  return client.multicall({
+    allowFailure: false,
+    contracts: MIGRATORS.map(migrator => ({ address: migrator, abi: MIGRATOR_ABI, functionName, args: [address] })),
+  }) as Promise<(number | Address)[]>
+}
+
 export async function finishedBoardSuccessor(client: BaseClient, board: Address): Promise<Address | null> {
-  for (const migrator of Object.values(BOARD_MIGRATORS)) {
-    if (Number(await read<number>(client, migrator, 'status', board)) !== MIGRATION_FINISHED) continue
-    return read<Address>(client, migrator, 'successorOf', board)
-  }
-  return null
+  const statuses = await readEveryMigrator(client, 'status', board)
+  const migrator = MIGRATORS[statuses.findIndex(status => Number(status) === MIGRATION_FINISHED)]
+  return migrator ? read<Address>(client, migrator, 'successorOf', board) : null
 }
 
 export async function finishedMarkeeSuccessor(client: BaseClient, markee: Address): Promise<Address | null> {
-  for (const migrator of Object.values(BOARD_MIGRATORS)) {
-    const successor = await read<Address>(client, migrator, 'markeeSuccessorOf', markee)
-    if (successor === zeroAddress) continue
-    const board = await client.readContract({ address: markee, abi: MARKEE_BOARD_ABI, functionName: 'pricingStrategy' })
-    return Number(await read<number>(client, migrator, 'status', board)) === MIGRATION_FINISHED ? successor : null
-  }
-  return null
+  const successors = await readEveryMigrator(client, 'markeeSuccessorOf', markee) as Address[]
+  const index = successors.findIndex(successor => successor !== zeroAddress)
+  if (index === -1) return null
+  const board = await client.readContract({ address: markee, abi: MARKEE_BOARD_ABI, functionName: 'pricingStrategy' })
+  return Number(await read<number>(client, MIGRATORS[index], 'status', board)) === MIGRATION_FINISHED ? successors[index] : null
 }
 
 const GET_LEADERBOARDS_ABI = parseAbi(['function getLeaderboards(uint256 offset, uint256 limit) view returns (address[])'])
 const LISTING_CAP = 1000n
 
 export async function listVisibleBoards(client: BaseClient, migrator: Address, factories: readonly Address[], blockNumber?: bigint): Promise<VisibleBoards> {
-  const registered = await Promise.all([...new Set(factories)].map(factory =>
+  const uniqueFactories = [...new Set(factories)]
+  const registered = await Promise.all(uniqueFactories.map(factory =>
     client.readContract({ address: factory, abi: GET_LEADERBOARDS_ABI, functionName: 'getLeaderboards', args: [0n, LISTING_CAP], blockNumber }),
   ))
   for (const [i, boards] of registered.entries()) {
-    if (BigInt(boards.length) === LISTING_CAP) console.warn(`[migration] ${factories[i]} hit the ${LISTING_CAP}-board getLeaderboards cap`)
+    if (BigInt(boards.length) === LISTING_CAP) console.warn(`[migration] ${uniqueFactories[i]} hit the ${LISTING_CAP}-board getLeaderboards cap`)
   }
   return visibleBoards(client, migrator, registered.flat() as Address[], blockNumber)
 }
 
 export async function boardPredecessor(client: BaseClient, board: Address): Promise<Address | null> {
-  for (const migrator of Object.values(BOARD_MIGRATORS)) {
-    const predecessor = await read<Address>(client, migrator, 'predecessorOf', board)
-    if (predecessor !== zeroAddress) return predecessor
-  }
-  return null
+  const predecessors = await readEveryMigrator(client, 'predecessorOf', board) as Address[]
+  return predecessors.find(predecessor => predecessor !== zeroAddress) ?? null
 }
 
 export async function currentBoard(client: BaseClient, board: Address): Promise<Address> {
