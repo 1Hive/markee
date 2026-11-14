@@ -120,7 +120,9 @@ export const hasStreamState = (w: WalletState) =>
 export async function walletStateWithLegacyStream(c: BoardContext, account: Address): Promise<WalletState> {
   const wallet = await walletState(c, account);
   if (!c.legacyBoard || c.strategy !== 'rent' || hasStreamState(wallet)) return wallet;
-  const legacy = await walletState(await boardContext(c.chainId, c.legacyBoard, true, false), account);
+  const legacyBoard = c.legacyBoard;
+  const legacy = await walletState({ ...c, board: legacyBoard, legacyBoard: null,
+    r: <T>(fn: string, args: readonly unknown[] = []) => read<T>(c.client, legacyBoard, boardABI, fn, args, c.blockNumber) }, account);
   if (!hasStreamState(legacy)) return wallet;
   return { ...legacy, backedMarkee: legacy.backedMarkee && await currentSdkMarkee(c.chainId, legacy.backedMarkee) };
 }

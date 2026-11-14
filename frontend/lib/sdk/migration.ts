@@ -32,7 +32,7 @@ async function current(kind: 'board' | 'markee', address: Address, lookup: (addr
     resolved = successor && successor !== zeroAddress ? successor : address;
     if (durable) await snapshotStorage.get().set(key, resolved, { ex: migrated(resolved, address) ? FINISHED_SECONDS : PENDING_SECONDS }).catch(() => undefined);
   }
-  if (memory.size >= MEMORY_LIMIT) memory.clear();
+  if (memory.size >= MEMORY_LIMIT) for (const oldest of [...memory.keys()].slice(0, MEMORY_LIMIT / 5)) memory.delete(oldest);
   memory.set(key, { current: resolved, expires: migrated(resolved, address) ? Infinity : migrationDeps.now() + PENDING_SECONDS * 1000 });
   return resolved;
 }
