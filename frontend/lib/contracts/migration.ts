@@ -67,11 +67,12 @@ export function originalBoard<T extends string>(board: T, predecessorOf: Map<str
 
 const MIGRATORS = Object.values(BOARD_MIGRATORS)
 
-function readEveryMigrator(client: BaseClient, functionName: 'status' | 'successorOf' | 'predecessorOf' | 'markeeSuccessorOf', address: Address) {
-  return client.multicall({
-    allowFailure: false,
+async function readEveryMigrator(client: BaseClient, functionName: 'status' | 'successorOf' | 'predecessorOf' | 'markeeSuccessorOf', address: Address) {
+  const results = await client.multicall({
     contracts: MIGRATORS.map(migrator => ({ address: migrator, abi: MIGRATOR_ABI, functionName, args: [address] })),
-  }) as Promise<(number | Address)[]>
+  })
+  if (results.every(r => r.status === 'failure')) throw new Error(`Every migrator failed ${functionName}(${address})`)
+  return results.map(r => r.status === 'success' ? r.result as number | Address : (functionName === 'status' ? 0 : zeroAddress))
 }
 
 export async function finishedBoardSuccessor(client: BaseClient, board: Address): Promise<Address | null> {
