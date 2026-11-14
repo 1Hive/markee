@@ -9,6 +9,7 @@ import { parseAbi, type Address } from 'viem'
 import { ADDRESS_PATTERN, type VisibleMessage } from '@/lib/moderation/queue'
 import { flagKey, getModerationClient, listModeratedBoards, readAllFlagged } from '@/lib/moderation/server'
 import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
+import { isPlaceholderMarkee } from '@/lib/leaderboards/placeholder'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,7 @@ const MARKEE_ABI = parseAbi([
   'function message() view returns (string)',
   'function name() view returns (string)',
   'function owner() view returns (address)',
+  'function totalFundsAdded() view returns (uint256)',
 ])
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -38,12 +40,37 @@ export async function GET(req: NextRequest) {
       contracts: mine.map(b => ({ address: b.address as Address, abi: TOP_ABI, functionName: 'getTopMarkees' as const, args: [BigInt(BOARD_MESSAGE_LIMIT)] as const })),
     })
     const hidden = new Set(flags.board)
-    const ranked = mine.flatMap((b, i) => {
+    const listed = mine.flatMap((b, i) => {
       const list = (tops[i]?.result?.[0] ?? []) as readonly string[]
+      const values = (tops[i]?.result?.[1] ?? []) as readonly bigint[]
       return list
-        .map((m, j) => ({ markee: m.toLowerCase(), board: b.address, boardName: b.name, rank: j + 1 }))
-        .filter(m => m.markee !== ZERO_ADDRESS && !hidden.has(flagKey(m.markee)))
-    }).sort((a, b) => a.rank - b.rank || a.boardName.localeCompare(b.boardName))
+        .map((m, j) => ({ markee: m.toLowerCase(), board: b.address, boardName: b.name, rank: j + 1, value: values[j] ?? 0n }))
+        .filter(m => m.markee !== ZERO_ADDRESS)
+    })
+    // Entries ranked at zero are read up front so the board's empty seed Markee never takes a page slot.
+    // On streaming boards the ranked value is the current rate, so a funded Markee whose stream stopped
+    // also ranks at zero: lifetime funds tell it apart from the seed.
+    const unfunded = listed.filter(m => m.value === 0n)
+    const unfundedReads = unfunded.length
+      ? await client.multicall({
+          contracts: unfunded.flatMap(m => (['message', 'totalFundsAdded'] as const).map(fn => ({ address: m.markee as Address, abi: MARKEE_ABI, functionName: fn }))),
+        })
+      : []
+    const placeholders = new Set(unfunded.filter((m, i) => {
+      const [message, funds] = [unfundedReads[i * 2], unfundedReads[i * 2 + 1]]
+      return message?.status === 'success' && funds?.status === 'success'
+        && isPlaceholderMarkee({ message: String(message.result), totalFunds: funds.result as bigint })
+    }).map(m => m.markee))
+    const boardRank = new Map<string, number>()
+    const ranked = listed
+      .filter(m => !placeholders.has(m.markee))
+      .map(m => {
+        const rank = (boardRank.get(m.board) ?? 0) + 1
+        boardRank.set(m.board, rank)
+        return { markee: m.markee, board: m.board, boardName: m.boardName, rank }
+      })
+      .filter(m => !hidden.has(flagKey(m.markee)))
+      .sort((a, b) => a.rank - b.rank || a.boardName.localeCompare(b.boardName))
 
     const slice = ranked.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
     const reads = slice.length

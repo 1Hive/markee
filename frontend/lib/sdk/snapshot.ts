@@ -12,6 +12,7 @@ import { strategyForBoardVersion, type Strategy } from '../strategy';
 import { readPresentationData } from './presentation-data';
 import { displayCache, displayCacheConfigured, displayKey } from './cached-display';
 import { currentSdkBoard, currentSdkMarkee } from './migration';
+import { isPlaceholderMarkee } from '../leaderboards/placeholder';
 
 const SDK_STRATEGY: Record<Strategy, 'sale' | 'rent'> = { fixed: 'sale', streaming: 'rent' };
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -124,6 +125,23 @@ export async function walletStateWithLegacyStream(c: BoardContext, account: Addr
   return { ...legacy, backedMarkee: legacy.backedMarkee && await currentSdkMarkee(c.chainId, legacy.backedMarkee) };
 }
 
+// The first page is the top 20 by rank, so a single Markee left off it may be the board's empty seed,
+// which the snapshot never lists. Read that one Markee rather than assume: pre-v1.2 boards have no
+// seed, and a seed that was written on or funded is a real entry.
+async function onlyPlaceholderLeftOff(c: BoardContext, firstPage: readonly Address[]): Promise<boolean> {
+  if (c.count - firstPage.length !== 1) return false;
+  const shown = new Set(firstPage.map(a => getAddress(a)));
+  const all = await c.r<Address[]>('getMarkees', [0n, BigInt(c.count)]);
+  const leftOff = all.map(a => getAddress(a)).filter(a => !shown.has(a));
+  if (leftOff.length !== 1) return false;
+  const [message, totalFunds, rate] = await Promise.all([
+    read<string>(c.client, leftOff[0], messageABI, 'message', [], c.blockNumber),
+    read<bigint>(c.client, leftOff[0], messageABI, 'totalFundsAdded', [], c.blockNumber),
+    c.strategy === 'rent' ? c.r<bigint>('aggregateRate', [leftOff[0]]) : 0n,
+  ]);
+  return isPlaceholderMarkee({ message, totalFunds, rate });
+}
+
 async function loadSnapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
   const resolved = await resolvePlacement(p);
   const warnings: string[] = [];
@@ -146,7 +164,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
     const safeUrl = (value: unknown) => typeof value === 'string' && /^https?:\/\//.test(value) ? value : null;
     metadata = { siteUrl: safeUrl(raw?.siteUrl), logoUrl: safeUrl(raw?.logoUrl), verifiedUrls: [...(raw?.verifiedUrls || []), ...(raw?.verifiedUrl ? [raw.verifiedUrl] : [])].map(safeUrl).filter((url): url is string => url !== null) };
   } catch { warnings.push('Views and moderation are temporarily unavailable.'); }
-  const entries = await Promise.all(all.map(async (addr, i): Promise<Entry> => {
+  const readEntries = await Promise.all(all.map(async (addr, i): Promise<Entry> => {
     const [owner, message, name, totalFunds, aggregateRate, legacyFloor, score] = await Promise.all([
       read<Address>(c.client, addr, messageABI, 'owner', [], c.blockNumber), read<string>(c.client, addr, messageABI, 'message', [], c.blockNumber),
       read<string>(c.client, addr, messageABI, 'name', [], c.blockNumber), read<bigint>(c.client, addr, messageABI, 'totalFundsAdded', [], c.blockNumber),
@@ -155,7 +173,10 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
     ]);
     return { address: addr, owner, message, name, score: (c.strategy === 'rent' ? score : totalFunds).toString(), totalFunds: totalFunds.toString(), aggregateRate: aggregateRate.toString(), legacyFloor: legacyFloor.toString(), moderated: flags === null ? null : flags.some(k => k.toLowerCase() === `${c.chainId}:${addr.toLowerCase()}`), views: flags === null ? null : views[i] ?? 0 };
   }));
-  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? (c.count > 20 ? 0 : null) : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
+  const placeholders = new Set(readEntries.filter(entry => isPlaceholderMarkee({ message: entry.message, totalFunds: BigInt(entry.totalFunds), rate: BigInt(entry.aggregateRate) })).map(entry => entry.address));
+  const entries = readEntries.filter(entry => !placeholders.has(entry.address));
+  const firstPageNext = offset === undefined && c.count > addresses.length && !(await onlyPlaceholderLeftOff(c, addresses)) ? 0 : null;
+  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? firstPageNext : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
 }
 
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {

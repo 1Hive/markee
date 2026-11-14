@@ -7,6 +7,7 @@ import { useAccount, useSignMessage } from 'wagmi'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { useModeration } from '@/components/moderation/ModerationProvider'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { MAX_REVIEW_BATCH, reviewMessage, type QueueAction, type QueueResponse } from '@/lib/moderation/queue'
 
 const POLL_MS = 60_000
@@ -15,10 +16,12 @@ const IDLE_POLL_MS = 5 * 60_000
 export const moderationQueueKey = (address: string | undefined) => ['moderation-queue', address?.toLowerCase()]
 
 // Shared by the account nav badge and the /account queue: both read the same query, so only one
-// poll runs. Reading the queue is public; every review action requires a signature.
+// poll runs. Reading the queue is public; flag and unflag (including false-positive clears) require a
+// signature, while approval also accepts the Privy session for the moderator wallet.
 export function useModerationQueue() {
   const { address } = useAccount()
   const { signMessageAsync } = useSignMessage()
+  const walletFetch = useWalletAuthFetch()
   const { replaceFlagged } = useModeration()
   const queryClient = useQueryClient()
   const addr = address?.toLowerCase()
@@ -47,8 +50,10 @@ export function useModerationQueue() {
           const hash = action === 'approve'
             ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(item.message))), byte => byte.toString(16).padStart(2, '0')).join('')
             : item.automatic!.contentHash
-          const signature = await signMessageAsync({ message: action === 'approve' ? approveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp) : falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all') })
-          const response = await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, scope: 'all', intent: action, moderator: addr, signature, timestamp }) })
+          const body = { chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, scope: 'all', intent: action, moderator: addr, timestamp }
+          const response = action === 'approve'
+            ? await walletFetch(`${MODERATION_API}/false-positive`, { method: 'POST', address: addr, body, message: () => approveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp) })
+            : await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, signature: await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all') }) }) })
           if (!response.ok) throw new Error((await response.json()).error || 'Unable to approve message')
         }
         await queryClient.invalidateQueries({ queryKey: ['message-moderation'] })
@@ -56,7 +61,7 @@ export function useModerationQueue() {
       }
       for (let i = 0; i < markeeIds.length; i += MAX_REVIEW_BATCH) {
         const ids = markeeIds.slice(i, i + MAX_REVIEW_BATCH)
-        // Every review action proves control of the moderator wallet.
+        // Flag and unflag always prove control of the moderator wallet with a signature.
         const timestamp = Math.floor(Date.now() / 1000)
         const signature = await signMessageAsync({ message: reviewMessage(action, CANONICAL_CHAIN_ID, ids, timestamp) })
         const res = await fetch(MODERATION_API, {
@@ -77,7 +82,7 @@ export function useModerationQueue() {
       // A failed batch leaves the earlier ones committed, so refetch either way to show what landed.
       queryClient.invalidateQueries({ queryKey: moderationQueueKey(addr) })
     }
-  }, [addr, signMessageAsync, replaceFlagged, queryClient, queueQuery.data])
+  }, [addr, signMessageAsync, walletFetch, replaceFlagged, queryClient, queueQuery.data])
 
   return {
     review,

@@ -7,7 +7,7 @@ import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
-import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -152,12 +152,12 @@ async function loadListing(request: Request) {
     }
 
     // Read KV linked files, last-known GitHub traffic counts, and resolved creators in parallel
-    const [linkedFilesMap, trafficCounts, creators] = await Promise.all([
+    const [linkedFilesMap, trafficCounts, origins] = await Promise.all([
       getLinkedFilesBatch(addresses, predecessorOf),
       kv.mget<({ count: number } | null)[]>(
         ...addresses.map(addr => `views:github:last:${addr.toLowerCase()}`)
       ),
-      resolveCreators(client, addresses.map(a => originalBoard(a, predecessorOf)), {
+      resolveBoardOrigins(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'gh',
         factories: [LEADERBOARD_FACTORY_ADDRESS, V14_FACTORIES.GITHUB],
         fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
@@ -193,7 +193,8 @@ async function loadListing(request: Request) {
         totalFundsRaw: displayTotalFundsWei.toString(),
         markeeCount,
         admin,
-        creator: creators[i] ?? null,
+        creator: origins[i]?.creator ?? null,
+        initialAdmin: origins[i]?.initialAdmin ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFundsRaw.toString(),

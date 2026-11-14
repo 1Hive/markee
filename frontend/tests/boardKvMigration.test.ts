@@ -173,6 +173,7 @@ function seeded() {
     [`github:synced:${LEGACY_BOARD}`]: str('{"signature":"s","at":1}'),
     [`creator:oi:${LEGACY_BOARD}`]: str('0x00000000000000000000000000000000000000cc'),
     [`creator:oi:${SUCCESSOR_BOARD}`]: str(MIGRATION_OPERATOR),
+    [`initial-admin:oi:${LEGACY_BOARD}`]: str('0x00000000000000000000000000000000000000dd'),
     [`moderation:item:8453:${LEGACY_MARKEE}`]: str(JSON.stringify({ markee: LEGACY_MARKEE, board: LEGACY_BOARD, message: 'hi' })),
     [`moderation:pending:${LEGACY_BOARD}`]: { type: 'zset', value: new Map([[LEGACY_MARKEE, '77']]) },
     [`reactions:v2:${LEGACY_MARKEE}`]: { type: 'hash', value: new Map([['0xuser', JSON.stringify({ id: `${LEGACY_MARKEE}-0xuser`, markeeAddress: LEGACY_MARKEE, emoji: 'x' })]]) },
@@ -204,6 +205,7 @@ test('execute copies, merges, rewrites, and leaves legacy keys in place', async 
   await executePlan(store, await buildPlan(store, m))
 
   assert.equal(get(data, `views:total:${SUCCESSOR_BOARD}`), '42')
+  assert.equal(get(data, `initial-admin:oi:${SUCCESSOR_BOARD}`), '0x00000000000000000000000000000000000000dd')
   assert.equal(get(data, `views:total:${LEGACY_BOARD}`), '40')
   assert.equal((data.get(`views:daily:${SUCCESSOR_MARKEE}`) as { value: Map<string, string> }).value.get('2026-11-01'), '3')
   assert.equal(get(data, `oi:meta:${SUCCESSOR_BOARD}`), '{"verifiedUrls":["https://a.example"]}')

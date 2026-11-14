@@ -355,16 +355,38 @@ test('forced listing refresh bypasses a fresh snapshot and concurrent refreshes 
   const db = database(), read = createSnapshotCache(db.store, db.now)
   let calls = 0
   await read('listing', async () => ++calls, 60, 300)
+  db.advance(1000)
   let release!: () => void
   const gate = new Promise<void>(resolve => { release = resolve })
+  const requestedAt = db.now()
   const owner = read('listing', async () => { calls++; await gate; return calls }, 60, 300, true)
   // Let the owner acquire its distributed lease and enter the loader.
   for (let i = 0; i < 10 && calls < 2; i++) await new Promise(resolve => setImmediate(resolve))
-  const contender = await read('listing', async () => ++calls, 60, 300, true)
-  assert.equal(contender.data, 1); assert.equal(contender.refreshing, true)
+  await assert.rejects(read('listing', async () => ++calls, 60, 300, requestedAt), (error: unknown) => error instanceof SnapshotUnavailable && error.retryAfter === 2)
   release(); assert.equal((await owner).data, 2)
+  assert.equal((await read('listing', async () => ++calls, 60, 300, requestedAt)).data, 2)
   assert.equal((await read('listing', async () => ++calls, 60, 300)).data, 2)
   assert.equal(calls, 2)
+})
+
+test('a forced refresh never settles for a load that began before it was requested', async () => {
+  const db = database(), read = createSnapshotCache(db.store, db.now)
+  let calls = 0
+  await read('listing', async () => ++calls, 60, 300)
+  db.advance(61000)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const background = read('listing', async () => { calls++; await gate; return 'before tx' }, 60, 300)
+  for (let i = 0; i < 10 && calls < 2; i++) await new Promise(resolve => setImmediate(resolve))
+  db.advance(1000)
+  const requestedAt = db.now()
+  const plain = await read('listing', async () => { throw new Error('Must not refresh') }, 60, 300)
+  assert.equal(plain.refreshing, true)
+  await assert.rejects(read('listing', async () => 'unexpected', 60, 300, requestedAt), SnapshotUnavailable)
+  release(); assert.equal((await background).data, 'before tx')
+  assert.equal((await read('listing', async () => { calls++; return 'after tx' }, 60, 300, requestedAt)).data, 'after tx')
+  assert.equal((await read('listing', async () => ++calls, 60, 300)).data, 'after tx')
+  assert.equal(calls, 3)
 })
 
 test('listing cache shares one full payload across address filters and rejects failed refreshes', async t => {
@@ -391,6 +413,29 @@ test('simultaneous cold listing requests wait for one loader instead of returnin
   const load = async () => { calls++; await new Promise(resolve => setTimeout(resolve, 10)); return NextResponse.json({ leaderboards: [{ address: '0xabc' }] }) }
   const results = await Promise.all(Array.from({ length: 3 }, () => cachedListing(new Request('https://markee.example/api'), 'cold', load, {})))
   assert.equal(calls, 1); assert.deepEqual(results.map(result => result.status), [200, 200, 200])
+})
+
+test('a post-transaction bust waits out an earlier in-flight refresh and reads chain state again', async t => {
+  const { cachedListing } = await import('../lib/leaderboards/cached')
+  const { NextResponse } = await import('next/server')
+  const db = database(); t.mock.method(snapshotStorage, 'get', () => db.store)
+  let calls = 0
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const load = async () => {
+    const call = ++calls
+    if (call === 1) await gate
+    return NextResponse.json({ leaderboards: [{ address: `0x${call}` }] })
+  }
+  const get = () => cachedListing(new Request('https://markee.example/api?bust=1'), 'post-tx', load, {})
+  const earlier = get()
+  while (calls === 0) await new Promise(resolve => setImmediate(resolve))
+  await new Promise(resolve => setTimeout(resolve, 5))
+  const afterTx = get()
+  release()
+  assert.deepEqual((await (await earlier).json()).leaderboards, [{ address: '0x1' }])
+  assert.deepEqual((await (await afterTx).json()).leaderboards, [{ address: '0x2' }])
+  assert.equal(calls, 2)
 })
 
 test('ecosystem refresh and concurrent marketplace read share one published listing', async t => {
@@ -511,7 +556,7 @@ test('legacy board and Markee addresses prepare on the successor while echoing t
     const legacy = target === legacyRent.toLowerCase()
     if (boards.has(target)) {
       const rent = target !== successorSale.toLowerCase()
-      const values: Record<string, unknown> = { VERSION: rent ? 'streaming-1.0.0' : '1.4.0', factory: rent ? BASE_STREAMING_FACTORY : V14_FACTORIES.FOR_SALE, leaderboardName: 'Board', minimumPrice: 1n, minimumMonthlyRate: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: false, markeeCount: 1n, getTopMarkees: [[], []], topMarkee: zeroAddress, beneficiaryAddress: account,
+      const values: Record<string, unknown> = { VERSION: rent ? 'streaming-1.0.0' : '1.4.0', factory: rent ? BASE_STREAMING_FACTORY : V14_FACTORIES.FOR_SALE, leaderboardName: 'Board', minimumPrice: 1n, minimumMonthlyRate: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: false, markeeCount: 1n, getTopMarkees: [[], []], getMarkees: [], topMarkee: zeroAddress, beneficiaryAddress: account,
         isMarkeeOnLeaderboard: markeeBoard[String(args[0]).toLowerCase()]?.toLowerCase() === target, ETHX: ethx, HOST: zeroAddress, backerMarkee: legacy ? legacyRentMarkee : zeroAddress, backerDeposit: legacy ? 10n ** 18n : 0n, pendingSettlement: 0n, poolOf: zeroAddress, aggregateRate: 0n, currentLegacyFloor: 0n, effectiveRate: 0n }
       if (functionName in values) return values[functionName]
     }

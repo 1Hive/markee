@@ -4,15 +4,16 @@
 //
 // POST /api/moderation/moderators
 //   { board, moderators: Array<{wallet, email?}>, owner, signature, timestamp }
-//   Replaces the board's added moderators. Only an owner can sign it. The signature covers
+//   Replaces the board's added moderators. Only an owner can make it, proven by a Privy session
+//   for the owner wallet or a signature. The signature covers
 //   moderatorsMessage(8453, board, normalizeModerators(moderators), timestamp).
 //   When a new moderator is supplied with an email address a verification email is sent.
 
 import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 import {
   ADDRESS_PATTERN,
   MAX_BOARD_MODERATORS,
@@ -33,6 +34,8 @@ import {
   type VerifyToken,
 } from '@/lib/moderation/server'
 import { sendVerificationEmail } from '@/lib/moderation/email'
+import { setNotifyEmail } from '@/lib/moderation/emailIndex'
+import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +46,7 @@ const CORS = {
 }
 
 const VERIFY_TOKEN_TTL = 60 * 60 * 24 * 7 // 7 days
+const emailIndex = kvEmailIndexStore(notifyStateKey)
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
@@ -119,7 +123,7 @@ export async function POST(req: NextRequest) {
     if (!owner || !ADDRESS_PATTERN.test(owner)) {
       return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
     }
-    if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+    if (typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
       return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
     }
     if (!Array.isArray(rawModerators)) {
@@ -142,12 +146,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     }
 
-    const valid = await verifyMessage({
-      address: owner as `0x${string}`,
-      message: moderatorsMessage(base.id, board, moderators, timestamp),
-      signature,
-    }).catch(() => false)
-    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    const auth = await authorizeWallet(req, owner, signature, () => moderatorsMessage(base.id, board, moderators, timestamp))
+    if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
 
     const [[owners], [current]] = await Promise.all([readBoardOwners([board]), readBoardModerators([board])])
     if (!owners.includes(owner)) {
@@ -175,6 +175,7 @@ export async function POST(req: NextRequest) {
     // Send verification emails to newly added moderators that have an email address.
     const origin = req.nextUrl.origin
     const moderatorsWithNewEmails = toAdd.filter(m => m.email)
+    const emailInUse: string[] = []
     if (moderatorsWithNewEmails.length > 0) {
       // Read any existing board name from the moderated boards listing for a friendlier email.
       const { listModeratedBoards } = await import('@/lib/moderation/server')
@@ -202,7 +203,14 @@ export async function POST(req: NextRequest) {
             frequency: existing?.frequency ?? 'every',
             setAt: now,
           }
-          await kv.set(notifyStateKey(m.wallet), notifyState)
+          const saved = await setNotifyEmail(emailIndex, email, m.wallet, {
+            previous: existing?.email,
+            writeState: () => kv.set(notifyStateKey(m.wallet), notifyState),
+          })
+          if (!saved.ok) {
+            emailInUse.push(m.wallet)
+            return
+          }
         }
         await kv.set(verifyTokenKey(token), tokenPayload, { ex: VERIFY_TOKEN_TTL })
         await sendVerificationEmail(email, boardName, verifyUrl).catch(e => {
@@ -211,7 +219,7 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    return NextResponse.json(await boardState(board))
+    return NextResponse.json({ ...await boardState(board), ...(emailInUse.length > 0 ? { emailInUse } : {}) })
   } catch (error) {
     console.error('[moderation/moderators] POST error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

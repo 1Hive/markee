@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useAccount, useSignMessage } from 'wagmi'
+import { useAccount } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { Check, Copy } from 'lucide-react'
 import { CopyButton } from '@/components/board-detail/shared'
 import { TxSteps, TxRing } from '@/components/modals/StreamUI'
@@ -111,7 +112,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [savingPolicy, setSavingPolicy] = useState(false)
   const [policyError, setPolicyError] = useState<string | null>(null)
   const { address: owner } = useAccount()
-  const { signMessageAsync } = useSignMessage()
+  const walletFetch = useWalletAuthFetch()
   const [integration, setIntegration] = useState<'ai' | 'sdk'>('ai')
   const [codeFormat, setCodeFormat] = useState<'react' | 'vanilla'>('react')
   const [showModerationInfo, setShowModerationInfo] = useState(false)
@@ -147,10 +148,11 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
     try {
       const policy = policyObject(rules)
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: boardPolicyMessage(address, policy, timestamp) })
-      const response = await fetch('/api/boards/moderation', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ board: address, owner, signature, timestamp, policy }),
+      const response = await walletFetch('/api/boards/moderation', {
+        method: 'POST',
+        address: owner,
+        body: { board: address, owner, timestamp, policy },
+        message: () => boardPolicyMessage(address, policy, timestamp),
       })
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Could not save moderation rules')
       setSavedRules({ ...rules })

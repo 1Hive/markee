@@ -104,7 +104,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
     if (message.length > opts.maxLen) { setError(`Message must be ${opts.maxLen} characters or less.`); return }
     if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
     if (opts.belowMin) { setError(`The minimum on this board is ${opts.minMonthlyEth} ETH / month.`); return }
-    if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
+    if (calc.prefund <= calc.buffer) { setError('Not enough ETH in your wallet to start this stream. Add funds, then try again.'); return }
 
     try {
       // Guard: the board's onFlowCreated callback calls createFlow to the beneficiary internally,

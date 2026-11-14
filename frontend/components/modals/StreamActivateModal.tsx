@@ -12,7 +12,7 @@ import {
   MONO, BG, BG2, BLUE, PINK, BORDER, MUTED, TEXT, TEXT2,
   messageBoxStyle, inputStyle, parseEthInput, retryUntilLoaded,
   InfoTip, ModalField, ModalShell, TxProgress, RatePriceCard,
-  PaymentReviewCard, PaymentReviewFooter,
+  PaymentReviewCard, PaymentReviewFooter, FundingNeededNotice, formatFundingNeeded,
 } from '@/components/modals/StreamUI'
 import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
 import { formatUsd } from '@/lib/utils'
@@ -127,7 +127,7 @@ export function StreamActivateModal({
   })
   const maxLen = Number(maxMessageLength || 223)
   const maxNameLen = Number(maxNameLength || 32)
-  const { data: ethxBalance } = useReadContract({
+  const { data: ethxBalance, refetch: refetchEthxBalance } = useReadContract({
     address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: activeAddress ? [activeAddress] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen && !!activeAddress, refetchInterval: retryUntilLoaded },
   })
@@ -147,11 +147,14 @@ export function StreamActivateModal({
     const ratePerSec = monthlyToRatePerSec(monthlyWei, minMonthlyWei)
     const buffer = bufferFor(ratePerSec)
     const auto = computeAutoDeposit(ethxBalance ?? 0n, ratePerSec, balanceData?.value ?? 0n, (heldDeposit as bigint | undefined) ?? 0n)
-    return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue, runwaySecs: auto.runwaySeconds }
+    return { monthlyWei, ratePerSec, buffer, prefund: auto.prefund, value: auto.wrapValue, runwaySecs: auto.runwaySeconds, fundingNeeded: auto.fundingNeeded }
   }, [monthly, ethxBalance, balanceData?.value, minMonthlyWei, heldDeposit])
 
   const belowMin = calc.monthlyWei > 0n && !!minMonthlyWei && calc.monthlyWei < minMonthlyWei
-  const insufficientBalance = !!balanceData && calc.value > 0n && balanceData.value < calc.value
+  // Guards the race where clicking Activate before the wallet ETH / ETHx balance reads resolve
+  // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH").
+  const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
+  const needsFunds = balancesLoaded && !belowMin && calc.fundingNeeded > 0n
   const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Number(formatEther(calc.monthlyWei)))
 
   // Review-step prediction -- same formula the post-success snap below uses (isFirstOnBoard ||
@@ -240,12 +243,8 @@ export function StreamActivateModal({
           ? 'Last step — sign to open your stream.'
           : 'Usually under 2 seconds on Base.'
 
-  // Guards the race where clicking Activate before the wallet ETH / ETHx balance reads resolve
-  // would compute the auto-deposit off a 0 fallback (looks identical to "not enough ETH", surfacing
-  // as "Fund the stream for longer" even for a wallet that genuinely holds ETH).
-  const balancesLoaded = balanceData !== undefined && ethxBalance !== undefined
   const streamPaymentPending = phase === 'idle' && !isPending && !isConfirming && pendingStreams.length > 0
-  const btnDisabled = !!boardBlockedReason || streamPaymentPending || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded
+  const btnDisabled = !!boardBlockedReason || streamPaymentPending || !isCorrectChain || !message.trim() || calc.ratePerSec <= 0n || belowMin || !minLoaded || !balancesLoaded || needsFunds
   const btnDisabledReason = !btnDisabled ? null
     : boardBlockedReason ? boardBlockedReason
     : streamPaymentPending ? PENDING_PAYMENT_REASON
@@ -253,6 +252,7 @@ export function StreamActivateModal({
     : !minLoaded || !balancesLoaded ? 'Loading on-chain data…'
     : !message.trim() ? 'Enter a message to continue'
     : belowMin ? `Minimum is ${minMonthlyEth} ETH/mo`
+    : needsFunds ? 'Add ETH to your wallet to continue'
     : 'Enter a monthly rate'
 
   const footer = !txActive ? (
@@ -273,9 +273,9 @@ export function StreamActivateModal({
           </InfoTip>
         )}
       </div>
-      {insufficientBalance && authenticated && activeAddress ? (
+      {needsFunds && authenticated && activeAddress ? (
         <button
-          onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: formatEther(calc.value) } })}
+          onClick={() => fundWallet({ address: activeAddress, options: { chain: CANONICAL_CHAIN, amount: formatFundingNeeded(calc.fundingNeeded) } })}
           style={{ background: PINK, color: BG, border: 'none', borderRadius: 8, padding: '12px 22px', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: 'pointer', flexShrink: 0 }}
         >
           Add funds
@@ -388,12 +388,13 @@ export function StreamActivateModal({
             </div>
           )}
 
+          {needsFunds && <FundingNeededNotice neededWei={calc.fundingNeeded} ethPrice={ethPrice} onOpenDepositManager={() => setDepositManagerOpen(true)} />}
           {streamPaymentPending && <PendingPaymentNotice pending={pendingStreams} />}
           {error && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{error}</div>}
         </div>
       )}
     </ModalShell>
-    <DepositManagerModal isOpen={depositManagerOpen} onClose={() => setDepositManagerOpen(false)} />
+    <DepositManagerModal isOpen={depositManagerOpen} onClose={() => { setDepositManagerOpen(false); refetchBalance(); refetchEthxBalance() }} />
     </>
   )
 }

@@ -223,6 +223,7 @@ export const KEY_RULES: KeyRule[] = [
   rule('moderation:auto', `moderation:auto:8453:${A}`, 'markee', 'copy', { rewrite: rewriteModerationRecord }),
   rule('moderation:scan', `moderation:scan:v2:${A}`, 'board', 'skip', { reason: 'scan checkpoint of the legacy markeeCount and ids; the successor builds its own and the copied items keep its messages from re-queueing' }),
   rule('creator', `creator:(?:sf|gh|oi|fs):${A}`, 'board', 'creator'),
+  rule('initial-admin', `initial-admin:(?:sf|gh|oi|fs):${A}`, 'board', 'copy'),
   rule('github:markee', `github:markee:${A}`, 'board', 'copy'),
   rule('github:contract', `github:contract:${A}`, 'board', 'copy'),
   rule('github:synced', `github:synced:${A}`, 'board', 'skip', { reason: 'sync signature; the successor must resync so its own delimiters are written' }),

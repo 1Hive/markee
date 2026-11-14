@@ -33,6 +33,7 @@ import { formatUsd, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { Pencil } from 'lucide-react'
+import { boardLabel } from '@/lib/leaderboards/label'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, HERO_GRAD,
   formatViews, fmtAddr, formatRate, formatDuration, decimalsForRate, decimalsForWeiRate, formatLiveUsd, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
@@ -54,6 +55,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const { address } = useAccount()
   const ethPrice = useEthPrice()
   const { entry: ecoEntry, loading: ecoEntryLoading } = useServedOn(board)
+  const boardTitle = boardLabel({ ...ecoEntry, name: meta?.name })
   const topSince = useTopSince(board)
 
   // Live cumulative total: API snapshot ticking forward at the board's aggregate inflow rate.
@@ -219,8 +221,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       ) : !topMarkee ? (
         // Board exists but nothing is backed yet
         <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
-          {meta.name && (
-            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.name}</div>
+          {boardTitle && (
+            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{boardTitle}</div>
           )}
           <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Activate your Markee</h1>
           <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Buy the first message to activate your Markee.</p>

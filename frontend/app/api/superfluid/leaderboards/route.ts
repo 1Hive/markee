@@ -8,7 +8,7 @@ import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@
 import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
-import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
 const BASELINE_PREFIX = 'superfluid:s6:baseline:'
@@ -120,11 +120,11 @@ async function loadListing(request: Request) {
         : []
     )
 
-    const [markeeResults, creators, boostedList] = await Promise.all([
+    const [markeeResults, origins, boostedList] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses.map(a => originalBoard(a, predecessorOf)), {
+      resolveBoardOrigins(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'sf',
         factories: [SUPERFLUID_FACTORY_ADDRESS, V14_FACTORIES.SUPERFLUID],
         fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
@@ -181,7 +181,8 @@ async function loadListing(request: Request) {
         markeeCount: Number(markeeCount),
         admin,
         beneficiary,
-        creator: creators[i] ?? null,
+        creator: origins[i]?.creator ?? null,
+        initialAdmin: origins[i]?.initialAdmin ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: adjustedTopFunds.toString(),
