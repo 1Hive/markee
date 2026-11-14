@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     const plan = await buildPlan(store, batch)
     const writes = await executePlan(store, plan)
     const boards = [...batch.boards.keys()]
-    await kv.sadd(COPIED_BOARDS_KEY, boards[0], ...boards.slice(1))
+    if (boards.length > 0) await kv.sadd(COPIED_BOARDS_KEY, boards[0], ...boards.slice(1))
 
     const report = {
       ok: true, caughtUp, copied: copied.size + boards.length, copiedThisRun: boards.length, remaining: waiting.length - boards.length,

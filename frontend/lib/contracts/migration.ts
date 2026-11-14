@@ -76,9 +76,12 @@ async function readEveryMigrator(client: BaseClient, functionName: 'status' | 's
 }
 
 export async function finishedBoardSuccessor(client: BaseClient, board: Address): Promise<Address | null> {
-  const statuses = await readEveryMigrator(client, 'status', board)
-  const migrator = MIGRATORS[statuses.findIndex(status => Number(status) === MIGRATION_FINISHED)]
-  return migrator ? read<Address>(client, migrator, 'successorOf', board) : null
+  const [statuses, successors] = await Promise.all([
+    readEveryMigrator(client, 'status', board),
+    readEveryMigrator(client, 'successorOf', board) as Promise<Address[]>,
+  ])
+  const index = statuses.findIndex(status => Number(status) === MIGRATION_FINISHED)
+  return index === -1 ? null : successors[index]
 }
 
 export async function finishedMarkeeSuccessor(client: BaseClient, markee: Address): Promise<Address | null> {
