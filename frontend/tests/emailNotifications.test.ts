@@ -9,6 +9,14 @@ import {
   type EmailFrequency,
   type ModeratorEntry,
 } from '../lib/moderation/queue'
+import {
+  claimNotifyEmail,
+  releaseNotifyEmail,
+  setNotifyEmail,
+  normalizeNotifyEmail,
+  notifyEmailIndexKey,
+  type EmailIndexStore,
+} from '../lib/moderation/emailIndex'
 
 // Pure key-derivation helpers (mirrors lib/moderation/server.ts -- kept here to avoid server-only)
 const notifyStateKey = (wallet: string) => `moderation:notify:${wallet.toLowerCase()}`
@@ -154,4 +162,131 @@ test('verifyTokenKey produces a distinct prefix from notifyStateKey', () => {
 test('EMAIL_FREQUENCIES contains every valid value', () => {
   const expected: EmailFrequency[] = ['every', 'daily', 'off']
   assert.deepEqual([...EMAIL_FREQUENCIES].sort(), [...expected].sort())
+})
+
+// ── Unique notification emails ───────────────────────────────────────────────
+
+function memoryEmailIndex() {
+  const index = new Map<string, string>()
+  const states = new Map<string, { email: string; verified: boolean }>()
+  const store: EmailIndexStore = {
+    claim: async (key, wallet) => {
+      const cur = index.get(key)
+      if (cur && cur !== wallet) return cur
+      index.set(key, wallet)
+      return wallet
+    },
+    holder: async key => index.get(key) ?? null,
+    releaseIfHeld: async (key, wallet) => { if (index.get(key) === wallet) index.delete(key) },
+    evictIfStale: async (key, holder, email) => {
+      if (index.get(key) !== holder) return true
+      const state = states.get(holder)
+      if (state?.email === email && state.verified) return false
+      index.delete(key)
+      return true
+    },
+  }
+  const tick = async () => { for (let i = Math.floor(Math.random() * 3); i >= 0; i--) await new Promise(resolve => setImmediate(resolve)) }
+  const save = async (wallet: string, email: string) => {
+    const previous = states.get(wallet)
+    return setNotifyEmail(store, email, wallet, {
+      previous: previous?.email,
+      writeState: async () => { await tick(); states.set(wallet, { email: normalizeNotifyEmail(email), verified: false }) },
+    })
+  }
+  // Mirrors the verify route: mark verified, claim, and put the state back if someone else won.
+  const verify = async (wallet: string) => {
+    const existing = states.get(wallet)!
+    states.set(wallet, { ...existing, verified: true })
+    await tick()
+    const claim = await claimNotifyEmail(store, existing.email, wallet)
+    if (!claim.ok) states.set(wallet, existing)
+    return claim
+  }
+  const remove = async (wallet: string) => {
+    const previous = states.get(wallet)
+    states.delete(wallet)
+    await releaseNotifyEmail(store, previous?.email, wallet)
+  }
+  return { index, states, store, save, verify, remove }
+}
+
+const ALICE = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const BOB = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const key = notifyEmailIndexKey
+
+test('saving an email reserves nothing until it is verified', async () => {
+  const m = memoryEmailIndex()
+  assert.deepEqual(await m.save(ALICE, 'pending@example.com'), { ok: true })
+  assert.equal(m.index.has(key('pending@example.com')), false)
+  assert.deepEqual(await m.save(BOB, 'pending@example.com'), { ok: true })
+})
+
+test('the first wallet to verify an email takes it; the later one is told it was verified elsewhere', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'shared@example.com')
+  await m.save(BOB, 'shared@example.com')
+  assert.deepEqual(await m.verify(BOB), { ok: true })
+  assert.deepEqual(await m.verify(ALICE), { ok: false, holder: BOB })
+  assert.equal(m.states.get(ALICE)?.verified, false)
+  assert.equal(m.index.get(key('shared@example.com')), BOB)
+})
+
+test('concurrent verifications of the same email leave exactly one verified holder', async () => {
+  for (let round = 0; round < 50; round++) {
+    const m = memoryEmailIndex()
+    await m.save(ALICE, 'race@example.com')
+    await m.save(BOB, 'race@example.com')
+    const results = await Promise.all([m.verify(ALICE), m.verify(BOB)])
+    assert.equal(results.filter(r => r.ok).length, 1)
+    const verified = [ALICE, BOB].filter(w => m.states.get(w)?.verified)
+    assert.deepEqual(verified, [m.index.get(key('race@example.com'))])
+  }
+})
+
+test('an email another wallet has verified cannot be saved', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'taken@example.com')
+  await m.verify(ALICE)
+  assert.deepEqual(await m.save(BOB, ' Taken@Example.com '), { ok: false, holder: ALICE })
+  assert.equal(m.states.get(BOB), undefined)
+})
+
+test('re-saving your own verified email succeeds', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'me@example.com')
+  await m.verify(ALICE)
+  assert.deepEqual(await m.save(ALICE, 'ME@example.com'), { ok: true })
+})
+
+test('changing or removing a verified email releases it', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'old@example.com')
+  await m.verify(ALICE)
+  await m.save(ALICE, 'new@example.com')
+  assert.equal(m.index.has(key('old@example.com')), false)
+  await m.save(BOB, 'old@example.com')
+  assert.deepEqual(await m.verify(BOB), { ok: true })
+  await m.remove(BOB)
+  assert.equal(m.index.has(key('old@example.com')), false)
+})
+
+test('a claim whose holder moved on or is no longer verified is taken over', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'stale@example.com')
+  await m.verify(ALICE)
+  m.states.set(ALICE, { email: 'elsewhere@example.com', verified: true })
+  await m.save(BOB, 'stale@example.com')
+  assert.deepEqual(await m.verify(BOB), { ok: true })
+  // A leftover claim from before verified-only (pending holder) does not block either.
+  m.index.set(key('legacy@example.com'), ALICE)
+  m.states.set(ALICE, { email: 'legacy@example.com', verified: false })
+  assert.deepEqual(await m.save(BOB, 'legacy@example.com'), { ok: true })
+})
+
+test('claims compare wallets case-insensitively', async () => {
+  const m = memoryEmailIndex()
+  await m.save(ALICE, 'case@example.com')
+  await m.verify(ALICE)
+  assert.deepEqual(await claimNotifyEmail(m.store, 'case@example.com', ALICE.toUpperCase().replace('0X', '0x')), { ok: true })
 })

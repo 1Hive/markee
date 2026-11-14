@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { notifyStateKey, verifyTokenKey, type ModeratorNotifyState, type VerifyToken } from '@/lib/moderation/server'
+import { claimNotifyEmail } from '@/lib/moderation/emailIndex'
+import { kvEmailIndexStore } from '@/lib/moderation/emailIndexStore'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,12 +37,19 @@ export async function GET(req: NextRequest) {
   // frequency) since the token was issued, preserve their frequency preference.
   const existing = await kv.get<ModeratorNotifyState>(notifyStateKey(payload.wallet)).catch(() => null)
   if (existing && existing.email === payload.email) {
-    const updated: ModeratorNotifyState = {
-      ...existing,
-      verified: true,
-      verifiedAt: now,
+    // The state is marked verified before the claim so a concurrent claimant sees a live claim, never
+    // a stale one it may evict.
+    await kv.set(notifyStateKey(payload.wallet), { ...existing, verified: true, verifiedAt: now } satisfies ModeratorNotifyState)
+    const claim = await claimNotifyEmail(kvEmailIndexStore(notifyStateKey), payload.email, payload.wallet)
+    // Someone else verified this address first. Their claim stands; this wallet keeps its email
+    // pending so Settings can say why and prompt for another.
+    if (!claim.ok) {
+      await kv.set(notifyStateKey(payload.wallet), existing)
+      const url = new URL('/account', req.nextUrl.origin)
+      url.searchParams.set('section', 'settings')
+      url.searchParams.set('verifyError', 'in-use')
+      return NextResponse.redirect(url, 302)
     }
-    await kv.set(notifyStateKey(payload.wallet), updated)
   }
 
   const url = new URL('/account', req.nextUrl.origin)

@@ -512,7 +512,7 @@ Batched via \`host.batchCall(operations[])\`, in this exact order:
 How much to wrap -- the **auto-deposit**, using markee.xyz's exact rule (\`computeAutoDeposit\` in \`frontend/lib/superfluid/streaming.ts\`) so the amounts match the reference UI:
 - \`buffer = ratePerSec * BUFFER_PERIOD\`. If the backer's ETHx balance is already more than \`2 * buffer\`, wrap nothing (omit the wrap op).
 - Otherwise wrap \`min(3 * monthlyRate, affordable)\`, where \`affordable\` = wallet ETH minus 0.001 ETH (kept back for gas) if the wallet holds at least 0.002 ETH, else 90% of the wallet's ETH.
-- \`prefund = ETHx balance + wrap - buffer\`; the runway shown in the UI is \`prefund / ratePerSec\` seconds. If \`prefund\` isn't greater than \`buffer\`, don't submit -- show "Fund the stream for longer (a few hours minimum)."
+- \`prefund = ETHx balance + wrap - buffer\`; the runway shown in the UI is \`prefund / ratePerSec\` seconds. If \`prefund\` isn't greater than \`buffer\`, don't submit. The wallet doesn't hold enough ETH, so replace the submit button with an "Add funds" button (Privy's \`fundWallet\`, see above) asking for \`3 * monthlyRate + 0.001 ETH\` minus the wallet's ETH balance, and explain how much ETH is missing instead of showing a bare error.
 
 Important: the ERC20 \`approve\` that authorizes step 2's pull must be sent as its **own transaction beforehand**, not batched in -- operations forwarded through the batch run with the forwarder contract as \`msg.sender\`, so an in-batch approve would authorize the wrong account.
 
