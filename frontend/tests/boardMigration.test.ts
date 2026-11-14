@@ -29,7 +29,7 @@ test('original board falls back to the address itself', () => {
 
 test('a contract with no code at the read block counts as undeployed, other errors do not', () => {
   const zeroData = new ContractFunctionZeroDataError({ functionName: 'status' })
-  const wrapped = new ContractFunctionExecutionError(zeroData, { abi: parseAbi(['function status(address) view returns (uint8)']), functionName: 'status' })
+  const wrapped = new ContractFunctionExecutionError(zeroData, { abi: parseAbi(['function status(address) view returns (uint8)']), functionName: 'status', args: [zeroAddress] })
   assert.equal(isUndeployedContract(zeroData), true)
   assert.equal(isUndeployedContract(wrapped), true)
   assert.equal(isUndeployedContract(new BaseError('rate limited')), false)
