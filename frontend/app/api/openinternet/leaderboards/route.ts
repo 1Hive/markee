@@ -110,7 +110,6 @@ async function loadListing(request: Request) {
     }
 
     const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.OPEN_INTERNET, OI_FACTORY_ADDRESSES)
-      .catch(() => ({ boards: [] as `0x${string}`[], predecessorOf: new Map<string, `0x${string}`>() }))
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [

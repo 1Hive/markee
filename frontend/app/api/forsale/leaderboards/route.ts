@@ -70,7 +70,6 @@ async function loadListing(request: Request) {
     }
 
     const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.FOR_SALE, [FOR_SALE_FACTORY_ADDRESS, V14_FACTORIES.FOR_SALE])
-      .catch(() => ({ boards: [] as `0x${string}`[], predecessorOf: new Map<string, `0x${string}`>() }))
 
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },
