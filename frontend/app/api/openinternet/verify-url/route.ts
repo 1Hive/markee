@@ -1,7 +1,8 @@
 // POST /api/openinternet/verify-url
 //   { address, url, owner, signature, timestamp }
-//   Markee's own verification UI. Only the board admin can attach a site: the signature covers
-//   siteVerifyMessage(8453, address, url, timestamp) and is good for 5 minutes.
+//   Markee's own verification UI. Only the board admin can attach a site, proven by a Privy session
+//   for the admin wallet or by a signature over siteVerifyMessage(8453, address, url, timestamp),
+//   good for 5 minutes.
 import { NextRequest, NextResponse } from 'next/server';
 import { base } from 'viem/chains';
 import { verifySite } from '@/lib/sdk/site-verification';
@@ -20,8 +21,8 @@ export async function POST(req: NextRequest) {
     const board = address(body.address);
     if (typeof body.url !== 'string') throw new SDKError('INVALID_SITE', 'Provide a public HTTPS site URL.');
     const url = body.url;
-    const denial = await boardAdminDenial(board, body, timestamp => siteVerifyMessage(base.id, board, url, timestamp), 'verify sites for it');
-    if (denial) return NextResponse.json({ verified: false, error: denial.error }, { status: denial.status });
+    const denial = await boardAdminDenial(req, board, body, timestamp => siteVerifyMessage(base.id, board, url, timestamp), 'verify sites for it');
+    if (denial) return NextResponse.json({ verified: false, error: denial.error, ...(denial.code && { code: denial.code }) }, { status: denial.status });
     const result = await verifySite({ kind: 'board', chainId: base.id, address: board }, url, null);
     return NextResponse.json({ ...result, ...(!result.verified && { error: result.message }) });
   } catch (error) {

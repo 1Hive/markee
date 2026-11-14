@@ -115,7 +115,10 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 ## Patterns
 
 ### Board ownership
-The board's live on-chain `admin()` is its only owner. Creator Hub lists boards by `admin`, the Manage drawer re-reads `admin()` before showing controls, and moderation, unlink, metadata and featured-site checks go through `readBoardOwners` in `lib/moderation/server.ts`, which returns only the admin. Never authorize anything by the cached creator. Routes that change a board (attaching a site or repo, unlinking, moderation) require a fresh signature from the current admin, checked by `boardAdminDenial` in `lib/boards/admin-auth.ts` (5-minute window, contract admins such as multisigs accepted).
+The board's live on-chain `admin()` is its only owner. Creator Hub lists boards by `admin`, the Manage drawer re-reads `admin()` before showing controls, and moderation, unlink, metadata and featured-site checks go through `readBoardOwners` in `lib/moderation/server.ts`, which returns only the admin. Never authorize anything by the cached creator. Routes that attach a site or repo or unlink one go through `boardAdminDenial` in `lib/boards/admin-auth.ts`: the current admin proves itself with a Privy session for its wallet or a fresh signature (5-minute window), and contract admins such as multisigs sign through ERC-1271. Other owner routes use `authorizeWallet` from `lib/auth/wallet-session.ts` and then check `readBoardOwners`.
+
+### Leaderboard creator (Superfluid)
+`creator` is display-only. The API finds it with `eth_getLogs` on the factory's creation events and `eth_getTransaction` for the `from` address, and caches it permanently in KV as `creator:sf:{address}` (the admin it was created with as `initial-admin:{prefix}:{address}`).
 
 ### Cache bust
 Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation or a successful mutation. Normal `/account` hydration and regular listing page loads must use cached responses. Distributed refresh leases coalesce simultaneous refresh requests.

@@ -46,6 +46,7 @@ export interface StrategyMeta {
   label: string
   tagline: string
   summary: string
+  recommendation: string
   glyph: 'tag' | 'stream'
   accent: string
 }
@@ -79,6 +80,7 @@ export const STRATEGIES: Record<Strategy, StrategyMeta> = {
     label: 'For Sale',
     tagline: 'Pay a lump sum to change a message.',
     summary: 'Top funded message wins. Pay for messages upfront.',
+    recommendation: 'Recommended for sites expecting larger payments from philanthropic sponsors.',
     glyph: 'tag',
     accent: '#7C9CFF',
   },
@@ -87,6 +89,7 @@ export const STRATEGIES: Record<Strategy, StrategyMeta> = {
     label: 'For Rent',
     tagline: 'Pay only when your message is featured.',
     summary: 'Top funded message wins. Payment streams only while a message is winning.',
+    recommendation: "Recommended to give buyers the best market dynamics. Maximizes your earnings if you can't count on philanthropy.",
     glyph: 'stream',
     accent: '#F897FE',
   },

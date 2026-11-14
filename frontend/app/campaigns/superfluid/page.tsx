@@ -260,7 +260,7 @@ function RegularServedOnCell({ lb }: { lb: SuperfluidLeaderboard }) {
         <LightningIcon />
       </span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {lb.name}
+        {liveServedOnLabel(lb)}
       </span>
     </span>
   )

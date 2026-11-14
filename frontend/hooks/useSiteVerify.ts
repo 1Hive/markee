@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useAccount, useSignMessage } from 'wagmi'
+import { useAccount } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { siteVerifyMessage } from '@/lib/openinternet/verify-site'
 
@@ -13,25 +14,28 @@ export interface SiteVerifyResult {
   unauthorized?: boolean
 }
 
-// Verifies a site for a board, signed by the connected wallet, which must be the board admin.
+// Verifies a site for a board as the connected wallet, which must be the board admin. A Privy session
+// for that wallet authorizes it; otherwise the wallet signs.
 export function useSiteVerify() {
   const { address: owner } = useAccount()
-  const { signMessageAsync } = useSignMessage()
+  const walletFetch = useWalletAuthFetch()
 
   return useCallback(async (board: string, url: string): Promise<SiteVerifyResult> => {
     if (!owner) return { verified: false, unauthorized: true, error: "Connect this board's admin wallet to verify a site." }
     const timestamp = Math.floor(Date.now() / 1000)
-    let signature: string
+    let res: Response
     try {
-      signature = await signMessageAsync({ message: siteVerifyMessage(CANONICAL_CHAIN_ID, board, url, timestamp) })
-    } catch {
+      res = await walletFetch('/api/openinternet/verify-url', {
+        method: 'POST',
+        address: owner,
+        body: { address: board, url, owner, timestamp },
+        message: () => siteVerifyMessage(CANONICAL_CHAIN_ID, board, url, timestamp),
+      })
+    } catch (err) {
+      // A declined wallet prompt; anything else is a network failure for the caller to report.
+      if (!/reject|denied/i.test(err instanceof Error ? err.message : '')) throw err
       return { verified: false, unauthorized: true, error: 'Sign the request in your wallet to verify this site.' }
     }
-    const res = await fetch('/api/openinternet/verify-url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: board, url, owner, signature, timestamp }),
-    })
     const body = await res.json().catch(() => null) as SiteVerifyResult | null
     return {
       verified: !!body?.verified,
@@ -39,5 +43,5 @@ export function useSiteVerify() {
       error: body?.error ?? (res.ok ? undefined : 'Could not verify this site.'),
       unauthorized: res.status === 401 || res.status === 403,
     }
-  }, [owner, signMessageAsync])
+  }, [owner, walletFetch])
 }

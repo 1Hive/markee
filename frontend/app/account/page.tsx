@@ -6,9 +6,10 @@ import Image from 'next/image'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { Globe2, Github, Zap, Info } from 'lucide-react'
-import { useSignMessage } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
+import { usePrivy } from '@privy-io/react-auth'
 import { MODERATION_API } from '@/lib/moderation/config'
-import { notifyEmailMessage, notifyPrefsMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
+import { notifyEmailMessage, notifyPrefsMessage, notifyResendMessage, notifyEventsOf, type EmailFrequency, type NotifyEvents } from '@/lib/moderation/queue'
 import type { ActivityEvent } from '@/lib/activity/events'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { EmbedModal } from '@/components/modals/EmbedModal'
@@ -37,6 +38,7 @@ import { ModerationQueue, ModerationToast, useModeration } from '@/components/mo
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { buyerBoards, walletSpend } from '@/lib/account/spend'
+import { boardLabel } from '@/lib/leaderboards/label'
 
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -294,9 +296,11 @@ function SettingsSwitch({ on, onChange, label }: { on: boolean; onChange: (v: bo
   )
 }
 
-function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: boolean }) {
+function SettingsSection({ address, verifyOk, verifyError }: { address: string; verifyOk?: boolean; verifyError?: string | null }) {
   const toast = useToast()
-  const { signMessageAsync } = useSignMessage()
+  const walletFetch = useWalletAuthFetch()
+  const { user } = usePrivy()
+  const privyEmail = user?.email?.address ?? user?.linkedAccounts.find(a => a.type === 'email')?.address ?? null
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
   const [freqEdit, setFreqEdit]      = useState<EmailFrequency | null>(null)
   const [eventsEdit, setEventsEdit]  = useState<NotifyEvents | null>(null)
@@ -304,11 +308,17 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
   const [emailInput, setEmailInput]   = useState('')
   const [saving, setSaving]           = useState(false)
   const [saveError, setSaveError]     = useState<string | null>(null)
+  const [emailInUse, setEmailInUse]   = useState(false)
+  const privyPrefilledRef = useRef(false)
   const [showVerifyBanner, setShowVerifyBanner] = useState(!!verifyOk)
 
   useEffect(() => {
     if (verifyOk) { setShowVerifyBanner(true); setTimeout(() => setShowVerifyBanner(false), 6000) }
   }, [verifyOk])
+
+  useEffect(() => {
+    if (verifyError === 'in-use') setEmailInUse(true)
+  }, [verifyError])
 
   useEffect(() => {
     if (!address) return
@@ -323,6 +333,12 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
       .catch(() => {})
     return () => { cancelled = true }
   }, [address])
+
+  useEffect(() => {
+    if (privyPrefilledRef.current || !notifyState || notifyState.email || !privyEmail) return
+    privyPrefilledRef.current = true
+    setEmailInput(prev => prev || privyEmail)
+  }, [notifyState, privyEmail])
 
   const savedEmail   = notifyState?.email ?? null
   const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
@@ -341,6 +357,7 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
     setEmailInput('')
     setEditEmail(!savedEmail)
     setSaveError(null)
+    setEmailInUse(false)
   }
 
   const save = async () => {
@@ -350,25 +367,30 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
       const timestamp = Math.floor(Date.now() / 1000)
       if (emailChanged) {
         const newEmail = emailInput.trim().toLowerCase()
-        const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp) })
-        const res = await fetch(`${MODERATION_API}/notify`, {
+        const res = await walletFetch(`${MODERATION_API}/notify`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: address, email: newEmail, signature: sig, timestamp }),
+          address,
+          body: { wallet: address, email: newEmail, timestamp },
+          message: () => notifyEmailMessage(CANONICAL_CHAIN_ID, address, newEmail, timestamp),
         })
         const body = await res.json().catch(() => null)
+        if (res.status === 409) {
+          setEmailInUse(true)
+          return
+        }
         if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+        setEmailInUse(false)
         setNotifyState(prev => ({ ...prev ?? { frequency: freqDraft }, email: body.email, verified: false }))
         setEmailInput('')
         setEditEmail(false)
       }
       if (freqChanged || eventsChanged) {
         const ts2 = Math.floor(Date.now() / 1000)
-        const sig2 = await signMessageAsync({ message: notifyPrefsMessage(CANONICAL_CHAIN_ID, address, freqDraft, eventsDraft, ts2) })
-        const res2 = await fetch(`${MODERATION_API}/notify`, {
+        const res2 = await walletFetch(`${MODERATION_API}/notify`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: address, frequency: freqDraft, events: eventsDraft, signature: sig2, timestamp: ts2 }),
+          address,
+          body: { wallet: address, frequency: freqDraft, events: eventsDraft, timestamp: ts2 },
+          message: () => notifyPrefsMessage(CANONICAL_CHAIN_ID, address, freqDraft, eventsDraft, ts2),
         })
         const body2 = await res2.json().catch(() => null)
         if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
@@ -387,14 +409,14 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
 
   const resendVerification = async () => {
     if (!savedEmail) return
-    // Re-POST with current email triggers a new verification email
+    // The client only holds the masked email, so the server resends to the one it stored.
     try {
       const timestamp = Math.floor(Date.now() / 1000)
-      const sig = await signMessageAsync({ message: notifyEmailMessage(CANONICAL_CHAIN_ID, address, savedEmail, timestamp) })
-      const res = await fetch(`${MODERATION_API}/notify`, {
+      const res = await walletFetch(`${MODERATION_API}/notify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: address, email: savedEmail, signature: sig, timestamp }),
+        address,
+        body: { wallet: address, resend: true, timestamp },
+        message: () => notifyResendMessage(CANONICAL_CHAIN_ID, address, timestamp),
       })
       const body = await res.json().catch(() => null)
       toast(res.ok ? 'Verification email re-sent' : body?.error ?? 'Could not resend the verification email')
@@ -425,6 +447,9 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
             {!editEmail && savedEmail && !notifyState?.verified && (
               <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>Awaiting verification. Check your inbox for the link.</div>
             )}
+            {emailInUse && (
+              <div role="alert" style={{ fontSize: 12, color: DANGER, marginTop: 3 }}>This email has already been verified by another user. Use a different address.</div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
             {editEmail ? (
@@ -433,10 +458,10 @@ function SettingsSection({ address, verifyOk }: { address: string; verifyOk?: bo
                   autoFocus
                   type="email"
                   value={emailInput}
-                  onChange={e => setEmailInput(e.target.value)}
+                  onChange={e => { setEmailInput(e.target.value); setEmailInUse(false) }}
                   onKeyDown={e => { if (e.key === 'Escape') { setEmailInput(''); setEditEmail(!savedEmail) } }}
                   placeholder="name@example.com"
-                  style={{ background: 'rgba(6,10,42,0.6)', border: `1px solid ${badEmail ? '#FF8A9B' : BORDER}`, borderRadius: 7, padding: '7px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none', width: 220 }}
+                  style={{ background: 'rgba(6,10,42,0.6)', border: `1px solid ${badEmail || emailInUse ? '#FF8A9B' : BORDER}`, borderRadius: 7, padding: '7px 10px', color: TEXT, fontFamily: MONO, fontSize: 13, outline: 'none', width: 220 }}
                 />
                 {savedEmail && (
                   <button onClick={() => { setEmailInput(''); setEditEmail(false) }} style={{ ...ghostBtn, border: 'none' }}>Cancel</button>
@@ -641,6 +666,10 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
   )
 }
 
+// A board belongs to its current on-chain admin only.
+type Owned = { admin?: string | null }
+const ownedByAdmin = (lb: Owned, addr: string) => !!lb.admin && lb.admin.toLowerCase() === addr.toLowerCase()
+
 // Cheap FNV-1a fingerprint of a board-address list, used only as a useEffect dependency -- avoids
 // allocating an ~8.4KB comma-joined string of every address (up to 200 boards) on every render just
 // to compare it for change.
@@ -672,6 +701,7 @@ interface ChartMetric {
   // First day with real history, or null when there's none yet.
   since: string | null
   format: (v: number) => string
+  awaitingPrice?: boolean
 }
 
 const RANGES: ChartRange[] = [7, 30, 90]
@@ -692,17 +722,29 @@ function shortDay(day: string): string {
   return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
 
-function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: string[]; loading: boolean }) {
+function StatsChart({ metrics, days, loading, failed }: { metrics: ChartMetric[]; days: string[]; loading: boolean; failed?: boolean }) {
   const [chartType, setChartType] = useState<ChartType>('bar')
   const [range, setRange]         = useState<ChartRange>(30)
   const [activeIdx, setActiveIdx] = useState(0)
+  const [W, setW] = useState(560)
+  const plotRef = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    const el = plotRef.current
+    if (!el) return
+    const measure = () => { const w = el.getBoundingClientRect().width; if (w > 0) setW(w) }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
-  const W = 560, H = 160
+  const H = 180
   const PAD = { t: 10, b: 28, l: 52, r: 12 }
   const innerW = W - PAD.l - PAD.r
   const innerH = H - PAD.t - PAD.b
 
   const metric = metrics[activeIdx]
+  const busy = loading || !!metric.awaitingPrice
   const since = metric.since
   // Days of real history, counting today.
   const tracked = since ? days.filter(d => d >= since).length : 0
@@ -763,14 +805,9 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
   const yOf   = (v: number) => PAD.t + innerH - (v / scaleMax) * innerH
 
   const linePts = shown.map((v, i) => v === null ? null : [xMid(i), yOf(v)] as [number, number]).filter((p): p is [number, number] => p !== null)
-  let linePath = ''
-  if (linePts.length >= 2) {
-    linePath = `M ${linePts[0][0].toFixed(1)} ${linePts[0][1].toFixed(1)}`
-    for (let i = 1; i < linePts.length; i++) {
-      const cpx = ((linePts[i - 1][0] + linePts[i][0]) / 2).toFixed(1)
-      linePath += ` C ${cpx} ${linePts[i - 1][1].toFixed(1)}, ${cpx} ${linePts[i][1].toFixed(1)}, ${linePts[i][0].toFixed(1)} ${linePts[i][1].toFixed(1)}`
-    }
-  }
+  const linePath = linePts.length >= 2
+    ? linePts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ')
+    : ''
   const areaPath = linePts.length >= 2
     ? `${linePath} L ${linePts[linePts.length - 1][0].toFixed(1)} ${(PAD.t + innerH).toFixed(1)} L ${linePts[0][0].toFixed(1)} ${(PAD.t + innerH).toFixed(1)} Z`
     : ''
@@ -786,7 +823,7 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const }}>
         {metrics.map((m, i) => {
           const on = i === activeIdx
-          const delta = loading ? null : deltaFor(m)
+          const delta = loading || m.awaitingPrice ? null : deltaFor(m)
           return (
             <button
               key={m.label}
@@ -849,7 +886,7 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
       </div>
 
       {/* SVG chart */}
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
+      <svg ref={plotRef} width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', overflow: 'visible' }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"   stopColor={PINK} stopOpacity="0.3"/>
@@ -863,34 +900,34 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
         <line x1={PAD.l} y1={PAD.t + innerH} x2={PAD.l + innerW} y2={PAD.t + innerH} stroke={BORDER} strokeWidth="1"/>
 
         {/* Y-axis labels, only once there's something to scale against */}
-        {dMax > 0 && <>
-          <text x={PAD.l - 5} y={yTick1} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.67)}</text>
-          <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="9" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.33)}</text>
+        {!busy && dMax > 0 && <>
+          <text x={PAD.l - 5} y={yTick1} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="11" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.67)}</text>
+          <text x={PAD.l - 5} y={yTick2} textAnchor="end" dominantBaseline="middle" fill={MUTED} fontSize="11" fontFamily="JetBrains Mono,monospace">{metric.format(dMax * 0.33)}</text>
         </>}
 
-        {loading && (
-          <text x={PAD.l + innerW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">Loading…</text>
+        {busy && (
+          <text x={PAD.l + innerW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="11.5" fontFamily="JetBrains Mono,monospace">{failed && loading ? 'Could not load history' : 'Loading…'}</text>
         )}
 
         {/* Days before tracking began */}
-        {!loading && untrackedW > 0 && (
+        {!busy && untrackedW > 0 && (
           <>
             <rect x={PAD.l} y={PAD.t} width={untrackedW} height={innerH} fill="rgba(138,143,191,0.05)" />
-            {untrackedW > 90 && (
-              <text x={PAD.l + untrackedW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">
+            {untrackedW > 150 && (
+              <text x={PAD.l + untrackedW / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="11.5" fontFamily="JetBrains Mono,monospace">
                 {hasData ? `Tracking began ${shortDay(since!)}` : 'Collecting daily history'}
               </text>
             )}
           </>
         )}
-        {!loading && hasData && dMax === 0 && (
-          <text x={PAD.l + untrackedW + (innerW - untrackedW) / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="9.5" fontFamily="JetBrains Mono,monospace">
+        {!busy && hasData && dMax === 0 && (
+          <text x={PAD.l + untrackedW + (innerW - untrackedW) / 2} y={PAD.t + innerH / 2} textAnchor="middle" dominantBaseline="middle" fill={MUTED} fontSize="11.5" fontFamily="JetBrains Mono,monospace">
             Nothing yet in this period
           </text>
         )}
 
         {/* Chart body */}
-        {!loading && (chartType === 'bar'
+        {!busy && (chartType === 'bar'
           ? series.map((v, i) => {
               if (v === null || v <= 0) return null
               const y = yOf(v)
@@ -909,11 +946,11 @@ function StatsChart({ metrics, days, loading }: { metrics: ChartMetric[]; days: 
         )}
 
         {/* X-axis labels */}
-        <text x={PAD.l + innerW / 2} y={H - 3} textAnchor="middle" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">
+        <text x={PAD.l + innerW / 2} y={H - 3} textAnchor="middle" fill={MUTED} fontSize="10.5" fontFamily="JetBrains Mono,monospace">
           {chartType === 'bar' ? 'Daily' : metric.ratio ? 'Over the period' : 'Running total'}
         </text>
-        <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">{slotDays[0] ? shortDay(slotDays[0]) : ''}</text>
-        <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="8.5" fontFamily="JetBrains Mono,monospace">Today</text>
+        <text x={PAD.l} y={H - 3} textAnchor="start" fill={MUTED} fontSize="10.5" fontFamily="JetBrains Mono,monospace">{slotDays[0] ? shortDay(slotDays[0]) : ''}</text>
+        <text x={PAD.l + innerW} y={H - 3} textAnchor="end"  fill={MUTED} fontSize="10.5" fontFamily="JetBrains Mono,monospace">Today</text>
       </svg>
     </div>
   )
@@ -1023,9 +1060,19 @@ function AccountDashboard() {
     isLegacy?: boolean
   } | null>(null)
 
+  // Admin transfers confirmed in this session, applied over listing responses until the
+  // listing itself reports the new admin.
+  const confirmedAdminsRef = useRef(new Map<string, string>())
+  const withConfirmedAdmin = useCallback(<T extends { address: string; admin?: string | null }>(lb: T): T => {
+    const key = lb.address.toLowerCase()
+    const admin = confirmedAdminsRef.current.get(key)
+    if (!admin) return lb
+    if (lb.admin?.toLowerCase() === admin) { confirmedAdminsRef.current.delete(key); return lb }
+    return { ...lb, admin }
+  }, [])
+
   const fetchAll = useCallback(async (addr: string, refresh = false) => {
     const suffix = refresh ? '?bust=1' : ''
-    const isAdminOf = (lb: { admin?: string | null }) => !!lb.admin && lb.admin.toLowerCase() === addr.toLowerCase()
     setIsLoading(true)
     try {
       const [sfRes, ghRes, oiRes, strRes, fsRes] = await Promise.all([
@@ -1039,7 +1086,8 @@ function AccountDashboard() {
         const data = await sfRes.json()
         setSuperfluidBoards(
           (data.leaderboards ?? [])
-            .filter((lb: BaseLeaderboard) => isAdminOf(lb))
+            .map(withConfirmedAdmin)
+            .filter((lb: BaseLeaderboard) => ownedByAdmin(lb, addr))
             .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
         )
       }
@@ -1047,23 +1095,26 @@ function AccountDashboard() {
         const data = await ghRes.json()
         setGithubBoards(
           (data.leaderboards ?? [])
-            .filter((lb: any) => isAdminOf(lb))
+            .map(withConfirmedAdmin)
+            .filter((lb: any) => ownedByAdmin(lb, addr))
             .map((lb: any) => ({ ...lb, platform: 'github' as const, linkedFiles: lb.linkedFiles ?? [] }))
         )
       }
       if (oiRes.ok || fsRes.ok) {
         const oiData = oiRes.ok ? await oiRes.json() : { leaderboards: [] }
         const fsData = fsRes.ok ? await fsRes.json() : { leaderboards: [] }
+        const byAdmin = (lb: any) => !lb.isLegacy && ownedByAdmin(lb, addr)
         setWebsiteBoards([
-          ...(oiData.leaderboards ?? []).filter((lb: any) => !lb.isLegacy && isAdminOf(lb)).map((lb: any) => ({ ...lb, platform: 'website' as const })),
-          ...(fsData.leaderboards ?? []).filter((lb: any) => !lb.isLegacy && isAdminOf(lb)).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(oiData.leaderboards ?? []).map(withConfirmedAdmin).filter(byAdmin).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(fsData.leaderboards ?? []).map(withConfirmedAdmin).filter(byAdmin).map((lb: any) => ({ ...lb, platform: 'website' as const })),
         ])
       }
       if (strRes.ok) {
         const data = await strRes.json()
         setStreamingBoards(
           (data.leaderboards ?? [])
-            .filter((lb: any) => isAdminOf(lb))
+            .map(withConfirmedAdmin)
+            .filter((lb: any) => ownedByAdmin(lb, addr))
             .map((lb: any): AnyLeaderboard => {
               if (lb.platform === 'github') {
                 return { ...lb, platform: 'github', repoFullName: null, repoAvatarUrl: null, repoHtmlUrl: null, filePath: null, linkedFiles: [] }
@@ -1081,7 +1132,7 @@ function AccountDashboard() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [withConfirmedAdmin])
 
   const fetchMyMessages = useCallback(async (addr: string) => {
     setIsLoadingMessages(true)
@@ -1175,6 +1226,34 @@ function AccountDashboard() {
     }
   }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
 
+  // A purchase can add a Markee, and the message routes find boards through the shared listings, so
+  // they run once the busted listings are republished.
+  const refreshAfterTx = useCallback(async () => {
+    if (!activeAddress) return
+    await fetchAll(activeAddress, true)
+    fetchMyMessages(activeAddress)
+    fetchFundedMessages(activeAddress)
+  }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
+
+  // Editing, topping up or re-rating an existing message changes no listing, and the message routes
+  // read its text and funds from chain, so only they refetch.
+  const refreshMessages = useCallback(() => {
+    if (!activeAddress) return
+    fetchMyMessages(activeAddress)
+    fetchFundedMessages(activeAddress)
+  }, [activeAddress, fetchMyMessages, fetchFundedMessages])
+
+  const handleAdminTransferred = useCallback((board: string, newAdmin: string) => {
+    if (!activeAddress) return
+    confirmedAdminsRef.current.set(board.toLowerCase(), newAdmin.toLowerCase())
+    const keep = <T extends AnyLeaderboard>(prev: T[]) =>
+      prev.map(withConfirmedAdmin).filter(lb => ownedByAdmin(lb, activeAddress))
+    setSuperfluidBoards(keep)
+    setGithubBoards(keep)
+    setWebsiteBoards(keep)
+    setStreamingBoards(keep)
+  }, [activeAddress, withConfirmedAdmin])
+
   // Derived board lists
   const allBoards = useMemo(() =>
     [...superfluidBoards, ...githubBoards, ...websiteBoards, ...streamingBoards].sort((a, b) => {
@@ -1267,6 +1346,7 @@ function AccountDashboard() {
 
   // Read initial section and verifyOk from URL params (e.g. after email verification redirect).
   const [verifyOk, setVerifyOk] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
   const sectionAppliedRef = useRef(false)
   useEffect(() => {
     if (sectionAppliedRef.current || typeof window === 'undefined') return
@@ -1279,6 +1359,7 @@ function AccountDashboard() {
     }
     if (raw && map[raw]) setSectionState(map[raw])
     if (params.get('verifyOk') === '1') setVerifyOk(true)
+    setVerifyError(params.get('verifyError'))
     const clean = new URL(window.location.href)
     if (raw && map[raw]) clean.searchParams.set('section', map[raw])
     else clean.searchParams.delete('section')
@@ -1331,16 +1412,18 @@ function AccountDashboard() {
   // Day-by-day history for the hub charts. Creator: the wallet's live boards. Buyer: the boards its
   // own and funded messages are on (the same sets the headline Views figures use).
   const [stats, setStats] = useState<AccountStats | null>(null)
+  const [statsFailed, setStatsFailed] = useState(false)
   const statsCreator = useMemo(() => activeBoards.map(b => b.address.toLowerCase()).slice(0, 100), [activeBoards])
   const statsBuyer = useMemo(() => buyerBoardAddrs.slice(0, 100), [buyerBoardAddrs])
   const statsKey = `${activeAddress ?? ''}|${fingerprintAddresses(statsCreator)}|${fingerprintAddresses(statsBuyer)}`
   useEffect(() => {
     if (!activeAddress || isLoading || isLoadingMessages) return
     let cancelled = false
+    setStatsFailed(false)
     fetch(`/api/account/stats?${new URLSearchParams({ wallet: activeAddress, creator: statsCreator.join(','), buyer: statsBuyer.join(','), days: '90' })}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() as Promise<AccountStats> : null)
+      .then(r => r.ok ? r.json() as Promise<AccountStats> : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(d => { if (!cancelled) setStats(d) })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setStatsFailed(true) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statsKey, isLoading, isLoadingMessages])
@@ -1359,9 +1442,9 @@ function AccountDashboard() {
 
   const boardNames = useMemo(() => {
     const names = new Map<string, string>()
-    myMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
-    fundedMessages.forEach(m => m.strategyName && names.set(m.strategyId.toLowerCase(), m.strategyName))
-    allBoards.forEach(lb => lb.name && names.set(lb.address.toLowerCase(), lb.name))
+    const set = (board: string, label: string) => label && names.set(board.toLowerCase(), label)
+    for (const m of [...myMessages, ...fundedMessages]) set(m.strategyId, boardLabel({ name: m.strategyName, verifiedUrls: m.verifiedUrls, linkedFiles: m.linkedFiles }))
+    allBoards.forEach(lb => set(lb.address, boardLabel(lb)))
     return names
   }, [allBoards, myMessages, fundedMessages])
 
@@ -1510,10 +1593,11 @@ function AccountDashboard() {
                   <StatsChart
                     days={stats?.days ?? []}
                     loading={!stats}
+                    failed={statsFailed}
                     metrics={[
-                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', daily: stats?.creator.raised.map(weiToChart), since: stats?.creator.raisedSince ?? null, format: formatUsd },
+                      { label: 'Revenue', value: ethPrice && !isLoading ? formatUsd(Number(totalRaisedWei) / 1e18 * ethPrice) : '-', daily: stats?.creator.raised.map(weiToChart), since: stats?.creator.raisedSince ?? null, awaitingPrice: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoading ? activeBoards.reduce((s, lb) => s + (boardViews[lb.address.toLowerCase()] ?? 0), 0).toLocaleString() : '-', daily: stats?.creator.views, since: stats?.creator.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
-                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.creator.raised.map(weiToChart), den: stats.creator.views, per: 1000 } : undefined, since: laterDay(stats?.creator.raisedSince, stats?.creator.viewsSince), format: v => `$${v.toFixed(2)}` },
+                      { label: 'Earned per 1k Views', value: creatorCpm ? `$${creatorCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.creator.raised.map(weiToChart), den: stats.creator.views, per: 1000 } : undefined, since: laterDay(stats?.creator.raisedSince, stats?.creator.viewsSince), awaitingPrice: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
                   />
                   <YourMarkees
@@ -1543,10 +1627,11 @@ function AccountDashboard() {
                   <StatsChart
                     days={stats?.days ?? []}
                     loading={!stats}
+                    failed={statsFailed}
                     metrics={[
-                      { label: 'Spent', value: ethPrice && !isLoadingMessages && totalContribWei !== null ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, format: formatUsd },
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages && totalContribWei !== null ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, awaitingPrice: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', daily: stats?.buyer.views, since: stats?.buyer.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
-                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), format: v => `$${v.toFixed(2)}` },
+                      { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), awaitingPrice: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
                   />
                   <StreamBalanceCard
@@ -1581,7 +1666,7 @@ function AccountDashboard() {
 
               {/* ── Settings ── */}
               {section === 'settings' && activeAddress && (
-                <SettingsSection key={activeAddress} address={activeAddress} verifyOk={verifyOk} />
+                <SettingsSection key={activeAddress} address={activeAddress} verifyOk={verifyOk} verifyError={verifyError} />
               )}
             </main>
           </div>
@@ -1618,7 +1703,7 @@ function AccountDashboard() {
           isOpen
           board={priceButtonTarget.address}
           onClose={() => setPriceButtonTarget(null)}
-          onSuccess={() => { if (activeAddress) { fetchAll(activeAddress, true); fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={refreshAfterTx}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy && (
@@ -1626,7 +1711,7 @@ function AccountDashboard() {
           isOpen
           onClose={() => setPriceButtonTarget(null)}
           strategyAddress={priceButtonTarget.address as `0x${string}`}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress, true) }}
+          onSuccess={refreshAfterTx}
         />
       )}
       {priceButtonTarget && priceButtonTarget.strategy !== 'streaming' && !(priceButtonTarget.platform === 'website' && (priceButtonTarget as WebsiteLeaderboard).isLegacy) && (
@@ -1634,7 +1719,7 @@ function AccountDashboard() {
           isOpen
           onClose={() => setPriceButtonTarget(null)}
           leaderboardAddress={priceButtonTarget.address}
-          onSuccess={() => { if (activeAddress) fetchAll(activeAddress, true) }}
+          onSuccess={refreshAfterTx}
         />
       )}
 
@@ -1647,6 +1732,7 @@ function AccountDashboard() {
           onClose={() => setManageTarget(null)}
           onAddToSite={() => handleOpenAddToSite(manageBoard)}
           onSuccess={() => activeAddress && fetchAll(activeAddress, true)}
+          onAdminTransferred={newAdmin => handleAdminTransferred(manageBoard.address, newAdmin)}
         />
       )}
 
@@ -1697,7 +1783,7 @@ function AccountDashboard() {
           strategyAddress={editMessageTarget.strategyId as `0x${string}`}
           markeeAddress={editMessageTarget.address as `0x${string}`}
           currentMessage={editMessageTarget.message}
-          onSuccess={() => { setEditMessageTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+          onSuccess={() => { setEditMessageTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1710,7 +1796,7 @@ function AccountDashboard() {
           userMarkee={{ address: addFundsTarget.markeeAddress, owner: activeAddress ?? '', message: addFundsTarget.message, totalFundsAdded: addFundsTarget.totalFundsAdded }}
           initialMode="addFunds"
           topFundsAdded={addFundsTarget.topFunds}
-          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) { fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={() => { setAddFundsTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1722,7 +1808,7 @@ function AccountDashboard() {
           leaderboardAddress={addFundsTarget.strategyId}
           initialView="addFunds"
           initialTargetAddress={addFundsTarget.markeeAddress}
-          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) { fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) } }}
+          onSuccess={() => { setAddFundsTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1734,7 +1820,7 @@ function AccountDashboard() {
           initialView="fund"
           initialTargetAddress={addFundsTarget.markeeAddress}
           onClose={() => setAddFundsTarget(null)}
-          onSuccess={() => { setAddFundsTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+          onSuccess={() => { setAddFundsTarget(null); refreshMessages() }}
         />
       )}
 
@@ -1746,7 +1832,7 @@ function AccountDashboard() {
           initialView="manage"
           initialTargetAddress={streamEditTarget.address}
           onClose={() => setStreamEditTarget(null)}
-          onSuccess={() => { setStreamEditTarget(null); if (activeAddress) fetchMyMessages(activeAddress) }}
+          onSuccess={() => { setStreamEditTarget(null); refreshMessages() }}
         />
       )}
 

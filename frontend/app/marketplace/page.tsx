@@ -659,13 +659,14 @@ export default function MarketplacePage() {
   // pagination -- see app/api/marketplace/positions.
   const { activeAddress } = useActiveWallet()
   const [positionsMap, setPositionsMap] = useState<Record<string, { rank: number; markeeAddress: string; fundedRaw?: string }>>({})
-  useEffect(() => {
+  const loadPositions = useCallback(() => {
     if (!activeAddress) { setPositionsMap({}); return }
     fetch(`/api/marketplace/positions?wallet=${activeAddress.toLowerCase()}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.positions) setPositionsMap(data.positions) })
       .catch(() => {})
   }, [activeAddress])
+  useEffect(() => { loadPositions() }, [loadPositions])
   const positionFor = useCallback((lb: Leaderboard): RowPosition | null => {
     const p = positionsMap[lb.address.toLowerCase()]
     if (!p) return null
@@ -682,8 +683,8 @@ export default function MarketplacePage() {
   const [page,    setPage]     = useState(0)
 
   // Fetch leaderboard list
-  useEffect(() => {
-    fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+  const loadListings = useCallback((bust = false) =>
+    fetch(`/api/ecosystem/leaderboards?${bust ? 'bust=1' : `t=${Date.now()}`}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return
@@ -701,8 +702,10 @@ export default function MarketplacePage() {
         })
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false)),
+  [])
+  useEffect(() => { loadListings() }, [loadListings])
+  const refreshAfterTx = useCallback(() => { loadListings(true).then(loadPositions) }, [loadListings, loadPositions])
   const ecoStats = {
     markees: ecoTotals.markees,
     messages: ecoTotals.messages,
@@ -969,7 +972,7 @@ export default function MarketplacePage() {
           initialView={buyModal.initialView as 'addFunds' | undefined}
           initialTargetAddress={buyModal.initialTargetAddress}
           onClose={() => setBuyModal(null)}
-          onSuccess={() => setBuyModal(null)}
+          onSuccess={() => { setBuyModal(null); refreshAfterTx() }}
         />
       )}
 
@@ -980,7 +983,7 @@ export default function MarketplacePage() {
           initialView={streamCreate.initialView as 'manage' | undefined}
           initialTargetAddress={streamCreate.initialTargetAddress}
           onClose={() => setStreamCreate(null)}
-          onSuccess={() => setStreamCreate(null)}
+          onSuccess={() => { setStreamCreate(null); refreshAfterTx() }}
         />
       )}
     </div>

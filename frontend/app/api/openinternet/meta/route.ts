@@ -3,7 +3,8 @@
 // GET  /api/openinternet/meta?address=0x...  → fetch metadata for one leaderboard
 // POST /api/openinternet/meta                → set logoUrl/siteUrl or remove a verified URL
 //   { leaderboardAddress, logoUrl?, siteUrl?, removeVerifiedUrl?, owner, signature, timestamp, signatureVersion? }
-//   Only the board admin (its current on-chain admin()) can sign it; the signature covers
+//   Only the board admin (its current on-chain admin()) can make it, proven by a Privy session for
+//   the admin wallet or by a signature over
 //   metaUpdateMessage(8453, leaderboardAddress, update, timestamp, signatureVersion).
 //   v2 binds explicit empty strings to clearing; legacy v1 keeps empty fields unchanged.
 //
@@ -12,11 +13,11 @@
 
 import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
 import { metaWriteDeps } from '@/lib/openinternet/meta-deps'
 import { metaFields, metaUpdateMessage } from '@/lib/openinternet/meta'
 import { normalizeHost } from '@/lib/views/host'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,19 +62,15 @@ export async function POST(request: Request) {
     if (!owner || !ADDRESS_PATTERN.test(owner)) {
       return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
     }
-    if (!signature || typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp)) {
+    if (typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp)) {
       return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
     }
     if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     }
 
-    const valid = await verifyMessage({
-      address: owner as `0x${string}`,
-      message: metaUpdateMessage(base.id, board, { logoUrl, siteUrl, removeVerifiedUrl }, timestamp, signatureVersion as 1 | 2),
-      signature,
-    }).catch(() => false)
-    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    const auth = await authorizeWallet(request, owner, signature, () => metaUpdateMessage(base.id, board, { logoUrl, siteUrl, removeVerifiedUrl }, timestamp, signatureVersion as 1 | 2))
+    if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
 
     const [owners] = await metaWriteDeps.readBoardOwners([board])
     if (!owners.includes(owner)) {

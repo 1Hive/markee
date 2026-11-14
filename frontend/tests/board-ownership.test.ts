@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { privateKeyToAccount } from 'viem/accounts'
+import { ID_TOKEN_HEADER, SESSION_REQUIRED, walletSessionDeps } from '../lib/auth/wallet-session'
 
 import { boardAdminDenial, boardAdminDeps } from '../lib/boards/admin-auth'
 import { boardOwnerDeps, readBoardOwners } from '../lib/moderation/server'
@@ -22,6 +24,7 @@ const formerAdmin = privateKeyToAccount(`0x${'22'.repeat(32)}`)
 const victim = '0x3333333333333333333333333333333333333333'
 const now = () => Math.floor(Date.now() / 1000)
 const message = (ts: number) => `test:${board}:${ts}`
+const plain = (headers: Record<string, string> = {}) => new Request('http://localhost/api/test', { method: 'POST', headers })
 
 function adminIs(t: any, wallet: string) {
   t.mock.method(boardAdminDeps, 'readBoardAdmin', async () => wallet.toLowerCase())
@@ -81,11 +84,32 @@ test('board admin signatures are checked for signer, freshness and current admin
   const ts = now()
   const proof = async (signer = admin, timestamp = ts) => ({ owner: signer.address, timestamp, signature: await signer.signMessage({ message: message(timestamp) }) })
 
-  assert.equal(await boardAdminDenial(board, await proof(), message, 'act'), null)
-  assert.equal((await boardAdminDenial(board, {}, message, 'act'))?.status, 400)
-  assert.equal((await boardAdminDenial(board, { ...(await proof()), owner: formerAdmin.address }, message, 'act'))?.status, 401)
-  assert.equal((await boardAdminDenial(board, await proof(admin, ts - 600), message, 'act'))?.status, 401)
-  assert.equal((await boardAdminDenial(board, await proof(formerAdmin), message, 'act'))?.status, 403)
+  assert.equal(await boardAdminDenial(plain(), board, await proof(), message, 'act'), null)
+  assert.equal((await boardAdminDenial(plain(), board, {}, message, 'act'))?.status, 400)
+  assert.equal((await boardAdminDenial(plain(), board, { ...(await proof()), owner: formerAdmin.address }, message, 'act'))?.status, 401)
+  assert.equal((await boardAdminDenial(plain(), board, await proof(admin, ts - 600), message, 'act'))?.status, 401)
+  assert.equal((await boardAdminDenial(plain(), board, await proof(formerAdmin), message, 'act'))?.status, 403)
+})
+
+test('a Privy session for the admin wallet stands in for the signature, and only for that wallet', async t => {
+  adminIs(t, admin.address)
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  t.mock.method(walletSessionDeps, 'appId', () => 'test-app')
+  t.mock.method(walletSessionDeps, 'jwks', async () => [{ ...publicKey.export({ format: 'jwk' }), kid: 'k', alg: 'ES256', use: 'sig' }])
+  const segment = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url')
+  const idToken = (wallet: string) => {
+    const linked = JSON.stringify([{ type: 'wallet', chain_type: 'ethereum', address: wallet }])
+    const body = `${segment({ alg: 'ES256', typ: 'JWT', kid: 'k' })}.${segment({ iss: 'privy.io', aud: 'test-app', sub: 'did:privy:u', iat: now(), exp: now() + 3600, linked_accounts: linked })}`
+    return `${body}.${sign('sha256', Buffer.from(body), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`
+  }
+  const session = (wallet: string) => plain({ [ID_TOKEN_HEADER]: idToken(wallet) })
+
+  assert.equal(await boardAdminDenial(session(admin.address), board, { owner: admin.address, timestamp: now() }, message, 'act'), null)
+  const otherWallet = await boardAdminDenial(session(formerAdmin.address), board, { owner: admin.address, timestamp: now() }, message, 'act')
+  assert.equal(otherWallet?.status, 401)
+  assert.equal(otherWallet?.code, SESSION_REQUIRED)
+  assert.equal((await boardAdminDenial(session(formerAdmin.address), board, { owner: formerAdmin.address, timestamp: now() }, message, 'act'))?.status, 403)
+  assert.equal((await boardAdminDenial(session(admin.address), board, { owner: admin.address, timestamp: now() - 600 }, message, 'act'))?.status, 401)
 })
 
 test('a failed admin read asks the caller to retry instead of refusing them', async t => {
@@ -93,14 +117,14 @@ test('a failed admin read asks the caller to retry instead of refusing them', as
   t.mock.method(boardAdminDeps, 'contractSignatureValid', async () => false)
   const timestamp = now()
   const signature = await admin.signMessage({ message: message(timestamp) })
-  assert.equal((await boardAdminDenial(board, { owner: admin.address, timestamp, signature }, message, 'act'))?.status, 503)
+  assert.equal((await boardAdminDenial(plain(), board, { owner: admin.address, timestamp, signature }, message, 'act'))?.status, 503)
 })
 
 test('a smart-contract admin can authorize through ERC-1271', async t => {
   const multisig = '0x4444444444444444444444444444444444444444'
   t.mock.method(boardAdminDeps, 'readBoardAdmin', async () => multisig)
   t.mock.method(boardAdminDeps, 'contractSignatureValid', async (args: any) => args.address.toLowerCase() === multisig)
-  assert.equal(await boardAdminDenial(board, { owner: multisig, timestamp: now(), signature: '0x1234' }, message, 'act'), null)
+  assert.equal(await boardAdminDenial(plain(), board, { owner: multisig, timestamp: now(), signature: '0x1234' }, message, 'act'), null)
 })
 
 test('only the board admin can verify a site for it', async t => {

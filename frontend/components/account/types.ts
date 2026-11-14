@@ -10,6 +10,7 @@ export interface BaseLeaderboard {
   // Address-resolved creator (lib/leaderboards/resolveCreators.ts), kept for display only. Ownership
   // follows admin, the board's current on-chain admin().
   creator?: string | null
+  initialAdmin?: string | null
   topMessage: string | null
   topMessageOwner?: string | null
   // Address of the top markee slot itself (distinct from `address`, the leaderboard/board contract) --

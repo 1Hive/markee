@@ -4,6 +4,7 @@ import { createPublicClient, getAddress, http } from 'viem'
 import { base } from 'viem/chains'
 import { ADMIN_ADDRESSES } from '@/lib/moderation/config'
 import { internalHeaders, internalOrigin } from '@/lib/internal-origin'
+import { boardLabel, homeSite, type LabelledBoard } from '@/lib/leaderboards/label'
 import { normalizeItem, notifyEventsOf, type EmailFrequency, type ModerationItem, type ModerationScope, type ModeratorEntry, type NotifyEvents } from '@/lib/moderation/queue'
 
 export const BASELINE_KEY = 'moderation:baseline'
@@ -198,7 +199,7 @@ export interface ModeratedBoard {
   moderators: string[]
 }
 
-type ListedBoard = { address: string; name?: string; platform?: string; isLegacy?: boolean }
+type ListedBoard = LabelledBoard & { address: string; name?: string; platform?: string; isLegacy?: boolean }
 
 // Every v1.x fixed and streaming board, from the same listing routes /account reads, with added
 // moderators merged in. Cached for a minute since every connected wallet polls the queue, and
@@ -238,10 +239,18 @@ async function listBoardsUncached(): Promise<ModeratedBoard[]> {
   ])
 
   const boards = new Map<string, ModeratedBoard>()
+  const sited = new Set<string>()
   const add = (lb: ListedBoard, platform: string | null, strategy: ModeratedBoard['strategy']) => {
     if (lb.isLegacy || !lb.address) return
     const address = lb.address.toLowerCase()
-    if (!boards.has(address)) boards.set(address, { address, name: lb.name || 'Untitled board', platform, strategy, moderators: [] })
+    const existing = boards.get(address)
+    if (existing) {
+      const site = homeSite(lb)
+      if (site && !sited.has(address)) { existing.name = site; sited.add(address) }
+      return
+    }
+    if (homeSite(lb)) sited.add(address)
+    boards.set(address, { address, name: boardLabel(lb, 'Untitled board'), platform, strategy, moderators: [] })
   }
 
   sf.forEach(lb => add(lb, 'superfluid', 'fixed'))

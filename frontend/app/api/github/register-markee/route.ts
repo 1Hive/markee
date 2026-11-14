@@ -74,12 +74,13 @@ export async function POST(request: NextRequest) {
     const idx = existing.findIndex(e => e.repoFullName === repoData.full_name && e.filePath === filePath)
     if (idx < 0) {
       const denial = await boardAdminDenial(
+        request,
         normalizedAddress,
         { owner, signature, timestamp },
         ts => registerFileMessage(base.id, normalizedAddress, repoFullName, filePath, ts),
         'link repos to it',
       )
-      if (denial) return NextResponse.json({ error: denial.error }, { status: denial.status })
+      if (denial) return NextResponse.json({ error: denial.error, ...(denial.code && { code: denial.code }) }, { status: denial.status })
     }
 
     // Check for address-specific delimiters

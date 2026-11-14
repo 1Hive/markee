@@ -9,8 +9,9 @@ import { boardAdminDenial } from '@/lib/boards/admin-auth'
 export const dynamic = 'force-dynamic'
 
 // DELETE ?address=<board>&repo=<owner/name>&file=<path>, body { owner, signature, timestamp }.
-// Only the board admin can unlink, whether or not the file still carries the board's markers; the
-// signature covers unlinkFileMessage(8453, board, repo, file, timestamp) and is good for 5 minutes.
+// Only the board admin can unlink, whether or not the file still carries the board's markers. The
+// admin proves it with a Privy session for the admin wallet or a signature over
+// unlinkFileMessage(8453, board, repo, file, timestamp), good for 5 minutes.
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -24,12 +25,13 @@ export async function DELETE(request: NextRequest) {
 
     const proof = await request.json().catch(() => ({})) as { owner?: unknown; signature?: unknown; timestamp?: unknown }
     const denial = await boardAdminDenial(
+      request,
       leaderboardAddress,
       proof,
       timestamp => unlinkFileMessage(base.id, leaderboardAddress, repoFullName, filePath, timestamp),
       'unlink its files',
     )
-    if (denial) return NextResponse.json({ error: denial.error }, { status: denial.status })
+    if (denial) return NextResponse.json({ error: denial.error, ...(denial.code && { code: denial.code }) }, { status: denial.status })
 
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoFullName && e.filePath === filePath)

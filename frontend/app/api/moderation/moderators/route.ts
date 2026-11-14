@@ -4,15 +4,16 @@
 //
 // POST /api/moderation/moderators
 //   { board, moderators: Array<{wallet, email?}>, owner, signature, timestamp }
-//   Replaces the board's added moderators. Only the board admin can sign it. The signature covers
+//   Replaces the board's added moderators. Only the board admin can make it, proven by a Privy
+//   session for the admin wallet or a signature. The signature covers
 //   moderatorsMessage(8453, board, normalizeModerators(moderators), timestamp). Any email is
 //   accepted for older callers but ignored: each wallet sets its own notification email through the
-//   signed /api/moderation/notify route.
+//   /api/moderation/notify route.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { verifyMessage } from 'viem'
 import { base } from 'viem/chains'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 import {
   ADDRESS_PATTERN,
   MAX_BOARD_MODERATORS,
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
     if (!owner || !ADDRESS_PATTERN.test(owner)) {
       return NextResponse.json({ error: 'Missing or invalid owner address' }, { status: 400 })
     }
-    if (!signature || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+    if (typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
       return NextResponse.json({ error: 'Missing signature or timestamp' }, { status: 400 })
     }
     if (!Array.isArray(rawModerators)) {
@@ -131,12 +132,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     }
 
-    const valid = await verifyMessage({
-      address: owner as `0x${string}`,
-      message: moderatorsMessage(base.id, board, moderators, timestamp),
-      signature,
-    }).catch(() => false)
-    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    const auth = await authorizeWallet(req, owner, signature, () => moderatorsMessage(base.id, board, moderators, timestamp))
+    if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
 
     const [[owners], [current]] = await Promise.all([readBoardOwners([board]), readBoardModerators([board])])
     if (!owners.includes(owner)) {

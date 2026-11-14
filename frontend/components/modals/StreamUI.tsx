@@ -445,6 +445,32 @@ export function RatePriceCard({
   )
 }
 
+export function formatFundingNeeded(wei: bigint): string {
+  const eth = Number(formatEther(wei))
+  return (Math.ceil(eth * 10000) / 10000).toFixed(4)
+}
+
+export function FundingNeededNotice({ neededWei, ethPrice, onOpenDepositManager }: {
+  neededWei: bigint
+  ethPrice: number | null
+  onOpenDepositManager: () => void
+}) {
+  const usd = ethPrice ? ` (${formatUsd(Number(formatEther(neededWei)) * ethPrice)})` : ''
+  return (
+    <div style={{ border: `1px solid rgba(248,151,254,0.35)`, background: 'rgba(248,151,254,0.08)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 700, color: TEXT, marginBottom: 4 }}>Add funds to pay for this message</div>
+      Your wallet needs about {formatFundingNeeded(neededWei)} ETH{usd} more to stream at this rate. Use Add funds to buy or transfer ETH, then come back here to finish. You can also manage your ETHx balance in the{' '}
+      <button
+        type="button"
+        onClick={onOpenDepositManager}
+        style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0 }}
+      >
+        Deposit Manager →
+      </button>
+    </div>
+  )
+}
+
 // Full-screen overlay + card + pulsing-dot header every streaming modal shares.
 export function ModalShell({ stepLabel, onClose, footer, children }: {
   stepLabel: string

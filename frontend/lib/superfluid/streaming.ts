@@ -179,6 +179,9 @@ export interface AutoDeposit {
   // buffer requirement (~4h of runway) -- the wallet doesn't hold enough ETH to fund this stream at
   // all right now, not just "less than the usual 3-month default."
   insufficientEth: boolean
+  // Extra wallet ETH that would let the default 3-month deposit (plus the gas reserve) go through.
+  // 0 unless insufficientEth.
+  fundingNeeded: bigint
 }
 
 const ETHX_AUTO_WRAP_RESERVE = 1_000_000_000_000_000n // 0.001 ETH kept unwrapped for gas
@@ -199,12 +202,12 @@ export function depositShortfall(ratePerSec: bigint, heldDeposit: bigint): bigin
 }
 
 export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, walletEthBalance: bigint, heldDeposit = 0n): AutoDeposit {
-  if (ratePerSec <= 0n) return { wrapValue: 0n, prefund: 0n, runwaySeconds: 0n, insufficientEth: false }
+  if (ratePerSec <= 0n) return { wrapValue: 0n, prefund: 0n, runwaySeconds: 0n, insufficientEth: false, fundingNeeded: 0n }
   const buffer = bufferFor(ratePerSec)
   const pulled = depositShortfall(ratePerSec, heldDeposit)
   if (ethxBalance > pulled + buffer) {
     const prefund = ethxBalance - pulled
-    return { wrapValue: 0n, prefund, runwaySeconds: runwaySeconds(prefund, ratePerSec), insufficientEth: false }
+    return { wrapValue: 0n, prefund, runwaySeconds: runwaySeconds(prefund, ratePerSec), insufficientEth: false, fundingNeeded: 0n }
   }
   const threeMonths = ratePerSecToMonthly(ratePerSec) * 3n
   const affordable = walletEthBalance >= ETHX_AUTO_WRAP_SMALL_BALANCE_THRESHOLD
@@ -213,11 +216,14 @@ export function computeAutoDeposit(ethxBalance: bigint, ratePerSec: bigint, wall
   const wrapValue = threeMonths < affordable ? threeMonths : affordable
   const prefundRaw = ethxBalance + wrapValue - pulled
   const prefund = prefundRaw > 0n ? prefundRaw : 0n
+  // Mirrors the on-chain/write-flow check (prefund must exceed buffer, not just reach it).
+  const insufficientEth = prefund <= buffer
+  const fundingTarget = threeMonths + ETHX_AUTO_WRAP_RESERVE
   return {
     wrapValue, prefund,
     runwaySeconds: prefund > 0n ? runwaySeconds(prefund, ratePerSec) : 0n,
-    // Mirrors the on-chain/write-flow check (prefund must exceed buffer, not just reach it).
-    insufficientEth: prefund <= buffer,
+    insufficientEth,
+    fundingNeeded: insufficientEth && fundingTarget > walletEthBalance ? fundingTarget - walletEthBalance : 0n,
   }
 }
 
