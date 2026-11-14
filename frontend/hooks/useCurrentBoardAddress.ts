@@ -16,7 +16,7 @@ async function fetchCurrentAddress(address: string): Promise<CurrentAddress> {
 export function useCurrentBoardAddress(address: string | undefined, pathFor: (current: string) => string) {
   const router = useRouter()
   const enabled = !!address && isAddress(address, { strict: false })
-  const { data, isPending, isError } = useQuery({
+  const { data, isPending, isError, error } = useQuery({
     queryKey: ['current-board-address', address?.toLowerCase()],
     queryFn: () => fetchCurrentAddress(address!),
     enabled,
@@ -29,6 +29,10 @@ export function useCurrentBoardAddress(address: string | undefined, pathFor: (cu
   useEffect(() => {
     if (redirectPath) router.replace(redirectPath)
   }, [redirectPath, router])
+
+  useEffect(() => {
+    if (isError) console.warn('[useCurrentBoardAddress] resolve failed, showing the requested address', error)
+  }, [isError, error])
 
   return { ready: !enabled || isError || (!isPending && !target) }
 }
