@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createDisplayCache, displayKey, INVALIDATE, RETAIN, RETAIN_SECONDS, snapshotStorage } from '../lib/sdk/cached-display'
+import { SDKError } from '../lib/sdk/validation'
 import {
   BACKOFF,
   createSnapshotCache,
@@ -114,6 +115,21 @@ test('a pre-deployment short-lived cache can seed the saved board during an outa
   assert.equal((await cache.retained(key))?.data.name, 'Existing board')
   db.advance(300000)
   assert.equal((await cache.read(key, unavailable)).data.name, 'Existing board')
+})
+
+test('an untrusted board rejection cannot be hidden by an older saved snapshot', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'sale' as const, name: 'Previously trusted', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
+  await cache.read(key, async () => data)
+  db.advance(31000)
+  await assert.rejects(cache.read(key, async () => { throw new SDKError('UNTRUSTED_FACTORY', 'Board is not trusted', 422) }),
+    (error: unknown) => error instanceof SDKError && error.code === 'UNTRUSTED_FACTORY')
 })
 
 test('retained snapshots reject an older publisher and expire after the retention window', async () => {

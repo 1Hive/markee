@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@vercel/kv';
 import type { Placement, Snapshot } from '../../../packages/sdk/src/types';
 import { createSnapshotCache, SnapshotUnavailable, type SnapshotStore } from './snapshot-cache';
+import { SDKError } from './validation';
 
 const generationKey = 'sdk:snapshots:generation';
 const retainedPrefix = 'sdk:snapshots:v1:retained:';
@@ -45,7 +46,8 @@ export function createDisplayCache(store: SnapshotStore, now = Date.now) {
     async read<T>(key: string, load: () => Promise<T>, wallet = false) {
       const generation = await store.get<string>(generationKey) || 'initial';
       try {
-        const result = await cache(`${generation}:${key}`, load, wallet ? 20 : 30, wallet ? 60 : 300);
+        const result = await cache(`${generation}:${key}`, load, wallet ? 20 : 30, wallet ? 60 : 300,
+          false, error => !(error instanceof SDKError && error.status < 500));
         // Retain only server-observed SDK board data. Never persist wallet balances,
         // community permissions, or a cached authorization as a public fallback.
         const data = result.data as Snapshot;
