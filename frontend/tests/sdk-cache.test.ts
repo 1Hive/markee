@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createDisplayCache, displayKey, INVALIDATE, RETAIN, RETAIN_SECONDS, snapshotStorage } from '../lib/sdk/cached-display'
+import { createDisplayCache, displayKey, stableDisplayKey, INVALIDATE, RETAIN, RETAIN_SECONDS, snapshotStorage } from '../lib/sdk/cached-display'
 import { SDKError } from '../lib/sdk/validation'
 import {
   BACKOFF,
@@ -68,6 +68,7 @@ test('display identities isolate boards, chains, accounts and paginated pages', 
   const p = { kind: 'board' as const, chainId: 8453, address: '0xAb' as const }
   const first = displayKey(p, '0xCd', 0)
   assert.equal(first, displayKey({ ...p, address: '0xab' }, '0xcd', 0))
+  assert.equal(stableDisplayKey(p, 0), displayKey(p, undefined, 0))
   assert.equal(new Set([first, displayKey(p), displayKey(p, '0xef', 0), displayKey(p, '0xCd', 20), displayKey({ ...p, chainId: 11155111 }, '0xCd', 0), displayKey({ ...p, address: '0xef' }, '0xCd', 0)]).size, 6)
 })
 
@@ -85,6 +86,7 @@ test('a saved sale or rent board survives an RPC outage without retaining wallet
       top: null, rankedTop: null, wallet: { address: account, eth: '100' },
       warnings: [], blockNumber: '123' }
     await cache.read(key, async () => data, true)
+    await cache.read(boardKey, async () => ({ ...data, wallet: null }))
     db.advance(6 * 60 * 1000)
     const unavailable = async (): Promise<typeof data> => { throw new Error('RPC capacity exhausted') }
     const fallback = await cache.read(boardKey, unavailable)
@@ -95,6 +97,68 @@ test('a saved sale or rent board survives an RPC outage without retaining wallet
     await cache.invalidate('8453:0xverified-receipt')
     assert.equal((await cache.read(boardKey, unavailable)).data.wallet, null)
     assert.equal((await cache.retained(boardKey))?.data.board, placement.address)
+  }
+})
+
+test('an account-selected off-page rent message never enters the public retained page', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const account = '0x2222222222222222222222222222222222222222' as const
+  const publicEntry = { address: '0x3333333333333333333333333333333333333333' as const, message: 'Public' }
+  const backedEntry = { address: '0x4444444444444444444444444444444444444444' as const, message: 'Off-page account selection' }
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'rent' as const, name: 'Rent', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [publicEntry], nextOffset: 20,
+    count: 40, top: publicEntry.address, rankedTop: publicEntry.address, wallet: null,
+    warnings: [], blockNumber: '123' }
+  const publicKey = stableDisplayKey(placement, 0)
+  await cache.read(displayKey(placement, account, 0), async () => ({ ...data,
+    entries: [publicEntry, backedEntry], wallet: { address: account, backedMarkee: backedEntry.address },
+  }), true)
+  assert.equal(await cache.retained(publicKey), null, 'an account-only read cannot seed public retention')
+  await cache.read(publicKey, async () => data)
+  const retained = await cache.retained(publicKey)
+  assert.deepEqual(retained?.data.entries, [publicEntry])
+  assert.equal(retained?.data.wallet, null)
+  assert.equal(retained?.data.nextOffset, 20)
+  await db.store.set(`sdk:snapshots:v1:retained:${stableDisplayKey(placement, 20)}`,
+    { data: { ...data, entries: [backedEntry] }, updatedAt: db.now() }, { ex: RETAIN_SECONDS })
+  assert.equal(await cache.retained(stableDisplayKey(placement, 20)), null, 'old retained records may contain account-selected entries')
+})
+
+test('stale community display still refreshes current owner permissions', async t => {
+  const { snapshot } = await import('../lib/sdk/snapshot')
+  const { markeeAdapter } = await import('../lib/sdk/gardens/revenue')
+  const { getEnvPublicClient } = await import('../lib/sdk/chains')
+  const { zeroAddress } = await import('viem')
+  const db = database()
+  t.mock.method(snapshotStorage, 'get', () => db.store)
+  t.mock.method(Date, 'now', () => db.now())
+  const previous = { KV_REST_API_URL: process.env.KV_REST_API_URL, KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN }
+  process.env.KV_REST_API_URL = 'https://unused.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  const account = '0x2222222222222222222222222222222222222222' as const
+  const placement = { kind: 'gardens-community' as const, chainId: 8453, community: '0x1111111111111111111111111111111111111111' as const }
+  let calls = 0
+  t.mock.method(markeeAdapter, 'getCommunityIntegration', async () => {
+    if (++calls > 1) throw new Error('RPC unavailable')
+    return { integration: { status: 'not_integrated', leaderboardAddress: null, vaultAddress: null }, markeeChainId: 8453,
+      revenue: { claimableAmount: '0', symbol: 'ETH' } }
+  })
+  let council: string = account
+  t.mock.method(getEnvPublicClient(8453), 'readContract', async () => council)
+  try {
+    const fresh = await snapshot(placement, account)
+    assert.equal(fresh.community?.permissions?.canClaim, true)
+    council = zeroAddress
+    db.advance(31000)
+    const stale = await snapshot(placement, account)
+    assert.equal(stale.freshness?.stale, true)
+    assert.equal(stale.community?.permissions?.canClaim, false)
+    assert.equal(stale.community?.permissions?.canActivate, false)
+  } finally {
+    for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value
   }
 })
 
@@ -145,10 +209,10 @@ test('retained snapshots reject an older publisher and expire after the retentio
   const current = await cache.retained(key)
   assert.ok(current)
   const old = { ...current, data: value('old'), updatedAt: current.updatedAt - 1 }
-  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v1:retained:${key}`],
+  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v2:retained:${key}`],
     [JSON.stringify(old), old.updatedAt, RETAIN_SECONDS]), 0)
   const olderBlock = { ...current, data: { ...value('older block'), blockNumber: '122' }, updatedAt: current.updatedAt + 1 }
-  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v1:retained:${key}`],
+  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v2:retained:${key}`],
     [JSON.stringify(olderBlock), olderBlock.updatedAt, RETAIN_SECONDS]), 0)
   assert.equal((await cache.retained(key))?.data.name, 'new')
   db.advance((RETAIN_SECONDS + 1) * 1000)

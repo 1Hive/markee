@@ -5,14 +5,17 @@ import { createSnapshotCache, SnapshotUnavailable, type SnapshotStore } from './
 import { SDKError } from './validation';
 
 const generationKey = 'sdk:snapshots:generation';
-const retainedPrefix = 'sdk:snapshots:v1:retained:';
+// v1 retained records could include account-selected off-page rent messages.
+// Do not read them after tightening retention to accountless pages.
+const retainedPrefix = 'sdk:snapshots:v2:retained:';
 export const RETAIN_SECONDS = 35 * 24 * 60 * 60;
 type Retained = { data: Snapshot; updatedAt: number };
 // A late response from an older chain read cannot replace a newer observed board.
 export const RETAIN = `local previous = redis.call('get', KEYS[1])
 if previous then
   local saved = cjson.decode(previous)
-  if saved.updatedAt >= tonumber(ARGV[2]) or tonumber(saved.data.blockNumber) > tonumber(cjson.decode(ARGV[1]).data.blockNumber) then return 0 end
+  local incoming = cjson.decode(ARGV[1])
+  if saved.updatedAt >= tonumber(ARGV[2]) or tonumber(saved.data.blockNumber) > tonumber(incoming.data.blockNumber) then return 0 end
 end
 redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[3])
 return 1`;
@@ -33,6 +36,10 @@ export function displayKey(placement: Placement, account?: string, offset?: numb
     account?.toLowerCase() || null, offset ?? null]);
 }
 
+export function stableDisplayKey(placement: Placement, offset?: number) {
+  return displayKey(placement, undefined, offset);
+}
+
 export function createDisplayCache(store: SnapshotStore, now = Date.now) {
   const cache = createSnapshotCache(store, now);
   const retained = async (key: string) => {
@@ -48,16 +55,12 @@ export function createDisplayCache(store: SnapshotStore, now = Date.now) {
       try {
         const result = await cache(`${generation}:${key}`, load, wallet ? 20 : 30, wallet ? 60 : 300,
           false, error => !(error instanceof SDKError && error.status < 500));
-        // Retain only server-observed SDK board data. Never persist wallet balances,
-        // community permissions, or a cached authorization as a public fallback.
+        // Only accountless board reads have public pagination. Account-scoped
+        // rent reads can add the backer's message outside that public page.
         const data = result.data as Snapshot;
-        if (data && data.apiVersion === 1 && data.board && data.placement.kind === 'board') {
+        if (!wallet && data && data.apiVersion === 1 && data.board && data.placement.kind === 'board') {
           const publicData = { ...data, wallet: null };
-          // The caller's account may be present in the cache key. Use the
-          // placement and page offset encoded in the normalized display key.
-          const parts = JSON.parse(key) as [string, number, string, string | null, number | null];
-          const stableKey = JSON.stringify([parts[0], parts[1], parts[2], null, parts[4]]);
-          try { await store.eval(RETAIN, [`${retainedPrefix}${stableKey}`],
+          try { await store.eval(RETAIN, [`${retainedPrefix}${key}`],
             [JSON.stringify({ data: publicData, updatedAt: result.updatedAt }), result.updatedAt, RETAIN_SECONDS]); }
           catch { /* The ordinary snapshot remains usable if retention fails. */ }
         }

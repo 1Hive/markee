@@ -11,7 +11,7 @@ import { CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, getMarkeeEthxAddress, getMarkeeWith
 import { SDKError } from './validation';
 import { strategyForBoardVersion, type Strategy } from '../strategy';
 import { readPresentationData } from './presentation-data';
-import { displayCache, displayCacheConfigured, displayKey } from './cached-display';
+import { displayCache, displayCacheConfigured, displayKey, stableDisplayKey } from './cached-display';
 import { SnapshotUnavailable } from './snapshot-cache';
 
 const SDK_STRATEGY: Record<Strategy, 'sale' | 'rent'> = { fixed: 'sale', streaming: 'rent' };
@@ -152,8 +152,9 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
     try {
       cached = await cache.read(displayKey(p, account, offset), () => loadSnapshot(p, account, offset), !!account);
     } catch (error) {
+      // Account-scoped board requests can use the accountless public page.
       if (!(error instanceof SnapshotUnavailable) || p.kind !== 'board' || !account) throw error;
-      cached = await cache.retained(displayKey(p, undefined, offset));
+      cached = await cache.retained(stableDisplayKey(p, offset));
       if (!cached) throw error;
     }
     result = { ...cached.data, freshness: { updatedAt: cached.updatedAt, freshUntil: cached.freshUntil, staleUntil: cached.staleUntil, stale: cached.stale, refreshing: cached.refreshing } };
@@ -162,7 +163,8 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
       // wallet-derived action state as current, even inside the normal cache TTL.
       result = { ...result, wallet: null, warnings: [...result.warnings,
         `Showing saved board data from ${new Date(cached.updatedAt).toISOString()}. Wallet balances and ranking may have changed. Payments require live chain access.`] };
-      return applyRetainedModeration(result, severity);
+      // Community permissions must be refreshed even for a stale display.
+      if (p.kind === 'board') return applyRetainedModeration(result, severity);
     }
   } else {
     if (process.env.NODE_ENV === 'production') throw new SDKError('NOT_CONFIGURED', 'Snapshot storage is not configured.', 503);
@@ -194,7 +196,8 @@ async function applyRetainedModeration(result: Snapshot, severity: ModerationSev
               : entry.moderation };
     }) };
   } catch {
-    // If current manual flags cannot be checked, no historical message is visible.
+    // Discard old moderation detail as well as hiding the message: retained
+    // verdicts cannot stand in for current manual flags.
     result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null, moderation: undefined })),
       warnings: [...result.warnings, 'Moderation check unavailable'] };
   }
