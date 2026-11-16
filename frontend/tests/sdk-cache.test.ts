@@ -97,6 +97,25 @@ test('a saved sale or rent board survives an RPC outage without retaining wallet
   }
 })
 
+test('a pre-deployment short-lived cache can seed the saved board during an outage', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'sale' as const, name: 'Existing board', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
+  await db.store.set(`sdk:snapshots:v1:initial:${key}`,
+    { data, updatedAt: db.now(), freshUntil: db.now() + 30000, staleUntil: db.now() + 330000 }, { ex: 330 })
+  db.advance(31000)
+  const unavailable = async (): Promise<typeof data> => { throw new Error('RPC unavailable') }
+  assert.equal((await cache.read(key, unavailable)).stale, true)
+  assert.equal((await cache.retained(key))?.data.name, 'Existing board')
+  db.advance(300000)
+  assert.equal((await cache.read(key, unavailable)).data.name, 'Existing board')
+})
+
 test('retained snapshots reject an older publisher and expire after the retention window', async () => {
   const db = database()
   const cache = createDisplayCache(db.store, db.now)

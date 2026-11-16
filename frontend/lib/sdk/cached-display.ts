@@ -49,7 +49,7 @@ export function createDisplayCache(store: SnapshotStore, now = Date.now) {
         // Retain only server-observed SDK board data. Never persist wallet balances,
         // community permissions, or a cached authorization as a public fallback.
         const data = result.data as Snapshot;
-        if (data && data.apiVersion === 1 && data.board && data.placement.kind === 'board' && !result.stale) {
+        if (data && data.apiVersion === 1 && data.board && data.placement.kind === 'board') {
           const publicData = { ...data, wallet: null };
           // The caller's account may be present in the cache key. Use the
           // placement and page offset encoded in the normalized display key.
