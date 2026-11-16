@@ -1,10 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useReadContracts } from 'wagmi'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Address } from 'viem'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
+import type { StreamingBoardSnapshot } from '@/lib/streaming/boardSnapshot'
 import { BOARD_MESSAGE_LIMIT, isListedStreamingMarkee } from '@/lib/streaming/listing'
 
 // A Markee on a streaming board, ranked by its effective rate (wei/sec): the on-chain
@@ -32,73 +31,43 @@ export interface StreamingBoardMeta {
   markeeCount?: bigint
 }
 
-const CALLS_PER_MARKEE = 5
+type BoardResponse = { data: StreamingBoardSnapshot; updatedAt: number; stale: boolean }
 
-const META_FUNCTIONS = [
-  'leaderboardName',
-  'VERSION',
-  'admin',
-  'beneficiaryAddress',
-  'minimumMonthlyRate',
-  'totalLeaderboardFunds',
-  'markeeCount',
-] as const
+async function fetchBoard(board: Address, limit: number, fresh: boolean): Promise<StreamingBoardSnapshot> {
+  const params = new URLSearchParams({ board, limit: String(limit), ...(fresh ? { fresh: '1' } : {}) })
+  const response = await fetch(`/api/streaming/board?${params}`, { cache: 'no-store' })
+  if (!response.ok) throw new Error('Failed to load board')
+  return (await response.json() as BoardResponse).data
+}
 
-// Reads a StreamingLeaderboard board and returns its Markees ranked by effectiveRate.
-// getTopMarkees already returns (addresses, rates) in descending-rate order; we only zip in
-// each Markee's message/name/owner and drop zero-rate entries (the genesis seed Markee and any
-// natively-created Markee with no stream and no grandfather floor).
+const big = (value?: string) => value === undefined ? undefined : BigInt(value)
+
+// A StreamingLeaderboard board's metadata and Markees ranked by effectiveRate. The chain reads run
+// on the server (/api/streaming/board) and are shared by every viewer, so polling here costs one
+// cached request instead of RPC calls from each visitor's browser. getTopMarkees already returns
+// (addresses, rates) in descending-rate order; zero-rate entries (the genesis seed Markee and any
+// natively-created Markee with no stream and no grandfather floor) are dropped below.
 export function useStreamingMarkees(board?: Address, limit = BOARD_MESSAGE_LIMIT) {
   const enabled = !!board
+  const queryClient = useQueryClient()
+  const queryKey = useMemo(() => ['streaming-board', board?.toLowerCase(), limit], [board, limit])
 
-  const metaContracts = useMemo(
-    () => (board
-      ? [
-          ...META_FUNCTIONS.map(functionName => ({
-            address: board, abi: StreamingLeaderboardABI, functionName, chainId: CANONICAL_CHAIN_ID,
-          })),
-          { address: board, abi: StreamingLeaderboardABI, functionName: 'getTopMarkees' as const, args: [BigInt(limit)] as const, chainId: CANONICAL_CHAIN_ID },
-        ]
-      : []),
-    [board, limit]
-  )
-
-  const { data: metaData, isLoading: isMetaLoading, refetch: refetchMeta } = useReadContracts({
-    contracts: metaContracts,
-    query: { enabled, refetchInterval: 30_000 },
+  const { data, isLoading: isBoardLoading } = useQuery({
+    queryKey,
+    queryFn: () => fetchBoard(board!, limit, false),
+    enabled,
+    refetchInterval: 30_000,
   })
 
   const meta: StreamingBoardMeta = {
-    name: metaData?.[0]?.result as string | undefined,
-    version: metaData?.[1]?.result as string | undefined,
-    admin: metaData?.[2]?.result as Address | undefined,
-    beneficiary: metaData?.[3]?.result as Address | undefined,
-    minimumMonthlyRate: metaData?.[4]?.result as bigint | undefined,
-    totalLegacyFunds: metaData?.[5]?.result as bigint | undefined,
-    markeeCount: metaData?.[6]?.result as bigint | undefined,
+    name: data?.meta.name,
+    version: data?.meta.version,
+    admin: data?.meta.admin,
+    beneficiary: data?.meta.beneficiary,
+    minimumMonthlyRate: big(data?.meta.minimumMonthlyRate),
+    totalLegacyFunds: big(data?.meta.totalLegacyFunds),
+    markeeCount: big(data?.meta.markeeCount),
   }
-
-  const topResult = metaData?.[META_FUNCTIONS.length]?.result as [Address[], bigint[]] | undefined
-  const topAddresses = useMemo(() => topResult?.[0] ?? [], [topResult])
-  const topRates = useMemo(() => topResult?.[1] ?? [], [topResult])
-
-  const markeeContracts = useMemo(
-    () => (board
-      ? topAddresses.flatMap(addr => [
-          { address: addr, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
-          { address: addr, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
-          { address: addr, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
-          { address: board, abi: StreamingLeaderboardABI, functionName: 'aggregateRate' as const, args: [addr] as const, chainId: CANONICAL_CHAIN_ID },
-          { address: board, abi: StreamingLeaderboardABI, functionName: 'currentLegacyFloor' as const, args: [addr] as const, chainId: CANONICAL_CHAIN_ID },
-        ])
-      : []),
-    [board, topAddresses]
-  )
-
-  const { data: markeeData, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContracts({
-    contracts: markeeContracts,
-    query: { enabled: enabled && topAddresses.length > 0, refetchInterval: 30_000 },
-  })
 
   // Whether a markee has ever received a single BackerUpdated event (see the /api/streaming/
   // ever-funded route comment) -- createMarkee happens before the stream-opening batchCall, so an
@@ -122,26 +91,29 @@ export function useStreamingMarkees(board?: Address, limit = BOARD_MESSAGE_LIMIT
   }, [board])
 
   const markees = useMemo((): StreamingMarkee[] =>
-    topAddresses
-      .map((address, i) => ({
-        address,
-        message: (markeeData?.[i * CALLS_PER_MARKEE]?.result as string) ?? '',
-        name: (markeeData?.[i * CALLS_PER_MARKEE + 1]?.result as string) ?? '',
-        owner: (markeeData?.[i * CALLS_PER_MARKEE + 2]?.result as string) ?? '',
-        rate: topRates[i] ?? 0n,
-        streamRate: (markeeData?.[i * CALLS_PER_MARKEE + 3]?.result as bigint) ?? 0n,
-        legacyFloor: (markeeData?.[i * CALLS_PER_MARKEE + 4]?.result as bigint) ?? 0n,
+    (data?.markees ?? [])
+      .map(m => ({
+        address: m.address,
+        message: m.message,
+        name: m.name,
+        owner: m.owner,
+        rate: BigInt(m.rate),
+        streamRate: BigInt(m.streamRate),
+        legacyFloor: BigInt(m.legacyFloor),
       }))
       // Same listing rule as the server-side lists (lib/streaming/listing.ts): drops the genesis seed
       // Markee and any dead-on-arrival Markee that was created but never actually funded.
       .filter(m => isListedStreamingMarkee(m.address, m.rate, everFunded ?? new Set())),
-    [topAddresses, topRates, markeeData, everFunded]
+    [data, everFunded]
   )
 
+  // After a transaction: ask the server for a fresh chain read rather than the shared snapshot.
   const refetch = useCallback(() => {
-    refetchMeta()
-    refetchDetails()
-  }, [refetchMeta, refetchDetails])
+    if (!board) return
+    fetchBoard(board, limit, true)
+      .then(next => queryClient.setQueryData(queryKey, next))
+      .catch(() => queryClient.invalidateQueries({ queryKey }))
+  }, [board, limit, queryClient, queryKey])
 
   return {
     meta,
@@ -149,7 +121,7 @@ export function useStreamingMarkees(board?: Address, limit = BOARD_MESSAGE_LIMIT
     // everFunded === null (its fetch hasn't resolved yet) has to count as loading too -- otherwise
     // zero-rate markees silently drop out of `markees` (see the filter above) while the caller thinks
     // loading has finished, instead of showing a loading state until they're known one way or the other.
-    isLoading: isMetaLoading || (topAddresses.length > 0 && isDetailsLoading) || (topAddresses.length > 0 && everFunded === null),
+    isLoading: isBoardLoading || ((data?.markees.length ?? 0) > 0 && everFunded === null),
     refetch,
   }
 }
