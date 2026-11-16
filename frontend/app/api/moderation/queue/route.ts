@@ -8,7 +8,7 @@ import { contentHash, automaticDeps } from '@/lib/moderation/automatic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { queueDeps } from '@/lib/moderation/queue-deps'
-import { ADDRESS_PATTERN, observeMessage, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
+import { ADDRESS_PATTERN, isBlankMessage, observeMessage, isFlaggedIn, isPendingIn, type ModerationItem, type ModerationScope, type QueueBoard, type QueueResponse } from '@/lib/moderation/queue'
 import { PENDING_SITE_KEY, flagKey, isGlobalAdmin, markeeOfFlagKey, pendingKey } from '@/lib/moderation/server'
 
 export const dynamic = 'force-dynamic'
@@ -76,8 +76,13 @@ export async function GET(req: NextRequest) {
     all.forEach(it => {
       const scopes = scopesOf.get(it.board)
       if (!scopes) return
+      const blank = isBlankMessage(it)
+      // The empty seed Markee is never listed. A message whose text was later cleared is recorded as
+      // an edit of its old text, so a flag on it stays listed and can still be removed.
+      if (blank && it.kind !== 'edited') return
       const manual = scopes.some(scope => flags[scope].includes(flagKey(it.markee)))
       if (manual || isFlaggedIn(it, scopes)) flagged.push(it)
+      else if (blank) return
       else if (softMap.has(it.markee)) flagged.push({ ...it, automatic: softMap.get(it.markee)! })
       else if (isPendingIn(it, scopes) && !siteReviewIsMoot(it, scopes)) items.push(it)
     })

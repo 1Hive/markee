@@ -21,7 +21,7 @@ import { kv } from '@vercel/kv'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK } from '@/lib/contracts/addresses'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
-import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -105,11 +105,11 @@ async function loadListing(request: Request) {
     )
 
     const metaKeys = addresses.map(a => `oi:meta:${a.toLowerCase()}`)
-    const [markeeResults, creators, kvMetas, linkedFilesPerAddr] = await Promise.all([
+    const [markeeResults, origins, kvMetas, linkedFilesPerAddr] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses, {
+      resolveBoardOrigins(client, addresses, {
         keyPrefix: 'fs',
         factories: [FOR_SALE_FACTORY_ADDRESS],
         fromBlock: FOR_SALE_FACTORY_DEPLOY_BLOCK,
@@ -161,7 +161,8 @@ async function loadListing(request: Request) {
         totalFundsRaw: totalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
-        creator: creators[i] ?? null,
+        creator: origins[i]?.creator ?? null,
+        initialAdmin: origins[i]?.initialAdmin ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFunds0.toString(),

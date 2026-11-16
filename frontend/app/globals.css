@@ -173,7 +173,11 @@ img.emoji {
 
 /* ── Layout grids ───────────────────────────────────────────────────────────── */
 .signs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 1080px; margin: 0 auto; }
-@media (max-width: 720px) { .signs-grid { grid-template-columns: 1fr; gap: 22px; } .reader-card { aspect-ratio: 5 / 2; } }
+@media (max-width: 720px) {
+  .signs-grid { grid-template-columns: 1fr; gap: 40px; }
+  .reader-card { aspect-ratio: 5 / 2; }
+  .reader-text { display: block; }
+}
 .plat-grid-home { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 @media (max-width: 720px) { .plat-grid-home { grid-template-columns: 1fr; } }
 

@@ -89,7 +89,7 @@ export function useOpenStreamFlow(board: Address, markeeAddress: Address | undef
     if (opts.belowMin) { setError(`The minimum is ${opts.minMonthlyEth} ETH / month.`); return }
     // The stream locks its own CFA sender buffer (~4h of rate) from the prefund, on top of the board's
     // GDA buffer. Require the prefund to clear that so createFlow can't revert for insufficient balance.
-    if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
+    if (calc.prefund <= calc.buffer) { setError('Not enough ETH in your wallet to start this stream. Add funds, then try again.'); return }
 
     try {
       setSubmitting(true)

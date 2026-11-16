@@ -23,16 +23,22 @@ export async function cachedListing(request: Request, key: string, load: (reques
         if (!response.ok || data.error || data.stale) throw new Error('Listing refresh failed')
         return data
     }
-    let force = url.searchParams.get('bust') === '1'
+    // A post-transaction bust waits for a load that started after it arrived, so
+    // a refresh already in flight cannot hand back pre-transaction state.
+    let loadedAfter: number | false = url.searchParams.get('bust') === '1' ? Date.now() : false
     for (let attempt = 0; ; attempt++) {
       try {
-        const result = await read<Payload>(`listings:${key}`, loadPayload, 60, 300, force)
+        const result = await read<Payload>(`listings:${key}`, loadPayload, 60, 300, loadedAfter)
         return respond(result.data, result.stale)
       } catch (error) {
         // A normal first page load should await the existing cold refresh rather
         // than render an empty account. Waiting never launches parallel RPC work.
-        if (!(error instanceof SnapshotUnavailable) || error.retryAfter !== 2 || attempt >= 30) throw error
-        force = false
+        if (!(error instanceof SnapshotUnavailable) || error.retryAfter !== 2) throw error
+        if (attempt >= 30) {
+          if (loadedAfter === false) throw error
+          loadedAfter = false
+          continue
+        }
         await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
