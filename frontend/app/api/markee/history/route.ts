@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http, isAddress, parseAbiItem } from 'viem'
 import { base } from 'viem/chains'
+import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { createSnapshotCache, SnapshotUnavailable } from '@/lib/sdk/snapshot-cache'
+import { displayCacheConfigured, snapshotStorage } from '@/lib/sdk/cached-display'
+import { clientIp, underRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +13,14 @@ const NO_CACHE = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
 }
 const MAX_HISTORY_EVENTS = 50
+// Each uncached load scans every event since the first Markee block, so responses are shared
+// through the Redis snapshot cache: fresh for 30 s, then served stale for up to 5 min while one
+// request refreshes (or while the RPC is failing). A per-IP limit stops callers from cycling
+// addresses to bypass the cache.
+const HISTORY_FRESH_SECONDS = 30
+const HISTORY_STALE_SECONDS = 300
+const RATE_WINDOW = 60
+const RATE_MAX = 30
 
 // ── Fixed ("For Sale") leaderboard events ───────────────────────────────────
 const LEADERBOARD_MARKEE_CREATED = parseAbiItem(
@@ -53,8 +65,6 @@ const VERSION_ABI = [
 ] as const
 
 function getClient() {
-  // Prefer the RPC the rest of the app reads from, so this server-side scan sees the same chain
-  // the client-side hooks do; fall back to Alchemy/default.
   return createPublicClient({
     chain: base,
     transport: http(
@@ -62,6 +72,35 @@ function getClient() {
       { fetchOptions: { cache: 'no-store' } },
     ),
   })
+}
+
+// A mined block's timestamp never changes, so it is stored permanently and fetched at most once.
+// Blocks are only cached once they are buried well past any reorg depth.
+const TIMESTAMP_SAFE_DEPTH = 100n
+
+async function blockTimestamps(client: ReturnType<typeof getClient>, blockNumbers: bigint[]): Promise<Map<string, number>> {
+  const timestamps = new Map<string, number>()
+  if (blockNumbers.length === 0) return timestamps
+  const keys = blockNumbers.map(n => `block-ts:${base.id}:${n}`)
+  const saved = await kv.mget<(number | null)[]>(...keys).catch(() => keys.map(() => null))
+  const missing = blockNumbers.filter((n, i) => {
+    const value = saved[i]
+    if (typeof value === 'number') timestamps.set(n.toString(), value)
+    return typeof value !== 'number'
+  })
+  if (missing.length === 0) return timestamps
+  const [blocks, head] = await Promise.all([
+    Promise.all(missing.map(blockNumber => client.getBlock({ blockNumber }))),
+    client.getBlockNumber(),
+  ])
+  await Promise.all(blocks.map(block => {
+    const timestamp = Number(block.timestamp)
+    timestamps.set(block.number.toString(), timestamp)
+    return block.number + TIMESTAMP_SAFE_DEPTH <= head
+      ? kv.set(`block-ts:${base.id}:${block.number}`, timestamp).catch(() => {})
+      : null
+  }))
+  return timestamps
 }
 
 type RawEvent = {
@@ -210,7 +249,7 @@ export async function GET(request: NextRequest) {
   const leaderboard = leaderboardAddress as `0x${string}`
   const markee = markeeAddress as `0x${string}`
 
-  try {
+  const load = async () => {
     // A board's VERSION discriminates the strategy: streaming boards report "streaming-*", fixed
     // report "1.3.0" or "1.4.0" (see StreamingBoardDetail.tsx) -- only read on-chain when the caller doesn't
     // already know (e.g. the For Sale page never passes ?strategy, the For Rent page always does).
@@ -241,15 +280,33 @@ export async function GET(request: NextRequest) {
 
     const blockNumbers = eventsWithoutTimestamps.map(event => event.blockNumber).filter(blockNumber => blockNumber !== '0')
     const uniqueBlocks = [...new Set(blockNumbers)].map(BigInt)
-    const blocks = await Promise.all(uniqueBlocks.map(blockNumber => client.getBlock({ blockNumber })))
-    const timestamps = new Map(blocks.map(block => [block.number.toString(), Number(block.timestamp)]))
+    const timestamps = await blockTimestamps(client, uniqueBlocks)
     const history = eventsWithoutTimestamps.map(event => ({
       ...event,
       timestamp: timestamps.get(event.blockNumber) ?? 0,
     }))
 
-    return NextResponse.json({ history, limit: MAX_HISTORY_EVENTS, bidders }, { headers: NO_CACHE })
+    return { history, limit: MAX_HISTORY_EVENTS, bidders }
+  }
+
+  try {
+    if (!displayCacheConfigured()) {
+      if (process.env.NODE_ENV === 'production') throw new Error('History cache storage is not configured')
+      return NextResponse.json(await load(), { headers: NO_CACHE }) // Local development runs uncached.
+    }
+    if (!await underRateLimit('markee:history', clientIp(request), RATE_MAX, RATE_WINDOW)) {
+      return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
+    }
+    const key = `markee-history:${leaderboard.toLowerCase()}:${markee.toLowerCase()}:${strategyParam === 'streaming' ? 'streaming' : strategyParam ? 'fixed' : 'auto'}`
+    const cached = await createSnapshotCache(snapshotStorage.get())(key, load, HISTORY_FRESH_SECONDS, HISTORY_STALE_SECONDS)
+    return NextResponse.json(cached.data, { headers: NO_CACHE })
   } catch (error) {
+    if (error instanceof SnapshotUnavailable) {
+      return NextResponse.json(
+        { error: 'Transaction history is refreshing; try again shortly' },
+        { status: 503, headers: { ...NO_CACHE, 'Retry-After': String(error.retryAfter) } },
+      )
+    }
     console.error('[markee-history] failed to load history', error)
     return NextResponse.json(
       { error: 'Unable to load transaction history' },
