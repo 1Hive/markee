@@ -8,6 +8,10 @@ const generationKey = 'sdk:snapshots:generation';
 // v1 retained records could include account-selected off-page rent messages.
 // Do not read them after tightening retention to accountless pages.
 const retainedPrefix = 'sdk:snapshots:v2:retained:';
+// Accountless reads are shared by every embedded sign polling a board, so each
+// refresh costs one chain read per board and page. Verified SDK transactions
+// invalidate immediately; this only bounds how long off-SDK changes take to show.
+export const PUBLIC_FRESH_SECONDS = 60;
 export const RETAIN_SECONDS = 35 * 24 * 60 * 60;
 type Retained = { data: Snapshot; updatedAt: number };
 // A late response from an older chain read cannot replace a newer observed board.
@@ -55,7 +59,7 @@ export function createDisplayCache(store: SnapshotStore, now = Date.now) {
       let loaded = false;
       try {
         const result = await cache(`${generation}:${key}`, async () => { const value = await load(); loaded = true; return value; },
-          wallet ? 20 : 30, wallet ? 60 : 300, false, error => !(error instanceof SDKError && error.status < 500));
+          wallet ? 20 : PUBLIC_FRESH_SECONDS, wallet ? 60 : 300, false, error => !(error instanceof SDKError && error.status < 500));
         // Only accountless board reads have public pagination. Account-scoped
         // rent reads can add the backer's message outside that public page.
         // Retain only data this request loaded, or a stale short-lived snapshot

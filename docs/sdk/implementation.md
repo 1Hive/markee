@@ -104,7 +104,7 @@ Both For Sale and For Rent use the same Redis-backed display cache. Keys include
 placement kind, chain, board/community, wallet and page offset. Decimal amounts,
 pagination, moderation, views, themes and SDK wallet adapters keep their existing
 contracts. Optional `freshness` metadata uses epoch milliseconds. Public snapshots
-are fresh for 30 seconds with at most 300 additional stale seconds; wallet
+are fresh for 60 seconds with at most 300 additional stale seconds; wallet
 snapshots use 20 seconds plus 60 stale seconds. `/community` also caches its
 display-only integration/revenue result. Community permissions are read afresh;
 preparation, simulations, quotes, signatures and receipt verification bypass the

@@ -191,7 +191,7 @@ test('an untrusted board rejection cannot be hidden by an older saved snapshot',
     maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
     count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
   await cache.read(key, async () => data)
-  db.advance(31000)
+  db.advance(61000)
   await assert.rejects(cache.read(key, async () => { throw new SDKError('UNTRUSTED_FACTORY', 'Board is not trusted', 422) }),
     (error: unknown) => error instanceof SDKError && error.code === 'UNTRUSTED_FACTORY')
 })
