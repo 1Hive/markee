@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createDisplayCache, displayKey, INVALIDATE, snapshotStorage } from '../lib/sdk/cached-display'
+import { createDisplayCache, displayKey, INVALIDATE, RETAIN, RETAIN_SECONDS, snapshotStorage } from '../lib/sdk/cached-display'
 import {
   BACKOFF,
   createSnapshotCache,
@@ -28,6 +28,13 @@ function database() {
       return 'OK'
     },
     async eval(script, keys, args) {
+      if (script === RETAIN) {
+        const previous = await store.get<{ updatedAt: number }>(keys[0])
+        const incoming = JSON.parse(String(args[0])) as { data: { blockNumber: string }; updatedAt: number }
+        if (previous && (previous.updatedAt >= Number(args[1]) || BigInt((previous as typeof incoming).data.blockNumber) > BigInt(incoming.data.blockNumber))) return 0
+        await store.set(keys[0], incoming, { ex: Number(args[2]) })
+        return 1
+      }
       if (script === INVALIDATE) {
         if (await store.get(keys[1])) return 0
         await store.set(keys[0], args[0], { ex: 100000000 })
@@ -61,6 +68,98 @@ test('display identities isolate boards, chains, accounts and paginated pages', 
   const first = displayKey(p, '0xCd', 0)
   assert.equal(first, displayKey({ ...p, address: '0xab' }, '0xcd', 0))
   assert.equal(new Set([first, displayKey(p), displayKey(p, '0xef', 0), displayKey(p, '0xCd', 20), displayKey({ ...p, chainId: 11155111 }, '0xCd', 0), displayKey({ ...p, address: '0xef' }, '0xCd', 0)]).size, 6)
+})
+
+test('a saved sale or rent board survives an RPC outage without retaining wallet state', async () => {
+  for (const strategy of ['sale', 'rent'] as const) {
+    const db = database()
+    const cache = createDisplayCache(db.store, db.now)
+    const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+    const account = '0x2222222222222222222222222222222222222222' as const
+    const key = displayKey(placement, account)
+    const boardKey = displayKey(placement)
+    const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+      strategy, name: 'Saved board', minimum: '1', maxMessageBytes: 222, maxNameBytes: 22,
+      revnetEnabled: true, token: null, entries: [], nextOffset: null, count: 0,
+      top: null, rankedTop: null, wallet: { address: account, eth: '100' },
+      warnings: [], blockNumber: '123' }
+    await cache.read(key, async () => data, true)
+    db.advance(6 * 60 * 1000)
+    const unavailable = async (): Promise<typeof data> => { throw new Error('RPC capacity exhausted') }
+    const fallback = await cache.read(boardKey, unavailable)
+    assert.equal(fallback.stale, true)
+    assert.equal(fallback.data.strategy, strategy)
+    assert.equal(fallback.data.wallet, null)
+    assert.equal(fallback.updatedAt, 100000)
+    await cache.invalidate('8453:0xverified-receipt')
+    assert.equal((await cache.read(boardKey, unavailable)).data.wallet, null)
+    assert.equal((await cache.retained(boardKey))?.data.board, placement.address)
+  }
+})
+
+test('retained snapshots reject an older publisher and expire after the retention window', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const value = (name: string) => ({ apiVersion: 1 as const, placement, board: placement.address,
+    chainId: 8453, strategy: 'sale' as const, name, minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' })
+  await cache.read(key, async () => value('new'))
+  const current = await cache.retained(key)
+  assert.ok(current)
+  const old = { ...current, data: value('old'), updatedAt: current.updatedAt - 1 }
+  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v1:retained:${key}`],
+    [JSON.stringify(old), old.updatedAt, RETAIN_SECONDS]), 0)
+  const olderBlock = { ...current, data: { ...value('older block'), blockNumber: '122' }, updatedAt: current.updatedAt + 1 }
+  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v1:retained:${key}`],
+    [JSON.stringify(olderBlock), olderBlock.updatedAt, RETAIN_SECONDS]), 0)
+  assert.equal((await cache.retained(key))?.data.name, 'new')
+  db.advance((RETAIN_SECONDS + 1) * 1000)
+  assert.equal(await cache.retained(key), null)
+})
+
+test('an RPC outage serves a saved board without wallet values and applies current manual flags', async t => {
+  const { snapshot } = await import('../lib/sdk/snapshot')
+  const { prepare } = await import('../lib/sdk/transactions')
+  const { getEnvPublicClient } = await import('../lib/sdk/chains')
+  const { automaticDeps } = await import('../lib/moderation/automatic')
+  const db = database()
+  t.mock.method(snapshotStorage, 'get', () => db.store)
+  const flagReader = t.mock.method(automaticDeps, 'flags', async () => ({ board: ['8453:0x3333333333333333333333333333333333333333'], site: [] }))
+  t.mock.method(getEnvPublicClient(8453), 'getBlockNumber', async () => { throw new Error('RPC unavailable') })
+  const previous = { KV_REST_API_URL: process.env.KV_REST_API_URL, KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN, FLAG_AUTO_MODERATION: process.env.FLAG_AUTO_MODERATION }
+  process.env.KV_REST_API_URL = 'https://unused.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const account = '0x2222222222222222222222222222222222222222' as const
+  const entry = { address: '0x3333333333333333333333333333333333333333' as const,
+    owner: account, message: 'Saved message', name: 'Name', score: '1', totalFunds: '1',
+    aggregateRate: '0', legacyFloor: '0', moderated: false, views: 1 }
+  try {
+    await createDisplayCache(db.store, db.now).read(displayKey(placement), async () => ({
+      apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+      strategy: 'sale' as const, name: 'Saved board', minimum: '1', maxMessageBytes: 222,
+      maxNameBytes: 22, revnetEnabled: true, token: null, entries: [entry], nextOffset: null,
+      count: 1, top: entry.address, rankedTop: entry.address,
+      wallet: null, warnings: [], blockNumber: '123',
+    }))
+    await createDisplayCache(db.store, db.now).invalidate('8453:0xreceipt')
+    const result = await snapshot(placement, account)
+    assert.equal(result.freshness?.stale, true)
+    assert.equal(result.wallet, null)
+    assert.equal(result.entries[0].moderated, true)
+    assert.match(result.warnings.join(' '), /saved board data/)
+    await assert.rejects(prepare(placement, account, { kind: 'create', message: 'New message', name: '', amount: '1' }), /RPC unavailable/)
+    flagReader.mock.mockImplementation(async () => { throw new Error('Moderation database unavailable') })
+    const hidden = await snapshot(placement, account)
+    assert.equal(hidden.entries[0].moderated, null)
+    assert.match(hidden.warnings.join(' '), /Moderation check unavailable/)
+  } finally {
+    for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value
+  }
 })
 
 test('community display reads share the cache without caching authorization or quotes', async t => {

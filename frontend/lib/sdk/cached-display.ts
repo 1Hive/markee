@@ -1,9 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@vercel/kv';
-import type { Placement } from '../../../packages/sdk/src/types';
-import { createSnapshotCache, type SnapshotStore } from './snapshot-cache';
+import type { Placement, Snapshot } from '../../../packages/sdk/src/types';
+import { createSnapshotCache, SnapshotUnavailable, type SnapshotStore } from './snapshot-cache';
 
 const generationKey = 'sdk:snapshots:generation';
+const retainedPrefix = 'sdk:snapshots:v1:retained:';
+export const RETAIN_SECONDS = 35 * 24 * 60 * 60;
+type Retained = { data: Snapshot; updatedAt: number };
+// A late response from an older chain read cannot replace a newer observed board.
+export const RETAIN = `local previous = redis.call('get', KEYS[1])
+if previous then
+  local saved = cjson.decode(previous)
+  if saved.updatedAt >= tonumber(ARGV[2]) or tonumber(saved.data.blockNumber) > tonumber(cjson.decode(ARGV[1]).data.blockNumber) then return 0 end
+end
+redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[3])
+return 1`;
 // A global generation also invalidates other boards affected by the same wallet's
 // ETHx balance. Old in-flight loaders can only publish into the obsolete namespace.
 export const INVALIDATE = `if redis.call('exists', KEYS[2]) == 1 then return 0 end
@@ -23,11 +34,41 @@ export function displayKey(placement: Placement, account?: string, offset?: numb
 
 export function createDisplayCache(store: SnapshotStore, now = Date.now) {
   const cache = createSnapshotCache(store, now);
+  const retained = async (key: string) => {
+    const saved = await store.get<Retained>(`${retainedPrefix}${key}`);
+    if (!saved || !saved.data || !Number.isFinite(saved.updatedAt)) return null;
+    return { data: saved.data, updatedAt: saved.updatedAt,
+      freshUntil: saved.updatedAt, staleUntil: saved.updatedAt + RETAIN_SECONDS * 1000,
+      stale: true, refreshing: false };
+  };
   return {
     async read<T>(key: string, load: () => Promise<T>, wallet = false) {
       const generation = await store.get<string>(generationKey) || 'initial';
-      return cache(`${generation}:${key}`, load, wallet ? 20 : 30, wallet ? 60 : 300);
+      try {
+        const result = await cache(`${generation}:${key}`, load, wallet ? 20 : 30, wallet ? 60 : 300);
+        // Retain only server-observed SDK board data. Never persist wallet balances,
+        // community permissions, or a cached authorization as a public fallback.
+        const data = result.data as Snapshot;
+        if (data && data.apiVersion === 1 && data.board && data.placement.kind === 'board' && !result.stale) {
+          const publicData = { ...data, wallet: null };
+          // The caller's account may be present in the cache key. Use the
+          // placement and page offset encoded in the normalized display key.
+          const parts = JSON.parse(key) as [string, number, string, string | null, number | null];
+          const stableKey = JSON.stringify([parts[0], parts[1], parts[2], null, parts[4]]);
+          try { await store.eval(RETAIN, [`${retainedPrefix}${stableKey}`],
+            [JSON.stringify({ data: publicData, updatedAt: result.updatedAt }), result.updatedAt, RETAIN_SECONDS]); }
+          catch { /* The ordinary snapshot remains usable if retention fails. */ }
+        }
+        return result;
+      } catch (error) {
+        if (!wallet && error instanceof SnapshotUnavailable) {
+          const saved = await retained(key);
+          if (saved) return saved as Awaited<ReturnType<typeof cache<T>>>;
+        }
+        throw error;
+      }
     },
+    retained,
     async invalidate(verifiedReceipt: string) {
       return store.eval(INVALIDATE, [generationKey, `sdk:snapshots:receipt:${verifiedReceipt.toLowerCase()}`], [randomUUID()]);
     },
