@@ -29,7 +29,8 @@ Targeted tests are configured in package.json. Run the relevant suites and TypeS
 - Both must be supported during the transition; prefer RPC for new work
 - Minimal diffs over rewrites — make targeted changes to working code, never wholesale replacements
 - Fire-and-forget fetches from Vercel serverless functions are unreliable — use cron jobs or await fetches before returning
-- Polling intervals must be set explicitly in wagmi config (`pollingInterval: 120_000`) to avoid RPC rate limiting
+- Never poll chain state from the browser on a timer. Repeating reads go through a server route wrapped in `cachedChainRead` (`lib/server/cachedChainRead.ts`), so every viewer shares one cached RPC read; see `/api/streaming/board`. One-off wagmi reads (page load, after a transaction) are fine
+- Server code uses the server-only `ALCHEMY_BASE_URL`; `NEXT_PUBLIC_BASE_RPC_URL` is the domain-restricted browser key and only a server fallback
 - Copy-pasting complete files can introduce invisible characters — incremental edits to existing files are safer
 
 ## Architecture
@@ -52,7 +53,7 @@ Targeted tests are configured in package.json. Run the relevant suites and TypeS
 - **Legacy TopDawg contracts**: The Graph subgraph via Apollo Client (`lib/apollo-client.ts`). Main query (`GetMarkees`) polls every 30 seconds with `network-only` fetch policy. Two environments: Studio (dev) and decentralized network (prod).
 - **V1.0 LeaderboardFactory contracts**: Direct RPC via Alchemy using viem. This is the preferred pattern for new work.
 
-Hooks for both live in `lib/contracts/` (e.g., `useMarkees.ts`, `useMarkeeDetail.ts`, `useFixedMarkees.ts`).
+Hooks for both live in `lib/contracts/` (e.g., `useFixedMarkees.ts`, `useLeaderboardDetail.ts`, `useStreamingMarkees.ts`).
 
 **On-chain reads** use viem `createPublicClient` against Base (canonical chain). Cross-chain payment support exists for Optimism, Arbitrum, and Mainnet via RevNet project IDs (RevNet Project ID: 119).
 
