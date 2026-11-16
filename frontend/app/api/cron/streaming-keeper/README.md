@@ -35,7 +35,7 @@ shared with the rest of the app.
 | `NEXT_PUBLIC_STREAMING_FACTORY` | Gates the whole feature. Until set, the route no-ops (`skipped: streaming disabled`). |
 | `KEEPER_PRIVATE_KEY` | Gas-funded hot wallet that signs `claimTop`. Without it every scheduled run returns `500 no signer configured` and nothing is healed. |
 | `CRON_SECRET` | Shared with the other cron routes; Vercel cron sends it as the Bearer token. |
-| `NEXT_PUBLIC_BASE_RPC_URL` / `ALCHEMY_BASE_URL` | Base RPC, same precedence as the streaming reads. |
+| `ALCHEMY_BASE_URL` / `NEXT_PUBLIC_BASE_RPC_URL` | Base RPC: the server-only key first, the public browser RPC as fallback (same precedence as the streaming reads). |
 
 ## Testing without the scheduler
 
