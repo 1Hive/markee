@@ -13,6 +13,8 @@ export type Snapshot<T> = {
   staleUntil: number
   stale: boolean
   refreshing: boolean
+  /** Served from the long-lived retained record after live refresh failed. */
+  retained?: boolean
 }
 
 export class SnapshotUnavailable extends Error {

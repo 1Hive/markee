@@ -158,9 +158,10 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
       if (!cached) throw error;
     }
     result = { ...cached.data, freshness: { updatedAt: cached.updatedAt, freshUntil: cached.freshUntil, staleUntil: cached.staleUntil, stale: cached.stale, refreshing: cached.refreshing } };
-    if (cached.stale) {
-      // Historical chain data is display-only. Never expose an old balance or
-      // wallet-derived action state as current, even inside the normal cache TTL.
+    if (cached.retained) {
+      // Retained chain data is display-only. Never expose an old balance or
+      // wallet-derived action state as current. Ordinary stale responses inside
+      // the short cache window keep their normal freshness metadata instead.
       result = { ...result, wallet: null, warnings: [...result.warnings,
         `Showing saved board data from ${new Date(cached.updatedAt).toISOString()}. Wallet balances and ranking may have changed. Payments require live chain access.`] };
       // Community permissions must be refreshed even for a stale display.

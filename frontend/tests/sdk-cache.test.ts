@@ -219,6 +219,49 @@ test('retained snapshots reject an older publisher and expire after the retentio
   assert.equal(await cache.retained(key), null)
 })
 
+test('fresh cache hits do not rewrite the retained board record', async () => {
+  const db = database()
+  let retains = 0
+  const store: SnapshotStore = { ...db.store, eval: async (script, keys, args) => {
+    if (script === RETAIN) retains++
+    return db.store.eval(script, keys, args)
+  } }
+  const cache = createDisplayCache(store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'sale' as const, name: 'Board', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
+  await cache.read(key, async () => data)
+  assert.equal(retains, 1)
+  for (let i = 0; i < 5; i++) await cache.read(key, async () => { throw new Error('unexpected load') })
+  assert.equal(retains, 1, 'cache hits must not send the snapshot to storage again')
+})
+
+test('an ordinary stale response during a concurrent refresh is not marked as retained', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement, '0x2222222222222222222222222222222222222222')
+  await cache.read(key, async () => 'first', true)
+  db.advance(21000)
+  let release!: () => void
+  let started = false
+  const refreshing = cache.read(key, async () => {
+    started = true
+    await new Promise<void>(resolve => { release = resolve })
+    return 'second'
+  }, true)
+  while (!started) await new Promise(resolve => setImmediate(resolve))
+  const concurrent = await cache.read(key, async () => 'unexpected', true)
+  assert.equal(concurrent.stale, true)
+  assert.equal(concurrent.refreshing, true)
+  assert.equal(concurrent.retained, undefined)
+  release()
+  assert.equal((await refreshing).data, 'second')
+})
+
 test('an RPC outage serves a saved board without wallet values and applies current manual flags', async t => {
   const { snapshot } = await import('../lib/sdk/snapshot')
   const { prepare } = await import('../lib/sdk/transactions')

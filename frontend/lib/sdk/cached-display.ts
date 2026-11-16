@@ -47,18 +47,21 @@ export function createDisplayCache(store: SnapshotStore, now = Date.now) {
     if (!saved || !saved.data || !Number.isFinite(saved.updatedAt)) return null;
     return { data: saved.data, updatedAt: saved.updatedAt,
       freshUntil: saved.updatedAt, staleUntil: saved.updatedAt + RETAIN_SECONDS * 1000,
-      stale: true, refreshing: false };
+      stale: true, refreshing: false, retained: true };
   };
   return {
     async read<T>(key: string, load: () => Promise<T>, wallet = false) {
       const generation = await store.get<string>(generationKey) || 'initial';
+      let loaded = false;
       try {
-        const result = await cache(`${generation}:${key}`, load, wallet ? 20 : 30, wallet ? 60 : 300,
-          false, error => !(error instanceof SDKError && error.status < 500));
+        const result = await cache(`${generation}:${key}`, async () => { const value = await load(); loaded = true; return value; },
+          wallet ? 20 : 30, wallet ? 60 : 300, false, error => !(error instanceof SDKError && error.status < 500));
         // Only accountless board reads have public pagination. Account-scoped
         // rent reads can add the backer's message outside that public page.
+        // Retain only data this request loaded, or a stale short-lived snapshot
+        // that may predate retention; a fresh cache hit was already retained.
         const data = result.data as Snapshot;
-        if (!wallet && data && data.apiVersion === 1 && data.board && data.placement.kind === 'board') {
+        if ((loaded || result.stale) && !wallet && data && data.apiVersion === 1 && data.board && data.placement.kind === 'board') {
           const publicData = { ...data, wallet: null };
           try { await store.eval(RETAIN, [`${retainedPrefix}${key}`],
             [JSON.stringify({ data: publicData, updatedAt: result.updatedAt }), result.updatedAt, RETAIN_SECONDS]); }
