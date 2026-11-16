@@ -1,5 +1,6 @@
 import type { ModerationSeverity } from '../moderation/severity';
-import { automaticDeps, autoEnabled, evaluateObservedBatch } from '../moderation/automatic';
+import { automaticDeps, autoEnabled, checkDraft, evaluateObservedBatch } from '../moderation/automatic';
+import { flagKey } from '../moderation/server';
 import { getAddress, parseAbi, zeroAddress, type Abi, type Address, type PublicClient } from 'viem';
 import type { CommunityState, Entry, Placement, Snapshot, WalletState } from '../../../packages/sdk/src/types';
 import { MARKEE_TOKEN } from '../contracts/addresses';
@@ -10,7 +11,8 @@ import { CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, getMarkeeEthxAddress, getMarkeeWith
 import { SDKError } from './validation';
 import { strategyForBoardVersion, type Strategy } from '../strategy';
 import { readPresentationData } from './presentation-data';
-import { displayCache, displayCacheConfigured, displayKey } from './cached-display';
+import { displayCache, displayCacheConfigured, displayKey, stableDisplayKey } from './cached-display';
+import { SnapshotUnavailable } from './snapshot-cache';
 
 const SDK_STRATEGY: Record<Strategy, 'sale' | 'rent'> = { fixed: 'sale', streaming: 'rent' };
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -145,8 +147,26 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
   let result: Snapshot;
   if (displayCacheConfigured()) {
-    const cached = await displayCache().read(displayKey(p, account, offset), () => loadSnapshot(p, account, offset), !!account);
+    const cache = displayCache();
+    let cached;
+    try {
+      cached = await cache.read(displayKey(p, account, offset), () => loadSnapshot(p, account, offset), !!account);
+    } catch (error) {
+      // Account-scoped board requests can use the accountless public page.
+      if (!(error instanceof SnapshotUnavailable) || p.kind !== 'board' || !account) throw error;
+      cached = await cache.retained(stableDisplayKey(p, offset));
+      if (!cached) throw error;
+    }
     result = { ...cached.data, freshness: { updatedAt: cached.updatedAt, freshUntil: cached.freshUntil, staleUntil: cached.staleUntil, stale: cached.stale, refreshing: cached.refreshing } };
+    if (cached.retained) {
+      // Retained chain data is display-only. Never expose an old balance or
+      // wallet-derived action state as current. Ordinary stale responses inside
+      // the short cache window keep their normal freshness metadata instead.
+      result = { ...result, wallet: null, warnings: [...result.warnings,
+        `Showing saved board data from ${new Date(cached.updatedAt).toISOString()}. Wallet balances and ranking may have changed. Payments require live chain access.`] };
+      // Community permissions must be refreshed even for a stale display.
+      if (p.kind === 'board') return applyRetainedModeration(result, severity);
+    }
   } else {
     if (process.env.NODE_ENV === 'production') throw new SDKError('NOT_CONFIGURED', 'Snapshot storage is not configured.', 503);
     result = await loadSnapshot(p, account, offset);
@@ -158,6 +178,31 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
     if (result.community) result = { ...result, community: { ...result.community, permissions } };
   }
   return applySnapshotModeration(result, severity);
+}
+
+async function applyRetainedModeration(result: Snapshot, severity: ModerationSeverity): Promise<Snapshot> {
+  const enabled = autoEnabled() && result.chainId === 8453;
+  result = { ...result, autoModerationEnabled: enabled };
+  try {
+    const flags = await automaticDeps.flags();
+    const boardFlags = new Set(flags.board);
+    result = { ...result, entries: result.entries.map(entry => {
+      const manuallyFlagged = boardFlags.has(flagKey(entry.address));
+      const verdict = enabled ? checkDraft(entry.message, severity) : null;
+      const unavailable = verdict?.state === 'unavailable';
+      return { ...entry, moderated: manuallyFlagged ? true : unavailable ? null : verdict?.state === 'soft-flagged',
+        moderation: manuallyFlagged ? { state: 'manual-flagged' as const, contentHash: verdict?.contentHash || '', policyVersion: verdict?.policyVersion || '' }
+          : unavailable ? { state: 'unavailable' as const, contentHash: verdict.contentHash, policyVersion: verdict.policyVersion }
+            : verdict?.state === 'soft-flagged' ? { state: 'soft-flagged' as const, contentHash: verdict.contentHash, policyVersion: verdict.policyVersion, reason: verdict.reason, reasonCodes: verdict.reasonCodes }
+              : entry.moderation };
+    }) };
+  } catch {
+    // Discard old moderation detail as well as hiding the message: retained
+    // verdicts cannot stand in for current manual flags.
+    result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null, moderation: undefined })),
+      warnings: [...result.warnings, 'Moderation check unavailable'] };
+  }
+  return result;
 }
 
 export async function applySnapshotModeration(result: Snapshot, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
