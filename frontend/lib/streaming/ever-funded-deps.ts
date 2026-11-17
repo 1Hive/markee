@@ -11,7 +11,7 @@ const STREAMING_FACTORIES = [...new Set([BASE_STREAMING_FACTORY, STREAMING_FACTO
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org', { fetchOptions: { cache: 'no-store' } }),
+    transport: http(process.env.ALCHEMY_BASE_URL || process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org', { fetchOptions: { cache: 'no-store' } }),
   })
 }
 

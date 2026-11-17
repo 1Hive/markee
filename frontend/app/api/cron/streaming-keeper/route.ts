@@ -13,7 +13,7 @@
  * throwaway gas-funded hot wallet. Backers settle their own RevNet share from the UI.
  *
  * KEEPER_PRIVATE_KEY (hot wallet) is the only var this route owns; auth and RPC reuse
- * CRON_SECRET and NEXT_PUBLIC_BASE_RPC_URL/ALCHEMY_BASE_URL.
+ * CRON_SECRET and ALCHEMY_BASE_URL (falling back to NEXT_PUBLIC_BASE_RPC_URL).
  * Inert unless NEXT_PUBLIC_STREAMING_FACTORY is set (STREAMING_ENABLED).
  */
 
@@ -50,9 +50,8 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: 'streaming disabled' })
   }
 
-  // The factory lives on whatever chain NEXT_PUBLIC_BASE_RPC_URL points at (the same RPC the client
-  // streaming hooks read), so prefer it and fall back to Alchemy.
-  const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL
+  // Prefer the server-only key; the public browser RPC is a fallback on the same chain.
+  const rpc = process.env.ALCHEMY_BASE_URL || process.env.NEXT_PUBLIC_BASE_RPC_URL
   if (!rpc) return NextResponse.json({ error: 'no rpc configured' }, { status: 500 })
 
   const key = process.env.KEEPER_PRIVATE_KEY
