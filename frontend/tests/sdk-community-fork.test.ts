@@ -57,10 +57,15 @@ test('community authorization checks current Safe ownership, nonce replay and tr
   assert.equal(revokedResult.status, 403);
   await setOwner(owner.address);
   const valid = await challenge(activation.POST);
+  const later = await challenge(activation.POST);
   const body = { action: 'verify', nonce: valid.nonce, signature: await sign(valid) };
   const execution = await (await executeAdmin('activate', request(body), body, activation.POST)).json();
   assert.equal(execution.status, 'complete', JSON.stringify(execution));
   await executeAdmin('activate', request(body), body, activation.POST);
+  const laterResult = await activation.POST(request({ action: 'verify', nonce: later.nonce, signature: await sign(later) }));
+  assert.equal(laterResult.status, 409);
+  const repeated = await activation.POST(request({ action: 'challenge', chainId: 8453, community, account: owner.address }));
+  assert.equal(repeated.status, 409);
   assert.equal(await client.readContract({ abi: artifact('TestRouter').abi, address: router, functionName: 'creations' }), 1n);
   const replay = await activation.POST(request(body)); assert.equal(replay.status, 401);
   const integrationKey = keccak256((await import('viem')).encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }], [8453n, community]));

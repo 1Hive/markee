@@ -4,7 +4,8 @@
 // Markee Settings (contract setters) and Transfer Admin.
 
 import { useEffect, useState } from 'react'
-import { useAccount, useReadContract, useSignMessage } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import type { Abi } from 'viem'
 import { ArrowUpRight, ExternalLink, Eye, EyeOff, Info, Link2 } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
@@ -19,12 +20,14 @@ import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
 import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
+import { useSiteVerify } from '@/hooks/useSiteVerify'
 import { alreadyVerifiedNote, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
 import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
 import { integrationsOf, type Integration } from '@/components/account/sites'
 import { useToast } from '@/components/account/Toast'
+import { boardLabel } from '@/lib/leaderboards/label'
 
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 38, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
 const pinkOutline: React.CSSProperties = { ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700 }
@@ -63,10 +66,9 @@ function FeaturedTag() {
 function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; reportingTip: string | null; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
   const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const { signMessageAsync } = useSignMessage()
-  const { address } = useAccount()
+  const walletFetch = useWalletAuthFetch()
+  const { address = '' } = useAccount()
   const toast = useToast()
-  const verifiedFile = !!it.file?.verified
   const unverifiedFile = !!it.file && !it.file.verified
 
   const remove = async () => {
@@ -76,20 +78,20 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
       const res = it.file
         ? await (async (file) => {
             const timestamp = Math.floor(Date.now() / 1000)
-            const signature = await signMessageAsync({ message: unlinkFileMessage(CANONICAL_CHAIN_ID, board, file.repoFullName, file.filePath, timestamp) })
-            return fetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`, {
+            return walletFetch(`/api/github/unlink-markee-file?${new URLSearchParams({ address: board, repo: file.repoFullName, file: file.filePath })}`, {
               method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ owner: address, signature, timestamp }),
+              address,
+              body: { owner: address, timestamp },
+              message: () => unlinkFileMessage(CANONICAL_CHAIN_ID, board, file.repoFullName, file.filePath, timestamp),
             })
           })(it.file)
         : await (async () => {
             const timestamp = Math.floor(Date.now() / 1000)
-            const signature = await signMessageAsync({ message: metaUpdateMessage(CANONICAL_CHAIN_ID, board, { removeVerifiedUrl: it.url }, timestamp) })
-            return fetch('/api/openinternet/meta', {
+            return walletFetch('/api/openinternet/meta', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ leaderboardAddress: board, removeVerifiedUrl: it.url, signatureVersion: 2, owner: address, signature, timestamp }),
+              address,
+              body: { leaderboardAddress: board, removeVerifiedUrl: it.url, signatureVersion: 2, owner: address, timestamp },
+              message: () => metaUpdateMessage(CANONICAL_CHAIN_ID, board, { removeVerifiedUrl: it.url }, timestamp),
             })
           })()
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
@@ -128,11 +130,11 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
     setError(null)
     try {
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: featuredIntegrationMessage(CANONICAL_CHAIN_ID, board, key, timestamp) })
-      const res = await fetch('/api/boards/integrations', {
+      const res = await walletFetch('/api/boards/integrations', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ board, key, owner: address, signature, timestamp }),
+        address,
+        body: { board, key, owner: address, timestamp },
+        message: () => featuredIntegrationMessage(CANONICAL_CHAIN_ID, board, key, timestamp),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`)
       toast(key ? 'Featured site updated' : 'Featuring the most viewed site')
@@ -163,8 +165,8 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
           </span>
         )}
         {canEdit && (
-          state === 'removing' ? <WalletPending label={it.file ? 'Removing…' : 'Confirm in wallet…'} />
-          : state === 'featuring' ? <WalletPending label="Confirm in wallet…" />
+          state === 'removing' ? <WalletPending label="Removing…" />
+          : state === 'featuring' ? <WalletPending label="Saving…" />
           : state === 'verifying' ? <WalletPending label="Checking…" />
           : state === 'confirm' ? (
             <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
@@ -176,10 +178,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
               {unverifiedFile && <button onClick={verify} style={textBtn(PINK)}>Verify</button>}
               {!featured && !unverifiedFile && <button onClick={() => setFeatured(it.key)} style={textBtn(PINK)}>Feature</button>}
               {featured && chosen && <button onClick={() => setFeatured(null)} title="Feature whichever site gets the most views" style={textBtn(TEXT2)}>Use most viewed</button>}
-              <button
-                onClick={() => verifiedFile ? setError('Remove the Markee markers from this file first, then it can be unlinked.') : setState('confirm')}
-                style={textBtn(verifiedFile ? MUTED : DANGER)}
-              >
+              <button onClick={() => setState('confirm')} style={textBtn(DANGER)}>
                 Remove
               </button>
             </>
@@ -191,7 +190,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
           {reportingTip}. Check the site sends the view call from the embed prompt&apos;s View tracking step.
         </div>
       )}
-      {error && <div style={{ fontSize: 12, color: verifiedFile ? MUTED : DANGER, padding: '0 0 10px' }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: DANGER, padding: '0 0 10px' }}>{error}</div>}
     </div>
   )
 }
@@ -202,6 +201,7 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
+  const verifySite = useSiteVerify()
   const normalized = url.trim() && !/^https?:\/\//i.test(url.trim()) ? `https://${url.trim()}` : url.trim()
   // Another page on an already-verified domain would add nothing: sites are one per domain.
   const alreadyVerified = verifiedOnSameDomain(url, verifiedUrls) !== null
@@ -212,13 +212,8 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/openinternet/verify-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: board, url: normalized }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.verified) throw new Error(body?.error ?? 'Could not verify this site.')
+      const result = await verifySite(board, normalized)
+      if (!result.verified) throw new Error(result.error ?? 'Could not verify this site.')
       toast('Site verified and added')
       onVerified()
     } catch (e) {
@@ -252,7 +247,7 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
   )
 }
 
-export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite, onSuccess }: {
+export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite, onSuccess, onAdminTransferred }: {
   lb: AnyLeaderboard
   views: number
   ethPrice: number | null
@@ -260,17 +255,22 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
   onClose: () => void
   onAddToSite: () => void
   onSuccess: () => void
+  onAdminTransferred?: (newAdmin: string) => void
 }) {
   const toast = useToast()
   const me = activeAddress?.toLowerCase()
-  const isAdmin = !!me && !!lb.admin && lb.admin.toLowerCase() === me
-  const isOwner = isAdmin || (!!me && (lb.creator ?? '').toLowerCase() === me)
   const isStreaming = lb.strategy === 'streaming'
   // Legacy is a website-only historical concept (pre-migration TopDawg boards) -- github/superfluid/
   // streaming-platform listing routes never set it, so every board on those platforms already uses
   // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
   const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
   const contractAddress = lb.address as `0x${string}`
+  const { data: liveAdmin, refetch: refetchAdmin } = useReadContract({
+    address: contractAddress, abi: LeaderboardV11ABI, functionName: 'admin', chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !isLegacyFixed },
+  })
+  const admin = (liveAdmin as string | undefined) ?? lb.admin
+  const isAdmin = !!me && !!admin && admin.toLowerCase() === me
   const { data: boardVersion, isPending: versionLoading } = useReadContract({
     address: contractAddress, abi: LeaderboardV14AdminABI, functionName: 'VERSION', chainId: CANONICAL_CHAIN_ID,
     query: { enabled: !isStreaming && !isLegacyFixed },
@@ -299,7 +299,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
       : { abi: LeaderboardV11ABI, minPrice: null, setMinPrice: null, unit: 'eth' as const, setAdmin: 'setAdmin', limits: false }
   const abi = settings.abi as unknown as Abi
   const adminAbi = ('adminAbi' in settings ? settings.adminAbi : settings.abi) as unknown as Abi
-  const saved = (message: string) => () => { toast(message); onSuccess() }
+  const saved = (message: string) => () => { toast(message); refetchAdmin(); onSuccess() }
 
   // A Rent minimum far above what the current renter streams is almost always a units mistake.
   const currentMonthly = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) * SECONDS_PER_MONTH : 0n
@@ -313,7 +313,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(6,10,42,0.6)', backdropFilter: 'blur(3px)', animation: 'fadeIn 160ms ease' }}>
       <aside
         role="dialog"
-        aria-label={`Manage ${lb.name || 'Markee'}`}
+        aria-label={`Manage ${boardLabel(lb, 'Markee')}`}
         onClick={e => e.stopPropagation()}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(580px, 100%)', background: BG2, borderLeft: `1px solid ${BORDER}`, boxShadow: '-24px 0 80px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', animation: 'drawerIn 220ms cubic-bezier(.2,.8,.2,1)', fontFamily: SANS }}
       >
@@ -345,7 +345,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 chosen={!!info?.chosen}
                 views={info ? info.views[it.key] ?? null : null}
                 reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
-                canEdit={isOwner}
+                canEdit={isAdmin}
                 onChanged={() => { reloadIntegrations(); onSuccess() }}
                 onFeaturedChanged={reloadIntegrations}
               />
@@ -353,11 +353,11 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
             {verifying && <VerifyUrl board={lb.address} verifiedUrls={lb.verifiedUrls?.length ? lb.verifiedUrls : (lb as WebsiteLeaderboard).verifiedUrl ? [(lb as WebsiteLeaderboard).verifiedUrl!] : []} onCancel={() => setVerifying(false)} onVerified={() => { setVerifying(false); onSuccess() }} />}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button onClick={onAddToSite} style={pinkOutline}>Add to Your Site</button>
-              {isOwner && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
+              {isAdmin && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
             </div>
           </DrawerSection>
 
-          {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
+          {/* Per-board moderators, managed by the board admin, kept separate from
               lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
               boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
           {!isLegacyFixed && (
@@ -409,7 +409,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                   validate={v => isZeroAddress(v) ? 'The zero address cannot be an admin. Enter a wallet you control.' : null}
                   dangerous="confirm" warning="Hands full control of this Markee to another wallet. Only the new admin can undo it."
                   acknowledge="I understand I'll lose all admin access to this Markee"
-                  onSuccess={saved('Admin transferred')}
+                  onSuccess={newAdmin => { onAdminTransferred?.(newAdmin); saved('Admin transferred')() }}
                 />
               )}
             </section>

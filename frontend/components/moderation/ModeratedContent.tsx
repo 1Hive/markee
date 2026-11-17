@@ -25,8 +25,6 @@ interface ModeratedContentProps {
   children: ReactNode
   /** This markee's board admin -- lets that board's own admin see through the blur too, not just global admins */
   boardAdmin?: string | null
-  /** This markee's board creator (from lib/leaderboards/resolveCreators.ts) -- same as boardAdmin */
-  boardCreator?: string | null
   /** Override default blur amount */
   blurAmount?: string
   /** Override default overlay text */
@@ -55,7 +53,6 @@ export function ModeratedContent({
   message,
   children,
   boardAdmin,
-  boardCreator,
   blurAmount = MODERATION_DEFAULTS.blurAmount,
   overlayText = MODERATION_DEFAULTS.overlayText,
   allowReveal = MODERATION_DEFAULTS.allowReveal,
@@ -76,7 +73,7 @@ export function ModeratedContent({
       <MessageSkeleton lines={placeholderLines} />
     </div>
   )
-  const isAdmin = canModerate(boardAdmin, boardCreator)
+  const isAdmin = canModerate(boardAdmin)
 
   // Admins/board moderators always see content (with a subtle indicator)
   // Non-flagged content passes through unchanged
@@ -149,7 +146,6 @@ export function ModeratedAuthor({ children }: {
   message?: string
   markeeId: string
   boardAdmin?: string | null
-  boardCreator?: string | null
   children: ReactNode
 }) {
   return children

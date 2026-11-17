@@ -28,11 +28,13 @@ import { useLiveBalance, formatLiveEth } from '@/hooks/useLiveBalance'
 import { usePendingMarkee } from '@/hooks/usePendingMarkee'
 import { useTopSince } from '@/hooks/useTopSince'
 import { estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
+import { DEFAULT_MAX_MESSAGE_BYTES, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { Pencil } from 'lucide-react'
+import { boardLabel } from '@/lib/leaderboards/label'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, HERO_GRAD,
   formatViews, fmtAddr, formatRate, formatDuration, decimalsForRate, decimalsForWeiRate, formatLiveUsd, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
@@ -54,6 +56,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
   const { address } = useAccount()
   const ethPrice = useEthPrice()
   const { entry: ecoEntry, loading: ecoEntryLoading } = useServedOn(board)
+  const boardTitle = boardLabel({ ...ecoEntry, name: meta?.name })
   const topSince = useTopSince(board)
 
   // Live cumulative total: API snapshot ticking forward at the board's aggregate inflow rate.
@@ -219,8 +222,8 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       ) : !topMarkee ? (
         // Board exists but nothing is backed yet
         <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
-          {meta.name && (
-            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.name}</div>
+          {boardTitle && (
+            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{boardTitle}</div>
           )}
           <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Activate your Markee</h1>
           <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Buy the first message to activate your Markee.</p>
@@ -438,7 +441,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
-  const MAX_LEN = 222
+  const MAX_LEN = DEFAULT_MAX_MESSAGE_BYTES
 
   useEffect(() => {
     if (!isOpen) { setMessage(''); setError(null); setTxHash(undefined); reset() }
@@ -510,13 +513,13 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
                 <div style={{ fontFamily: MONO, fontSize: 10, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Your Message</div>
                 <textarea
                   value={message}
-                  onChange={e => setMessage(e.target.value.slice(0, MAX_LEN))}
+                  onChange={e => setMessage(truncateUtf8(e.target.value, MAX_LEN))}
                   placeholder="Enter your new message..."
                   rows={3}
                   style={{ width: '100%', boxSizing: 'border-box', background: BG, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', fontFamily: MONO, fontSize: 13, outline: 'none', resize: 'vertical' }}
                   disabled={busy}
                 />{messageModeration.ui}
-                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{message.length}/{MAX_LEN}</div>
+                <div style={{ fontSize: 11, color: MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>{utf8Length(message)}/{MAX_LEN} bytes</div>
               </div>
               {error && <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{error}</p>}
             </div>

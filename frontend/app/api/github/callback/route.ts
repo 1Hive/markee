@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createSession, expireHostOnlyCookie, SESSION_COOKIE, SESSION_MAX_AGE, sessionCookieOptions } from '@/lib/github/session'
+import { safeReturnPath } from '@/lib/github/return-path'
 
 // @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
 export const dynamic = 'force-dynamic'
@@ -137,12 +138,11 @@ export async function GET(request: NextRequest) {
     { ex: 60 * 60 * 24 * 365 }
   )
 
+  const returnPath = safeReturnPath(returnTo, siteOrigin)
   const response = popup
     ? popupResponse({ success: true, login: user.login }, siteOrigin)
     : NextResponse.redirect(
-        returnTo && returnTo !== 'modal'
-          ? `${siteOrigin}${returnTo}`
-          : base
+        returnPath ? `${siteOrigin}${returnPath}` : base
       )
 
   const sessionId = await createSession(user.id)

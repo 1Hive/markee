@@ -14,6 +14,7 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { type MarkeeSlot } from '@/components/modals/BuyMessageModal'
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useViews } from '@/hooks/useViews'
+import { useCurrentBoardAddress } from '@/hooks/useCurrentBoardAddress'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
@@ -267,14 +268,28 @@ const OLD_TO_NEW_SF_LEADERBOARDS: Record<string, string> = {
 export default function SuperfluidLeaderboardPage() {
   const params = useParams()
   const router = useRouter()
-  const leaderboardAddress = (params.address as string) as `0x${string}`
+  const requestedAddress = params.address as string
+  const v11Address = OLD_TO_NEW_SF_LEADERBOARDS[requestedAddress.toLowerCase()]
 
-  // Redirect v1.0 factory leaderboard addresses to their v1.1 counterparts
   useEffect(() => {
-    const newAddr = OLD_TO_NEW_SF_LEADERBOARDS[leaderboardAddress.toLowerCase()]
-    if (newAddr) router.replace(`/ecosystem/platforms/superfluid/${newAddr}`)
-  }, [leaderboardAddress, router])
+    if (v11Address) router.replace(`/ecosystem/platforms/superfluid/${v11Address}`)
+  }, [v11Address, router])
 
+  const { ready } = useCurrentBoardAddress(
+    v11Address ? undefined : requestedAddress,
+    current => `/ecosystem/platforms/superfluid/${current}`,
+  )
+  if (v11Address || !ready) {
+    return (
+      <div className="min-h-screen bg-[#060A2A]">
+        <Header activePage="create-a-markee" />
+      </div>
+    )
+  }
+  return <SuperfluidLeaderboard leaderboardAddress={requestedAddress as `0x${string}`} />
+}
+
+function SuperfluidLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x${string}` }) {
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
   const [initialMode, setInitialMode] = useState<'create' | 'addFunds' | 'updateMessage' | undefined>(undefined)

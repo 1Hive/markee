@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fixedFooter, formatEthCeil, streamingFooter } from '../lib/github/markeeSync'
-import { encodedRepoPath } from '../lib/github/linkedFiles'
+import { currentBoardsForLegacy, encodedRepoPath, legacyAddressesFor } from '../lib/github/linkedFiles'
 
 const eth = (n: number) => BigInt(Math.round(n * 1e6)) * 10n ** 12n
 
@@ -28,4 +28,13 @@ test('encodedRepoPath rejects names that would reshape the API path', () => {
   assert.equal(encodedRepoPath('owner/repo/../../user'), null)
   assert.equal(encodedRepoPath('owner'), null)
   assert.equal(encodedRepoPath('/repo'), null)
+})
+
+test('a legacy alias maps to its current board and is never treated as one', () => {
+  // nativ3ai/hermes: 0xf26a… is the board's beneficiary wallet, listed as a legacy delimiter alias.
+  const hermes = '0x1e95812f4ce5178339d55d17727e7355a4ced67b'
+  const beneficiary = '0xF26A8E70Ac16626400556bD21C1dE5Ef46E415a6'
+  assert.ok(legacyAddressesFor(hermes).includes(beneficiary.toLowerCase()), 'delimiters under the alias still match')
+  assert.deepEqual(currentBoardsForLegacy(beneficiary), [hermes])
+  assert.deepEqual(currentBoardsForLegacy(hermes), [], 'a current board is not an alias')
 })

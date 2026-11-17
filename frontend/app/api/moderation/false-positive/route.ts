@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyMessage } from 'viem'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 import { randomUUID } from 'node:crypto'
 import { automaticDeps, automaticAuthDeps, autoEnabled, checkDraft, contentHash, overrideKey, sharedOverrideKey, checkPublished } from '@/lib/moderation/automatic'
 import { approveMessage, falsePositiveMessage } from '@/lib/moderation/automatic-message'
@@ -16,9 +16,13 @@ export async function POST(req: NextRequest) {
     if (intent === 'approve' && scope !== 'all') return NextResponse.json({ error: 'Approval requires all scope' }, { status: 400 })
     if (intent === 'false-positive' && !autoEnabled()) return NextResponse.json({ error: 'Automatic moderation is disabled' }, { status: 404 })
     if (scope !== 'site' && scope !== 'all') return NextResponse.json({ error: 'Invalid scope' }, { status: 400 })
-    if (chainId !== 8453 || typeof markee !== 'string' || !ADDRESS_PATTERN.test(markee) || typeof moderator !== 'string' || !ADDRESS_PATTERN.test(moderator) || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash) || typeof signature !== 'string' || !/^0x[0-9a-f]+$/i.test(signature) || typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp)) return NextResponse.json({ error: 'Invalid authorization' }, { status: 400 })
+    const signatureRequired = intent !== 'approve'
+    const signatureValid = typeof signature === 'string' && /^0x[0-9a-f]+$/i.test(signature)
+    const signatureOk = signatureValid || (!signatureRequired && signature === undefined)
+    if (chainId !== 8453 || typeof markee !== 'string' || !ADDRESS_PATTERN.test(markee) || typeof moderator !== 'string' || !ADDRESS_PATTERN.test(moderator) || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash) || !signatureOk || typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp)) return NextResponse.json({ error: 'Invalid authorization' }, { status: 400 })
     if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
-    if (!await verifyMessage({ address: moderator as `0x${string}`, signature: signature as `0x${string}`, message: intent === 'approve' ? approveMessage(chainId, markee, hash, timestamp) : falsePositiveMessage(chainId, markee, hash, timestamp, scope) }).catch(() => false)) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    const auth = await authorizeWallet(req, moderator, signature, () => intent === 'approve' ? approveMessage(chainId, markee, hash, timestamp) : falsePositiveMessage(chainId, markee, hash, timestamp, scope), { allowSession: intent === 'approve' })
+    if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
     const { scopes } = await automaticAuthDeps.authorizedScopes(moderator, [markee])
     if (!scopes.has(markee.toLowerCase())) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     const [current] = await automaticDeps.read([markee])

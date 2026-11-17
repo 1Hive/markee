@@ -29,12 +29,13 @@ Targeted tests are configured in package.json. Run the relevant suites and TypeS
 - Both must be supported during the transition; prefer RPC for new work
 - Minimal diffs over rewrites — make targeted changes to working code, never wholesale replacements
 - Fire-and-forget fetches from Vercel serverless functions are unreliable — use cron jobs or await fetches before returning
-- Polling intervals must be set explicitly in wagmi config (`pollingInterval: 120_000`) to avoid RPC rate limiting
+- Never poll chain state from the browser on a timer. Repeating reads go through a server route wrapped in `cachedChainRead` (`lib/server/cachedChainRead.ts`), so every viewer shares one cached RPC read; see `/api/streaming/board`. One-off wagmi reads (page load, after a transaction) are fine
+- Server code uses the server-only `ALCHEMY_BASE_URL`; `NEXT_PUBLIC_BASE_RPC_URL` is the domain-restricted browser key and only a server fallback
 - Copy-pasting complete files can introduce invisible characters — incremental edits to existing files are safer
 
 ## Architecture
 
-**Next.js 14 App Router** frontend for the Markee protocol — a leaderboard of on-chain "markees" (smart contracts) ranked by total funds added.
+**Next.js 15 App Router** (React 19) frontend for the Markee protocol — a leaderboard of on-chain "markees" (smart contracts) ranked by total funds added.
 
 ### Routing
 
@@ -52,7 +53,7 @@ Targeted tests are configured in package.json. Run the relevant suites and TypeS
 - **Legacy TopDawg contracts**: The Graph subgraph via Apollo Client (`lib/apollo-client.ts`). Main query (`GetMarkees`) polls every 30 seconds with `network-only` fetch policy. Two environments: Studio (dev) and decentralized network (prod).
 - **V1.0 LeaderboardFactory contracts**: Direct RPC via Alchemy using viem. This is the preferred pattern for new work.
 
-Hooks for both live in `lib/contracts/` (e.g., `useMarkees.ts`, `useMarkeeDetail.ts`, `useFixedMarkees.ts`).
+Hooks for both live in `lib/contracts/` (e.g., `useFixedMarkees.ts`, `useLeaderboardDetail.ts`, `useStreamingMarkees.ts`).
 
 **On-chain reads** use viem `createPublicClient` against Base (canonical chain). Cross-chain payment support exists for Optimism, Arbitrum, and Mainnet via RevNet project IDs (RevNet Project ID: 119).
 
@@ -100,7 +101,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 | `views:github:{address}` | Cached traffic data | 1 hour |
 | `cache:superfluid:leaderboards` | Cached Superfluid leaderboard API response | 60 s |
 | `cache:github:leaderboards` | Cached GitHub leaderboard API response | 60 s |
-| `creator:sf:{address}` | Creator (msg.sender) of a Superfluid leaderboard | permanent |
+| `creator:sf:{address}` | Creator (msg.sender) of a Superfluid leaderboard, for display only and never for authorization | permanent |
 
 ## Integrations
 
@@ -110,12 +111,15 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 
 ## Pages
 
-- `/account` — "My Markees": shows all leaderboards the connected wallet created across Superfluid and GitHub. Uses shared listing snapshots on normal loads; explicit post-mutation refreshes use `?bust=1`. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
+- `/account` — "My Markees": shows all leaderboards the connected wallet currently administers across Superfluid and GitHub. Uses shared listing snapshots on normal loads; explicit post-mutation refreshes use `?bust=1`. Requires `mounted` state guard to prevent ConnectButton flash before wagmi rehydrates.
 
 ## Patterns
 
+### Board ownership
+The board's live on-chain `admin()` is its only owner. Creator Hub lists boards by `admin`, the Manage drawer re-reads `admin()` before showing controls, and moderation, unlink, metadata and featured-site checks go through `readBoardOwners` in `lib/moderation/server.ts`, which returns only the admin. Never authorize anything by the cached creator. Routes that attach a site or repo or unlink one go through `boardAdminDenial` in `lib/boards/admin-auth.ts`: the current admin proves itself with a Privy session for its wallet or a fresh signature (5-minute window), and contract admins such as multisigs sign through ERC-1271. Other owner routes use `authorizeWallet` from `lib/auth/wallet-session.ts` and then check `readBoardOwners`.
+
 ### Leaderboard creator (Superfluid)
-The `admin` field on Superfluid leaderboard contracts is the beneficiary address, not the creator. To determine the creator, the API calls `eth_getLogs` on the factory to find creation events, then `eth_getTransaction` to read the `from` address. Results are cached permanently in KV as `creator:sf:{address}`. Always filter "My Markees" by `creator`, falling back to `admin` if not yet resolved.
+`creator` is display-only. The API finds it with `eth_getLogs` on the factory's creation events and `eth_getTransaction` for the `from` address, and caches it permanently in KV as `creator:sf:{address}` (the admin it was created with as `initial-admin:{prefix}:{address}`).
 
 ### Cache bust
 Both leaderboard APIs (`/api/superfluid/leaderboards`, `/api/github/leaderboards`) support `?bust=1` to skip the 60-second KV cache and force a fresh RPC fetch. Use this after leaderboard creation or a successful mutation. Normal `/account` hydration and regular listing page loads must use cached responses. Distributed refresh leases coalesce simultaneous refresh requests.

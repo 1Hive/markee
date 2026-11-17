@@ -1,6 +1,6 @@
 import 'server-only'
 import { isAddress, parseAbi, type Address } from 'viem'
-import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '@/lib/contracts/addresses'
+import { CONTRACTS, FACTORIES, V13_LEADERBOARDS, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { getModerationClient } from './server'
 
 const ABI = parseAbi([
@@ -19,7 +19,7 @@ export async function trustedMembership(pairs: MarkeeMembership[], client = memb
   blockNumber ??= await client.getBlockNumber({ cacheTime: 0 })
   const roots = new Set(Object.values(V13_LEADERBOARDS).map(a => a.toLowerCase()))
   const factories = new Set<string>([
-    ...Object.values(FACTORIES), '0x37f420fdE5c98e611EB7cb9b74ef579D84697039',
+    ...Object.values(FACTORIES), ...Object.values(V14_FACTORIES), '0x37f420fdE5c98e611EB7cb9b74ef579D84697039',
     process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '',
     process.env.MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE ?? '',
     ...(process.env.MARKEE_SDK_FACTORIES_8453 ?? '').split(','),

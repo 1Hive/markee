@@ -3,15 +3,16 @@
 /**
  * BoardModerators
  *
- * The Moderators section of a board's admin panel on /account. A board's owners (its on-chain admin
- * and its creator) always moderate it; here they add and remove other wallets. Edits are staged
+ * The Moderators section of a board's admin panel on /account. A board's owner (its current on-chain
+ * admin) always moderates it; here they add and remove other wallets. Edits are staged
  * locally and saved with one signature. Anyone can read the list from
  * GET /api/moderation/moderators?board=0x..., so other sites can show the same moderators.
  */
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAccount, useSignMessage } from 'wagmi'
+import { useAccount } from 'wagmi'
+import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { isAddress } from 'viem'
 import { Check, Copy } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -69,7 +70,7 @@ function Row({ address, you, children }: { address: string; you: boolean; childr
 
 export function BoardModerators({ board }: { board: string }) {
   const { address } = useAccount()
-  const { signMessageAsync } = useSignMessage()
+  const walletFetch = useWalletAuthFetch()
   const queryClient = useQueryClient()
   const me = address?.toLowerCase()
   const queryKey = ['board-moderators', board.toLowerCase()]
@@ -129,11 +130,11 @@ export function BoardModerators({ board }: { board: string }) {
     try {
       const moderators = normalizeModerators(list)
       const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await signMessageAsync({ message: moderatorsMessage(CANONICAL_CHAIN_ID, board, moderators, timestamp) })
-      const res = await fetch(`${MODERATION_API}/moderators`, {
+      const res = await walletFetch(`${MODERATION_API}/moderators`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ board, moderators, owner: me, signature, timestamp }),
+        address: me,
+        body: { board, moderators, owner: me, timestamp },
+        message: () => moderatorsMessage(CANONICAL_CHAIN_ID, board, moderators, timestamp),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
@@ -160,7 +161,7 @@ export function BoardModerators({ board }: { board: string }) {
         <div>
           {owners.map(o => (
             <Row key={o} address={o} you={o === me}>
-              <span title="Owners (the admin and creator) can add or remove moderators."><Chip>Owner</Chip></span>
+              <span title="The board admin can add or remove moderators."><Chip>Owner</Chip></span>
             </Row>
           ))}
           {list.map(m => (
@@ -224,7 +225,7 @@ export function BoardModerators({ board }: { board: string }) {
                         disabled={saving}
                         style={{ background: PINK, color: BG, border: 'none', borderRadius: 7, padding: '8px 14px', fontFamily: MONO, fontWeight: 700, fontSize: 12.5, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.6 : 1 }}
                       >
-                        {saving ? 'Confirm in wallet…' : 'Save moderators'}
+                        {saving ? 'Saving…' : 'Save moderators'}
                       </button>
                       <button
                         onClick={() => { setDraft(savedWallets); setSaveError(null) }}
@@ -233,7 +234,6 @@ export function BoardModerators({ board }: { board: string }) {
                       >
                         Discard
                       </button>
-                      <span style={{ color: MUTED, fontSize: 12 }}>Saving asks for a free signature, not a transaction.</span>
                     </>
                   )}
                   {justSaved && !dirty && (

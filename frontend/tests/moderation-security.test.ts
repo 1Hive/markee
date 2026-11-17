@@ -5,6 +5,7 @@ import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '../lib/contracts/address
 import { trustedMembership, membershipDeps } from '../lib/moderation/membership'
 import { automaticDeps, checkPublished, evaluateObserved, softRecords, softKey, SOFT_INDEX, AUTO_POLICY, contentHash } from '../lib/moderation/automatic'
 import { queueDeps } from '../lib/moderation/queue-deps'
+import { flagKey } from '../lib/moderation/server'
 import { GET as queue } from '../app/api/moderation/queue/route'
 import { POST as view } from '../app/api/views/route'
 import { viewsWriteDeps } from '../lib/views/write-deps'
@@ -134,12 +135,27 @@ test('queue does not surface previously injected ordinary or automatic entries',
   assert.deepEqual(result.flagged, [])
 })
 
+test('queue never lists a blank seed Markee, even one carrying a flag', async t => {
+  setup(t)
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [flagKey(markee)], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [[markee]] } }; return p })
+  const flaggedReview = { status: 'flagged', reviewedBy: null, reviewedAt: null }
+  t.mock.method(queueDeps, 'readItems', async () => [{ markee, board, message: '', name: '', author: '', kind: 'created', previousMessage: null, blockNumber: '1', at: 1, reviews: { board: flaggedReview, site: flaggedReview } }])
+  t.mock.method(queueDeps, 'softRecords', async () => [])
+  t.mock.method(automaticDeps, 'read', async () => [{ markee, board, message: '', blockNumber: '2' }])
+  const result = await (await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))).json()
+  assert.deepEqual(result.items, [])
+  assert.deepEqual(result.flagged, [])
+})
+
 test('views reject malformed, oversized, unrelated, duplicate and rate-limited requests before moderation', async t => {
   setup(t)
   let reads = 0
   t.mock.method(automaticDeps, 'read', async () => { reads++; throw new Error('Must not read chain') })
   t.mock.method(viewsWriteDeps, 'get', async (key: string) => key.startsWith('oi:meta:') ? { verifiedUrls: ['https://allowed.example'] } : true)
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
+  t.mock.method(viewsWriteDeps, 'currentAddress', async (address: string) => address)
   t.mock.method(viewsWriteDeps, 'mget', async () => [3, 2])
   t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   const request = (body: unknown, origin = 'https://allowed.example') => new NextRequest('https://www.markee.xyz/api/views', { method: 'POST', headers: { origin }, body: JSON.stringify(body) })
@@ -156,6 +172,7 @@ test('visible accepted views count; hidden and unavailable messages never increm
   setup(t)
   t.mock.method(viewsWriteDeps, 'get', async () => null)
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
+  t.mock.method(viewsWriteDeps, 'currentAddress', async (address: string) => address)
   t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
   t.mock.method(viewsWriteDeps, 'mget', async () => [3, 2])
   let increments = 0
@@ -245,4 +262,19 @@ test('cached embed text is withheld on moderation outage, new manual flag, auto 
   assert.equal((await moderateEmbed(payload)).message, '')
   t.mock.method(embedModerationDeps, 'checkPublished', async () => [{ markee, board, state: 'visible', siteState: 'visible', contentHash: contentHash('Hello'), policyVersion: AUTO_POLICY }])
   assert.equal((await moderateEmbed(payload)).message, 'Hello')
+})
+
+test('queue keeps a flagged message listed after its text is cleared, so it can be unflagged', async t => {
+  setup(t)
+  t.mock.method(queueDeps, 'listModeratedBoards', async () => [{ address: board, name: 'Board', platform: null, strategy: 'fixed', moderators: [moderator] }])
+  t.mock.method(queueDeps, 'readAllFlagged', async () => ({ board: [flagKey(markee)], site: [] }))
+  t.mock.method(queueDeps, 'pipeline', () => { const p = { zrange() { return p }, async exec() { return [[markee]] } }; return p })
+  const flaggedReview = { status: 'flagged', reviewedBy: moderator, reviewedAt: 1 }
+  t.mock.method(queueDeps, 'readItems', async () => [{ markee, board, message: 'rude', name: '', author: '', kind: 'created', previousMessage: null, blockNumber: '1', at: 1, reviews: { board: flaggedReview, site: flaggedReview } }])
+  t.mock.method(queueDeps, 'softRecords', async () => [])
+  // The owner cleared the message with a direct contract call.
+  t.mock.method(automaticDeps, 'read', async () => [{ markee, board, message: '', blockNumber: '2' }])
+  const result = await (await queue(new NextRequest(`https://www.markee.xyz/api/moderation/queue?moderator=${moderator}`))).json()
+  assert.deepEqual(result.items, [])
+  assert.deepEqual(result.flagged.map((r: any) => [r.markee, r.message, r.previousMessage]), [[markee, '', 'rude']])
 })

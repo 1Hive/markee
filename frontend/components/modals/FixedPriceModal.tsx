@@ -13,7 +13,9 @@ import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { formatUsd } from '@/lib/utils'
-import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
+import { formatMarkeeEstimate, markeeEstimateHeadline } from '@/lib/markee/quote'
+import { useMarkeePurchaseQuote } from '@/hooks/useMarkeeQuote'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, PaymentReviewCard, PaymentReviewFooter } from '@/components/modals/StreamUI'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePendingTxsFor } from '@/hooks/usePendingTxs'
@@ -95,7 +97,8 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const priceEthNum = parseFloat(priceEth)
   const priceUsd = ethPrice && priceWei > 0n ? priceEthNum * ethPrice : null
   const issuesMarkee = !!fixedMarkee?.revNetEnabled
-  const markeeEarned = issuesMarkee ? Math.round(estimateDirectRevnetMarkeeTokens(priceEthNum)) : 0
+  const markeeQuote = useMarkeePurchaseQuote(fixedMarkee?.strategyAddress as `0x${string}` | undefined, priceWei, activeAddress as `0x${string}` | undefined, isOpen && issuesMarkee)
+  const markeeHeadline = markeeEstimateHeadline(markeeQuote)
   const { data: beneficiary } = useReadContract({
     address: fixedMarkee?.strategyAddress as `0x${string}` | undefined,
     abi: BeneficiaryAddressABI,
@@ -103,8 +106,15 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen && !!fixedMarkee && !issuesMarkee },
   })
-  const maxLen = fixedMarkee?.maxMessageLength ?? 222
-  const maxNameLen = 32
+  const { data: maxNameLength } = useReadContract({
+    address: fixedMarkee?.strategyAddress as `0x${string}` | undefined,
+    abi: FixedPriceStrategyABI,
+    functionName: 'maxNameLength',
+    chainId: CANONICAL_CHAIN.id,
+    query: { enabled: isOpen && !!fixedMarkee },
+  })
+  const maxLen = fixedMarkee?.maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
 
   useEffect(() => {
     if (isOpen && fixedMarkee) { setNewMessage(''); setName(''); setError(null); setHasUserEdited(false); setReviewOpen(false); reset() }
@@ -157,7 +167,8 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!newMessage.trim()) { setError('Please enter a message'); return }
     if (priceWei === 0n) { setError('Unable to load price'); return }
-    if (newMessage.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    const textError = textLimitError('Message', newMessage, maxLen) ?? textLimitError('Name', name.trim(), maxNameLen)
+    if (textError) { setError(textError); return }
     if (!canAfford()) { setError(balanceWarning || 'Insufficient balance'); return }
     setError(null)
     try {
@@ -177,7 +188,8 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
 
   if (!isOpen || !fixedMarkee) return null
 
-  const isOverLimit = newMessage.length > maxLen
+  const messageBytes = utf8Length(newMessage)
+  const isOverLimit = messageBytes > maxLen || utf8Length(name.trim()) > maxNameLen
   const transactionError = error || (isError ? formatTransactionError(writeError) : null)
 
   const paymentBlocked = pendingPayments.length > 0 || walletTimeout.blocked
@@ -294,7 +306,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                   message={newMessage}
                   amountLabel={`${priceEth} ETH`}
                   amountUsd={priceUsd != null ? formatUsd(priceUsd) : null}
-                  markeeEarnedLabel={issuesMarkee ? `${markeeEarned.toLocaleString()} MARKEE` : 'No MARKEE for this sign'}
+                  markeeEarnedLabel={issuesMarkee ? formatMarkeeEstimate(markeeQuote) ?? (markeeQuote.loading ? 'Estimating MARKEE…' : 'MARKEE estimate unavailable') : 'No MARKEE for this sign'}
                   willWin
                   chainId={fixedMarkee.chainId}
                   markeeId={fixedMarkee.markeeAddress}
@@ -318,14 +330,14 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                     </div>
                     <textarea
                       value={newMessage}
-                      onChange={e => { setHasUserEdited(true); setNewMessage(e.target.value.slice(0, maxLen)) }}
+                      onChange={e => { setHasUserEdited(true); setNewMessage(truncateUtf8(e.target.value, maxLen)) }}
                       placeholder="Your message here..."
                       rows={2}
                       style={{ ...messageBoxStyle, resize: 'vertical', borderColor: isOverLimit ? '#FF8E8E' : PINK }}
                       disabled={isPending || isConfirming}
                     />{messageModeration.ui}
-                    <div style={{ fontSize: 11, color: newMessage.length > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
-                      {newMessage.length}/{maxLen}
+                    <div style={{ fontSize: 11, color: messageBytes > maxLen - 20 ? PINK : MUTED, textAlign: 'right', marginTop: 4, fontFamily: MONO }}>
+                      {messageBytes}/{maxLen} bytes
                     </div>
                   </div>
 
@@ -337,7 +349,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                     <input
                       type="text"
                       value={name}
-                      onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                      onChange={e => { setHasUserEdited(true); setName(truncateUtf8(e.target.value, maxNameLen)) }}
                       placeholder="tell the world who wrote this..."
                       style={inputStyle}
                       disabled={isPending || isConfirming}
@@ -376,9 +388,10 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
                       <span style={{ color: PINK, fontSize: 14, fontWeight: 600, fontFamily: 'Manrope, system-ui, sans-serif' }}>You&apos;ll receive</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                         <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>
-                          {markeeEarned.toLocaleString()}
+                          {markeeHeadline.headline}
                         </span>
                         <span style={{ color: PINK, fontSize: 13, fontWeight: 700 }}>MARKEE</span>
+                        {markeeHeadline.note && <span style={{ color: PINK, fontSize: 11, opacity: 0.8 }}>({markeeHeadline.note})</span>}
                       </div>
                     </div>
                   )}

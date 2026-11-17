@@ -29,7 +29,7 @@ isolateChain({ serial: false })
 test.describe('bids show up in the Buyer Hub', () => {
   test('buy a message on a For Sale board', async ({ page }) => {
     await openBuyModal(page, FOR_SALE_BOARD)
-    await page.getByPlaceholder('Your message here... (222 max)').fill(SALE_MESSAGE)
+    await page.getByPlaceholder('Your message here... (222 bytes max)').fill(SALE_MESSAGE)
     await page.getByRole('button', { name: 'Review Payment Info' }).click()
     await page.getByRole('button', { name: 'Confirm Payment' }).click()
     await expect(page.getByText('Success! Your message is live')).toBeVisible({ timeout: TX_TIMEOUT })
@@ -37,7 +37,7 @@ test.describe('bids show up in the Buyer Hub', () => {
 
   test('place a Rent bid below the current winner', async ({ page }) => {
     await openBuyModal(page, RENT_BOARD)
-    await page.getByPlaceholder('Your message here... (222 max)').fill(RENT_MESSAGE)
+    await page.getByPlaceholder('Your message here... (222 bytes max)').fill(RENT_MESSAGE)
     await page.getByRole('button', { name: 'MIN', exact: true }).click()
     // "Buy Message" with enough ETHx, "Deposit X ETH and Buy" when the deposit has to be topped up.
     await page.getByRole('button', { name: /^(Buy Message|Deposit .+ and Buy)$/ }).click()

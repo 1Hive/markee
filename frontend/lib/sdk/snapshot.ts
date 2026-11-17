@@ -3,7 +3,7 @@ import { automaticDeps, autoEnabled, checkDraft, evaluateObservedBatch } from '.
 import { flagKey } from '../moderation/server';
 import { getAddress, parseAbi, zeroAddress, type Abi, type Address, type PublicClient } from 'viem';
 import type { CommunityState, Entry, Placement, Snapshot, WalletState } from '../../../packages/sdk/src/types';
-import { MARKEE_TOKEN } from '../contracts/addresses';
+import { MARKEE_TOKEN, V14_FACTORIES } from '../contracts/addresses';
 import { boardABI, cfaABI, gdaABI, messageABI, poolABI, tokenABI } from './abi';
 import { getEnvPublicClient, registryCommunityABI } from './chains';
 import { markeeAdapter } from './gardens/revenue';
@@ -13,6 +13,8 @@ import { strategyForBoardVersion, type Strategy } from '../strategy';
 import { readPresentationData } from './presentation-data';
 import { displayCache, displayCacheConfigured, displayKey, stableDisplayKey } from './cached-display';
 import { SnapshotUnavailable } from './snapshot-cache';
+import { currentSdkBoard, currentSdkMarkee } from './migration';
+import { isPlaceholderMarkee } from '../leaderboards/placeholder';
 
 const SDK_STRATEGY: Record<Strategy, 'sale' | 'rent'> = { fixed: 'sale', streaming: 'rent' };
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -41,7 +43,12 @@ export async function resolvePlacement(p: Placement, account?: Address) {
   return { board: community.integration.leaderboardAddress, chainId: community.markeeChainId, community };
 }
 
-export async function boardContext(chainId: number, board: Address, trustedCommunity = false) {
+export async function boardContext(chainId: number, requestedBoard: Address, trustedCommunity = false, followMigration = true) {
+  // Resolved inside the snapshot loader, so an RPC outage falls back to the retained snapshot saved
+  // under the requested address. A migration that finishes during an outage keeps showing that
+  // board's last pre-migration snapshot until RPC recovers.
+  const board = followMigration ? await currentSdkBoard(chainId, requestedBoard) : requestedBoard;
+  const legacyBoard = same(board, requestedBoard) ? null : requestedBoard;
   const client = getEnvPublicClient(chainId);
   const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
   const r = <T>(fn: string, args: readonly unknown[] = []) => read<T>(client, board, boardABI, fn, args, blockNumber);
@@ -54,9 +61,10 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
     process.env[`MARKEE_SDK_FACTORIES_${chainId}`] || '',
     process.env[chainId === 8453 ? 'MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE' : 'MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_SEPOLIA'] || '',
     chainId === 8453 ? process.env.NEXT_PUBLIC_STREAMING_FACTORY || '' : '',
+    ...(chainId === 8453 ? Object.values(V14_FACTORIES) : []),
   ].flatMap(s => s.split(',')).filter(Boolean);
   const roots = ['0x2768BC6e90266248BD8bCF5401C36D8049CdF671', '0x0590b56430426A38D0fA065b839c10D542E75CCD'];
-  const trustedRoot = chainId === 8453 && roots.some(a => same(a, board));
+  const trustedRoot = chainId === 8453 && roots.some(a => same(a, requestedBoard));
   if (!trustedCommunity && !trustedRoot) {
     if (!factories.some(a => same(a.trim(), factory))) throw new SDKError('UNTRUSTED_FACTORY', 'This board factory has not been enabled by Markee.', 422);
     if (!await read<boolean>(client, factory, parseAbi(['function isFactoryLeaderboard(address) view returns (bool)']), 'isFactoryLeaderboard', [board], blockNumber)) throw new SDKError('INVALID_BOARD', 'The factory does not recognize this board.', 422);
@@ -68,7 +76,7 @@ export async function boardContext(chainId: number, board: Address, trustedCommu
   ]);
   const top = strategy === 'rent' ? await r<Address>('topMarkee') : ranked[0][0] || zeroAddress;
   const token = chainId === 8453 ? MARKEE_TOKEN : process.env.MARKEE_SDK_TOKEN_SEPOLIA as Address | undefined;
-  return { client, blockNumber, r, chainId, board, strategy, beneficiary, name, minimum, maxMessageBytes: Number(maxMessage), maxNameBytes: Number(maxName), revnetEnabled, count: Number(count), ranked, top, token: token || null };
+  return { client, blockNumber, r, chainId, board, legacyBoard, strategy, beneficiary, name, minimum, maxMessageBytes: Number(maxMessage), maxNameBytes: Number(maxName), revnetEnabled, count: Number(count), ranked, top, token: token || null };
 }
 export type BoardContext = Awaited<ReturnType<typeof boardContext>>;
 
@@ -110,6 +118,37 @@ export async function walletState(c: BoardContext, account: Address): Promise<Wa
   };
 }
 
+export const hasStreamState = (w: WalletState) =>
+  BigInt(w.flowRate) > 0n || BigInt(w.deposit) > 0n || BigInt(w.pendingSettlement) > 0n || BigInt(w.poolClaimable) > 0n;
+
+/** Open streams and deposits stay on a migrated streaming board until the backer exits it. */
+export async function walletStateWithLegacyStream(c: BoardContext, account: Address): Promise<WalletState> {
+  const wallet = await walletState(c, account);
+  if (!c.legacyBoard || c.strategy !== 'rent' || hasStreamState(wallet)) return wallet;
+  const legacyBoard = c.legacyBoard;
+  const legacy = await walletState({ ...c, board: legacyBoard, legacyBoard: null,
+    r: <T>(fn: string, args: readonly unknown[] = []) => read<T>(c.client, legacyBoard, boardABI, fn, args, c.blockNumber) }, account);
+  if (!hasStreamState(legacy)) return wallet;
+  return { ...legacy, backedMarkee: legacy.backedMarkee && await currentSdkMarkee(c.chainId, legacy.backedMarkee) };
+}
+
+// The first page is the top 20 by rank, so a single Markee left off it may be the board's empty seed,
+// which the snapshot never lists. Read that one Markee rather than assume: pre-v1.2 boards have no
+// seed, and a seed that was written on or funded is a real entry.
+async function onlyPlaceholderLeftOff(c: BoardContext, firstPage: readonly Address[]): Promise<boolean> {
+  if (c.count - firstPage.length !== 1) return false;
+  const shown = new Set(firstPage.map(a => getAddress(a)));
+  const all = await c.r<Address[]>('getMarkees', [0n, BigInt(c.count)]);
+  const leftOff = all.map(a => getAddress(a)).filter(a => !shown.has(a));
+  if (leftOff.length !== 1) return false;
+  const [message, totalFunds, rate] = await Promise.all([
+    read<string>(c.client, leftOff[0], messageABI, 'message', [], c.blockNumber),
+    read<bigint>(c.client, leftOff[0], messageABI, 'totalFundsAdded', [], c.blockNumber),
+    c.strategy === 'rent' ? c.r<bigint>('aggregateRate', [leftOff[0]]) : 0n,
+  ]);
+  return isPlaceholderMarkee({ message, totalFunds, rate });
+}
+
 async function loadSnapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
   const resolved = await resolvePlacement(p);
   const warnings: string[] = [];
@@ -117,7 +156,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
   const c = await boardContext(resolved.chainId, getAddress(resolved.board), p.kind === 'gardens-community');
   const [addresses, wallet] = await Promise.all([
     offset !== undefined ? c.r<Address[]>('getMarkees', [BigInt(offset), 20n]) : c.ranked[0],
-    account ? walletState(c, account) : null,
+    account ? walletStateWithLegacyStream(c, account) : null,
   ]);
   // Include the enforced winner and the wallet's backed message even outside this page.
   const all = [...new Set([...addresses, c.top, wallet?.backedMarkee].filter((a): a is Address => !!a && a !== zeroAddress).map(a => getAddress(a)))];
@@ -125,14 +164,14 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
   let views: (number | null)[] = [];
   let metadata: Snapshot['metadata'] = null;
   try {
-    const result = await snapshotReaders.presentation(c.board, all);
+    const result = await snapshotReaders.presentation(c.board, all, c.legacyBoard);
     flags = result.flags;
     views = result.views;
     const raw = result.metadata;
     const safeUrl = (value: unknown) => typeof value === 'string' && /^https?:\/\//.test(value) ? value : null;
     metadata = { siteUrl: safeUrl(raw?.siteUrl), logoUrl: safeUrl(raw?.logoUrl), verifiedUrls: [...(raw?.verifiedUrls || []), ...(raw?.verifiedUrl ? [raw.verifiedUrl] : [])].map(safeUrl).filter((url): url is string => url !== null) };
   } catch { warnings.push('Views and moderation are temporarily unavailable.'); }
-  const entries = await Promise.all(all.map(async (addr, i): Promise<Entry> => {
+  const readEntries = await Promise.all(all.map(async (addr, i): Promise<Entry> => {
     const [owner, message, name, totalFunds, aggregateRate, legacyFloor, score] = await Promise.all([
       read<Address>(c.client, addr, messageABI, 'owner', [], c.blockNumber), read<string>(c.client, addr, messageABI, 'message', [], c.blockNumber),
       read<string>(c.client, addr, messageABI, 'name', [], c.blockNumber), read<bigint>(c.client, addr, messageABI, 'totalFundsAdded', [], c.blockNumber),
@@ -141,7 +180,10 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
     ]);
     return { address: addr, owner, message, name, score: (c.strategy === 'rent' ? score : totalFunds).toString(), totalFunds: totalFunds.toString(), aggregateRate: aggregateRate.toString(), legacyFloor: legacyFloor.toString(), moderated: flags === null ? null : flags.some(k => k.toLowerCase() === `${c.chainId}:${addr.toLowerCase()}`), views: flags === null ? null : views[i] ?? 0 };
   }));
-  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? (c.count > 20 ? 0 : null) : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
+  const placeholders = new Set(readEntries.filter(entry => isPlaceholderMarkee({ message: entry.message, totalFunds: BigInt(entry.totalFunds), rate: BigInt(entry.aggregateRate) })).map(entry => entry.address));
+  const entries = readEntries.filter(entry => !placeholders.has(entry.address));
+  const firstPageNext = offset === undefined && c.count > addresses.length && !(await onlyPlaceholderLeftOff(c, addresses)) ? 0 : null;
+  return { apiVersion: 1, placement: p, board: c.board, beneficiary: c.beneficiary, chainId: c.chainId, strategy: c.strategy, name: c.name, minimum: c.minimum.toString(), maxMessageBytes: c.maxMessageBytes, maxNameBytes: c.maxNameBytes, revnetEnabled: c.revnetEnabled, token: c.token, entries, count: c.count, nextOffset: offset === undefined ? firstPageNext : offset + addresses.length < c.count ? offset + addresses.length : null, top: c.top === zeroAddress ? null : c.top, rankedTop: c.ranked[0][0] || null, wallet, community: resolved.community, warnings, blockNumber: c.blockNumber.toString(), metadata };
 }
 
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {

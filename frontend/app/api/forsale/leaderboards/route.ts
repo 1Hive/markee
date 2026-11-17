@@ -19,9 +19,10 @@ import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
-import { FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK } from '@/lib/contracts/addresses'
+import { BOARD_MIGRATORS, FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
-import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -68,15 +69,7 @@ async function loadListing(request: Request) {
       return results
     }
 
-    const addresses = await client.readContract({
-      address: FOR_SALE_FACTORY_ADDRESS,
-      abi: LeaderboardFactoryABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
-    if (addresses.length === 1000) {
-      console.warn('[forsale/leaderboards] hit the 1000-board getLeaderboards cap -- listing may be truncated')
-    }
+    const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.FOR_SALE, [FOR_SALE_FACTORY_ADDRESS, V14_FACTORIES.FOR_SALE])
 
     const metaCalls = addresses.flatMap(addr => [
       { address: addr, abi: LeaderboardV11ABI, functionName: 'leaderboardName' as const },
@@ -105,20 +98,20 @@ async function loadListing(request: Request) {
     )
 
     const metaKeys = addresses.map(a => `oi:meta:${a.toLowerCase()}`)
-    const [markeeResults, creators, kvMetas, linkedFilesPerAddr] = await Promise.all([
+    const [markeeResults, origins, kvMetas, linkedFilesPerAddr] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses, {
+      resolveBoardOrigins(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'fs',
-        factories: [FOR_SALE_FACTORY_ADDRESS],
+        factories: [FOR_SALE_FACTORY_ADDRESS, V14_FACTORIES.FOR_SALE],
         fromBlock: FOR_SALE_FACTORY_DEPLOY_BLOCK,
         logLabel: 'forsale/leaderboards',
       }),
       addresses.length > 0
         ? kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...metaKeys)
         : Promise.resolve([]),
-      getLinkedFilesBatch(addresses),
+      getLinkedFilesBatch(addresses, predecessorOf),
     ])
 
     // markeeCalls emits 3 calls per board but skips boards with no top markee, so each board's
@@ -154,6 +147,7 @@ async function loadListing(request: Request) {
 
       return {
         address: addr,
+        migratedFrom: predecessorOf.get(addr.toLowerCase()) ?? null,
         name,
         platform: 'website' as const,
         isLegacy: false,
@@ -161,7 +155,8 @@ async function loadListing(request: Request) {
         totalFundsRaw: totalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
-        creator: creators[i] ?? null,
+        creator: origins[i]?.creator ?? null,
+        initialAdmin: origins[i]?.initialAdmin ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFunds0.toString(),

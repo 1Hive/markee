@@ -5,11 +5,14 @@
 // moderators flagged comes back with `flagged: true` and its text and author
 // blanked, since this feeds other sites (markee.xyz-only flags don't apply).
 // Moderation is evaluated on every response, separately from cached financial/display data.
+// A migrated legacy board serves its successor's data; `address` echoes the
+// requested address and `currentAddress` names the board the data came from.
 import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
 import { moderateEmbed } from '@/lib/moderation/embed'
+import { currentBoardOrSelf } from '@/lib/contracts/currentAddressCache'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,22 +59,24 @@ export async function OPTIONS() {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { address: string } },
+  { params }: { params: Promise<{ address: string }> },
 ) {
-  const address = params.address.toLowerCase()
+  const address = (await params).address.toLowerCase()
   if (!/^0x[0-9a-f]{40}$/.test(address)) {
     return NextResponse.json({ error: 'Invalid address' }, { status: 400, headers: CORS })
   }
 
-  const CACHE_KEY = `cache:embed:${address}`
+  const rpc = getClient()
+  const board = (await currentBoardOrSelf(address as `0x${string}`, rpc)).toLowerCase()
+  const CACHE_KEY = `cache:embed:${board}`
+  const forRequest = (payload: EmbedPayload) => ({ ...payload, address, currentAddress: board })
 
   const cached = await kv.get<EmbedPayload>(CACHE_KEY).catch(() => null)
   if (cached) {
-    return NextResponse.json(await moderateEmbed(cached), { headers: { ...CORS, 'X-Cache': 'HIT' } })
+    return NextResponse.json(await moderateEmbed(forRequest(cached)), { headers: { ...CORS, 'X-Cache': 'HIT' } })
   }
 
-  const rpc = getClient()
-  const addr = address as `0x${string}`
+  const addr = board as `0x${string}`
 
   const [leaderboardName, topResult] = await Promise.all([
     rpc.readContract({ address: addr, abi: LEADERBOARD_ABI, functionName: 'leaderboardName' }).catch(() => ''),
@@ -100,7 +105,7 @@ export async function GET(
   }
 
   const payload = {
-    address,
+    address: board,
     leaderboardName: leaderboardName as string,
     topMarkeeAddress: topMarkeeAddress ?? null,
     topFundsRaw,
@@ -113,5 +118,5 @@ export async function GET(
 
   await kv.set(CACHE_KEY, payload, { ex: 60 }).catch(() => {})
 
-  return NextResponse.json(await moderateEmbed(payload), { headers: { ...CORS, 'X-Cache': 'MISS' } })
+  return NextResponse.json(await moderateEmbed(forRequest(payload)), { headers: { ...CORS, 'X-Cache': 'MISS' } })
 }
