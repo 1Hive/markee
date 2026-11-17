@@ -43,7 +43,8 @@ function setup(t: test.TestContext, limits: Record<string, number> = {}) {
 }
 
 const request = (query = '') => new Request(`https://markee.example/api/x${query}`, { headers: { 'x-forwarded-for': '1.2.3.4' } })
-const body = async (response: Response) => ({ status: response.status, ...(await response.json()) as Record<string, unknown> })
+type Body = { status: number; data?: unknown; stale?: boolean; error?: string }
+const body = async (response: Response): Promise<Body> => ({ ...(await response.json()) as Omit<Body, 'status'>, status: response.status })
 
 test('viewers share one chain read until it goes stale', async t => {
   setup(t)
