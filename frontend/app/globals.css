@@ -178,8 +178,6 @@ img.emoji {
   .reader-card { aspect-ratio: 5 / 2; }
   .reader-text { display: block; }
 }
-.plat-grid-home { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-@media (max-width: 720px) { .plat-grid-home { grid-template-columns: 1fr; } }
 
 /* ── Metrics row (home + marketplace) ──────────────────────────────────────── */
 .metrics-row { display: flex; flex-wrap: wrap; gap: 44px; justify-content: center; }
