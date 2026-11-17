@@ -1,13 +1,15 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowRight, Eye, MonitorSmartphone, Plus, Zap } from 'lucide-react'
+import { ArrowRight, Eye, MonitorSmartphone, Zap } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { LiveDot } from '@/components/ui/LiveDot'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
-import { ONE_HIVE_BONUS_SIGNS, ONE_HIVE_SPONSOR_URL, ONE_HIVE_TERMS } from '@/lib/campaigns/oneHive'
+import { ONE_HIVE_SPONSOR_URL, ONE_HIVE_TERMS } from '@/lib/campaigns/oneHive'
 import { BonusSlider } from './BonusSlider'
 import { HeroSignCard } from './HeroSignCard'
+import { SignsLeaderboard } from './SignsLeaderboard'
+import { CAMPAIGN_CARD } from './styles'
 
 export const metadata: Metadata = {
   title: 'Earn up to $1k/mo · Markee × 1Hive',
@@ -16,7 +18,7 @@ export const metadata: Metadata = {
 
 const CREATE_HREF = '/create-a-markee'
 
-const CARD = 'rounded-2xl border border-[#8A8FBF]/20 bg-[#0A0F3D]/70'
+const CARD = CAMPAIGN_CARD
 const PRIMARY_BTN =
   'inline-flex items-center gap-2 rounded-lg bg-[#F897FE] px-5 py-3 text-[15px] font-bold text-[#060A2A] shadow-[0_8px_32px_rgba(248,151,254,0.3)] transition-transform duration-[140ms] hover:-translate-y-px'
 const SECONDARY_BTN =
@@ -27,8 +29,6 @@ const STEPS = [
   { n: '02', title: 'Get Traffic', body: 'Funding unlocks after 100 views', Icon: Eye },
   { n: '03', title: 'Get paid', body: 'Up to $1k/mo. based on traffic', Icon: Zap },
 ]
-
-const usd = (n: number) => `$${n.toLocaleString('en-US')}`
 
 export default function OneHiveCampaignPage() {
   return (
@@ -97,58 +97,10 @@ export default function OneHiveCampaignPage() {
             <h2 className="flex items-center gap-3 text-[26px] font-extrabold tracking-[-1px]" style={{ color: TEXT }}>
               <LiveDot color={GREEN} /> Signs earning bonuses
             </h2>
-            <span className="text-xs" style={{ fontFamily: MONO, color: MUTED }}>ranked by views · updated weekly</span>
+            <span className="text-xs" style={{ fontFamily: MONO, color: MUTED }}>ranked by views since activation</span>
           </div>
 
-          <div className={`${CARD} overflow-hidden`}>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm" style={{ fontFamily: MONO }}>
-                <thead>
-                  <tr className="border-b border-[#8A8FBF]/20 text-[11px] uppercase tracking-[2px]" style={{ color: MUTED }}>
-                    <th className="px-6 py-4 text-left font-medium">#</th>
-                    <th className="px-4 py-4 text-left font-medium">Site</th>
-                    <th className="px-4 py-4 text-left font-medium">Current message</th>
-                    <th className="px-4 py-4 text-right font-medium">Views</th>
-                    <th className="px-4 py-4 text-right font-medium">Now earning</th>
-                    <th className="px-6 py-4 text-right font-medium">Total earned</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...ONE_HIVE_BONUS_SIGNS]
-                      .sort((a, b) => b.views - a.views)
-                      .map((s, i) => (
-                        <tr key={s.site} className="border-b border-[#8A8FBF]/15 last:border-b-0">
-                          <td className="px-6 py-5" style={{ color: MUTED }}>#{i + 1}</td>
-                          <td className="px-4 py-5" style={{ color: TEXT }}>
-                            {s.href ? <Link href={s.href} className="hover:text-[#F897FE]">{s.site}</Link> : s.site}
-                          </td>
-                          <td className="px-4 py-5" style={{ color: TEXT }}>
-                            <span className="mr-3">{s.currentMessage}</span>
-                            <span className="rounded-md bg-[#7B6AF4]/20 px-2 py-0.5 text-xs" style={{ color: TEXT2 }}>
-                              {s.ownedBy1Hive ? '1Hive' : 'outbid'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-5 text-right tabular-nums" style={{ color: TEXT }}>{s.views.toLocaleString('en-US')}</td>
-                          <td className="px-4 py-5 text-right font-bold tabular-nums" style={{ color: PINK }}>{usd(s.monthlyUsd)}/mo</td>
-                          <td className="px-6 py-5 text-right tabular-nums" style={{ color: TEXT }}>{usd(s.totalEarnedUsd)}</td>
-                        </tr>
-                      ))}
-                </tbody>
-              </table>
-            </div>
-            {ONE_HIVE_BONUS_SIGNS.length === 0 && (
-              <p className="px-6 py-10 text-center text-sm" style={{ fontFamily: MONO, color: TEXT2 }}>
-                No signs earning yet. Yours could be first.
-              </p>
-            )}
-            <Link
-              href={CREATE_HREF}
-              className="flex items-center gap-2 border-t border-dashed border-[#8A8FBF]/25 px-6 py-4 text-sm font-bold transition-colors hover:bg-[#F897FE]/5"
-              style={{ fontFamily: MONO, color: PINK }}
-            >
-              <Plus size={16} aria-hidden /> Create a Markee
-            </Link>
-          </div>
+          <SignsLeaderboard createHref={CREATE_HREF} />
         </section>
       </main>
 
