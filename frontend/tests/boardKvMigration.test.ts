@@ -171,6 +171,7 @@ function seeded() {
     [`views:daily:${LEGACY_MARKEE}`]: { type: 'hash', value: new Map([['2026-11-01', '3']]) },
     [`oi:meta:${LEGACY_BOARD}`]: str('{"verifiedUrls":["https://a.example"]}', 5000),
     [`github:synced:${LEGACY_BOARD}`]: str('{"signature":"s","at":1}'),
+    [`github:sync-failed:${LEGACY_BOARD}`]: str('{"signature":"s","at":1}', 5000),
     [`creator:oi:${LEGACY_BOARD}`]: str('0x00000000000000000000000000000000000000cc'),
     [`creator:oi:${SUCCESSOR_BOARD}`]: str(MIGRATION_OPERATOR),
     [`initial-admin:oi:${LEGACY_BOARD}`]: str('0x00000000000000000000000000000000000000dd'),
@@ -196,6 +197,7 @@ test('dry run plans every write without touching the store', async () => {
   assert.equal(status('views:total'), 'merge')
   assert.equal(status('creator'), 'replace')
   assert.equal(status('github:synced'), 'skip')
+  assert.equal(status('github:sync-failed'), 'skip')
   assert.equal(status('oi:meta'), 'write')
   await assert.rejects(readOnly(store).exec([['SET', 'k', 'v']]), /dry run refused SET/)
 })
@@ -211,6 +213,7 @@ test('execute copies, merges, rewrites, and leaves legacy keys in place', async 
   assert.equal(get(data, `oi:meta:${SUCCESSOR_BOARD}`), '{"verifiedUrls":["https://a.example"]}')
   assert.equal((data.get(`oi:meta:${SUCCESSOR_BOARD}`) as { pttl: number }).pttl, 5000)
   assert.equal(data.has(`github:synced:${SUCCESSOR_BOARD}`), false)
+  assert.equal(data.has(`github:sync-failed:${SUCCESSOR_BOARD}`), false)
   assert.equal(get(data, `creator:oi:${SUCCESSOR_BOARD}`), '0x00000000000000000000000000000000000000cc')
   assert.equal(get(data, `superfluid:s6:baseline:${SUCCESSOR_BOARD}`), '123')
 
