@@ -15,8 +15,13 @@ const { ethers } = require('/tmp/node_modules/ethers');
 const DRY_RUN = process.argv.includes('--dry-run');
 // If set, skip proxy deployment and use this existing uninitialized proxy
 const RESUME_PROXY = process.env.RESUME_PROXY || null;
-const RPC = 'https://base-mainnet.g.alchemy.com/v2/MfatE-JTmlEIgHxhW40pO';
-const AUTOMATION_WALLET_PK = '0xc78bb955aa01f6dfc6b7c108349906b26f6d4d248892737a0c2eba5797e56af7';
+// Base RPC from the environment, e.g. `cd frontend && npm run env:dev -- node ../scripts/<this file>`.
+const RPC = process.env.ALCHEMY_BASE_URL;
+if (!RPC) throw new Error('Set ALCHEMY_BASE_URL (a Base mainnet RPC URL) to run this script.');
+// Signing key from the environment only; never commit it. Run with it set for this shell, e.g.
+// `cd frontend && AUTOMATION_WALLET_PK=... npm run env:dev -- node ../scripts/<this file>`.
+const AUTOMATION_WALLET_PK = process.env.AUTOMATION_WALLET_PK;
+if (!AUTOMATION_WALLET_PK) throw new Error('Set AUTOMATION_WALLET_PK to run this script.');
 
 // Addresses
 // The old OI factory uses this impl which has migrateFromLegacy + v1.1 initialize
