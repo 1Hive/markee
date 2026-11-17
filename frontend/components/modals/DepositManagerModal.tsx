@@ -27,6 +27,7 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
 import type { DepositManagerDeposit } from '@/app/api/streaming/deposit-manager/route'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
@@ -236,7 +237,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
         {/* ── Header ── */}
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 16, color: TEXT, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 9, height: 9, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot size={9} />
             Deposit Manager
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}>×</button>

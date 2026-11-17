@@ -49,6 +49,7 @@ import { formatLiveEth } from '@/hooks/useLiveBalance'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { usePendingTxsFor } from '@/hooks/usePendingTxs'
 import { PendingPaymentNotice, PENDING_PAYMENT_REASON } from '@/components/tx/PendingPaymentNotice'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
@@ -896,7 +897,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
         {/* ── Header ── */}
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 16, color: TEXT, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 9, height: 9, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot size={9} />
             {stepLabel}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>

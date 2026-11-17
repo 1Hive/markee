@@ -19,7 +19,7 @@ import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
 import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { StrategyBadge } from '@/components/StrategyBadge'
-import { StrategyPreviewCard } from '@/components/StrategyPreviewCard'
+import { StrategyChoiceCard } from '@/components/StrategyChoiceCard'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { beneficiaryError, isPayableBeneficiary } from '@/lib/beneficiary'
 
@@ -210,9 +210,9 @@ function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onS
   }, [])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24, marginBottom: 28 }}>
-      <StrategyPreviewCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} viewCount={strategyViews?.fixed} showRecommendation />
-      <StrategyPreviewCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} viewCount={strategyViews?.streaming} showRecommendation />
+    <div role="radiogroup" aria-label="Pricing strategy" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '28px 24px', marginBottom: 28 }}>
+      <StrategyChoiceCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} viewCount={strategyViews?.streaming} />
+      <StrategyChoiceCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} viewCount={strategyViews?.fixed} />
     </div>
   )
 }
@@ -302,7 +302,8 @@ function CreateWizardInner() {
   const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
 
-  const [strategy, setStrategy] = useState<Strategy | null>(null)
+  // For Rent is pre-selected (when streaming is live); ?strategy= and deploy recovery below override it.
+  const [strategy, setStrategy] = useState<Strategy | null>(STREAMING_ENABLED ? 'streaming' : null)
   const [step, setStep] = useState(0)
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [streamActivateOpen, setStreamActivateOpen] = useState(false)
@@ -490,7 +491,7 @@ function CreateWizardInner() {
             </p>
           )}
           <WebsiteSetupFields values={values} setValue={setValue} touched={setupTouched} />
-          <h2 style={{ margin: '28px 0 20px', fontSize: 20, fontWeight: 700, color: C.text }}>Choose Pricing Strategy</h2>
+          <h2 style={{ margin: '32px 0 20px', fontSize: 'clamp(22px,3vw,28px)', fontWeight: 800, letterSpacing: -0.5, color: C.text }}>Choose pricing strategy</h2>
           <ChooseStrategy selected={strategy} onSelect={s => { setStrategy(s); setSetupTouched(false) }} />
           {setupTouched && !strategy && (
             <p style={{ margin: '-16px 0 24px', fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12, color: '#F87171' }}>Please select a pricing strategy.</p>

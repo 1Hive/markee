@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { X, Trophy, RefreshCw, Zap, Pin } from 'lucide-react'
+import { LiveDot } from '@/components/ui/LiveDot'
+import { GREEN } from '@/lib/design-tokens'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -215,7 +217,7 @@ export function RewardsModal({
                 <h2 className="text-[#EDEEFF] font-bold text-lg">{campaignTitle}</h2>
                 {data?.campaign.status && data.campaign.status !== 'upcoming' && (
                   <span className="flex items-center gap-1 bg-[#1DB227]/15 border border-[#1DB227]/40 text-[#1DB227] text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    <span className="w-1 h-1 rounded-full bg-[#1DB227] animate-pulse" />
+                    <LiveDot color={GREEN} size={4} />
                     {data.campaign.status}
                   </span>
                 )}

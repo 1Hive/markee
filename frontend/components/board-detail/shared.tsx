@@ -15,6 +15,7 @@ import { registerFileMessage } from '@/lib/github/unlink'
 import { getAddressUrl, getTxUrl } from '@/lib/explorer'
 import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { LiveDot } from '@/components/ui/LiveDot'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
@@ -125,11 +126,7 @@ export function StreamStatusIcon({ status }: { status: StreamStatus }) {
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <span style={{
-        width: 8, height: 8, borderRadius: 99, background: color, flexShrink: 0,
-        boxShadow: status === 'active' ? `0 0 6px ${color}` : 'none',
-        animation: status === 'active' ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
-      }} />
+      <LiveDot color={color} pulse={status === 'active'} />
       {open && (
         <span style={{
           position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',

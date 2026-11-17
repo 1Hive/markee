@@ -19,6 +19,8 @@ import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { MarkeeWatermark } from '@/components/board-detail/shared'
+import { LiveDot } from '@/components/ui/LiveDot'
+import { OneHiveBanner } from '@/components/campaigns/OneHiveBanner'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px 100px'
@@ -43,7 +45,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
       fontFamily: MONO, fontSize: 11, letterSpacing: 2,
       textTransform: 'uppercase', color: '#F897FE',
     }}>
-      <span style={{ width: 8, height: 8, borderRadius: 99, background: '#F897FE', display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+      <LiveDot />
       {children}
     </div>
   )
@@ -482,6 +484,8 @@ export default function Home() {
             Pay to be <span style={{ color: '#F897FE' }}>seen</span>
           </h1>
           <MetricsRow stats={ecoStats} loaded={ecoStatsLoaded} />
+          {/* 1Hive campaign promo */}
+          <OneHiveBanner />
         </div>
       </section>
 

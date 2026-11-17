@@ -25,6 +25,7 @@ import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { ModeratedContent } from '@/components/moderation'
 import type { FixedMarkee } from '@/lib/contracts/useFixedMarkees'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const FAST_TX_GAS_RESERVE = parseEther('0.0002')
@@ -248,7 +249,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             Change Message
           </div>
           <button

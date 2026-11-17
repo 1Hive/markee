@@ -29,6 +29,7 @@ import { isZeroAddress, NO_BENEFICIARY_REASON } from '@/lib/beneficiary'
 import { isBoardCreatedMarkee, useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { ModeratedContent, ModeratedAuthor, FlagButton } from '@/components/moderation'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
 const PURP   = '#7B6AF4'
@@ -663,7 +664,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
         {/* ── Header ── */}
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 16, color: TEXT, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 9, height: 9, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot size={9} />
             {stepLabel}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>

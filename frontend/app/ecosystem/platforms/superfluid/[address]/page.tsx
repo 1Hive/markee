@@ -21,6 +21,7 @@ import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/mode
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { isLegacyFixedBoardVersion } from '@/lib/strategy'
 import type { Markee } from '@/types'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -453,7 +454,7 @@ function SuperfluidLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x
           ) : (
             <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <LiveDot />
                 <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? ''}</span>
                 <span className="text-[#8A8FBF]">messages</span>
               </div>

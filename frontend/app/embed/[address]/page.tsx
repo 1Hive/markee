@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { MONO, PINK, BG, TEXT, MUTED } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 import { MessageSkeleton } from '@/components/moderation/ModeratedContent'
 
 const SANS = "Manrope,system-ui,sans-serif"
@@ -58,12 +59,7 @@ export default function EmbedPage() {
         onMouseLeave={() => setHover(false)}
       >
         {/* Pulsing dot */}
-        <span style={{
-          width: 8, height: 8, borderRadius: 99, flexShrink: 0,
-          background: hasMsg ? PINK : MUTED,
-          boxShadow: hasMsg ? `0 0 10px ${PINK}` : 'none',
-          animation: hasMsg ? 'glowPulse 1.5s ease-in-out infinite' : 'none',
-        }} />
+        <LiveDot color={hasMsg ? PINK : MUTED} pulse={hasMsg} />
 
         {/* Message */}
         <div style={{ flex: 1, minWidth: 0 }}>

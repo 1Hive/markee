@@ -23,6 +23,7 @@ import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { logoDevUrl } from '@/lib/utils'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const PURP  = '#7B6AF4'
@@ -838,7 +839,7 @@ export default function MarketplacePage() {
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               Marketplace
             </div>
             <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>
