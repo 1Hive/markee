@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { AccountButton, ConnectButton } from '@/components/wallet/ConnectButton'
 import { MarkeeBalance } from '@/components/wallet/MarkeeBalance'
+import { LiveDot } from '@/components/ui/LiveDot'
+import { GREEN } from '@/lib/design-tokens'
 
 interface HeaderProps {
   activePage?: string
@@ -22,7 +24,7 @@ const PROMO = { label: 'Earn up to $1k/mo', href: '/1hive', key: '1hive' } as co
 
 const PromoPill = ({ active, onClick, useRegularLinks }: { active: boolean; onClick?: () => void; useRegularLinks?: boolean }) => {
   const className = `inline-flex items-center gap-2 self-start rounded-full border px-3 py-1 text-[13px] font-semibold text-[#EDEEFF] transition-colors duration-[140ms] ${active ? 'border-[#F897FE]/60 bg-[#F897FE]/10' : 'border-[#7B6AF4]/40 bg-[#7B6AF4]/15 hover:border-[#F897FE]/50'}`
-  const content = <><span className="w-2 h-2 rounded-full bg-[#1DB227] shadow-[0_0_8px_#1DB227]" aria-hidden />{PROMO.label}</>
+  const content = <><LiveDot color={GREEN} />{PROMO.label}</>
   if (useRegularLinks) return <a href={PROMO.href} className={className} onClick={onClick}>{content}</a>
   return <Link href={PROMO.href} className={className} onClick={onClick}>{content}</Link>
 }

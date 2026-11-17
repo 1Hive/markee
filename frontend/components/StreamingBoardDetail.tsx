@@ -40,6 +40,7 @@ import {
   formatViews, fmtAddr, formatRate, formatDuration, decimalsForRate, decimalsForWeiRate, formatLiveUsd, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
   TxHistoryToggle, TxHistoryPanel, useTxHistory,
 } from '@/components/board-detail/shared'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const GOLD = '#FFD700'
 // Streaming's leaderboard needs one more column ("Total Streamed") than the shared BOARD_LB_COLS
@@ -204,7 +205,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
     <ViewsSpinner size={16} color={GREEN} />
   ) : (
     <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
-      <span style={{ width: 8, height: 8, borderRadius: 99, background: GREEN, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+      <LiveDot color={GREEN} />
       <MetricValue
         text={ethPrice ? formatLiveUsd(streamedEth * ethPrice, usdStreamedDecimals) : streamedEthLabel}
         color={GREEN}
@@ -292,7 +293,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: MONO, fontSize: 11, color: TEXT2, letterSpacing: 0.5 }}>
                         {pending.accruing && (
-                          <span style={{ width: 6, height: 6, borderRadius: 99, background: GREEN, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+                          <LiveDot color={GREEN} size={6} />
                         )}
                         {pending.mintsMarkee ? 'MARKEE accrued' : 'ETH accrued'}
                       </div>
@@ -488,7 +489,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 500, background: BG2, borderRadius: 16, border: `1px solid ${BORDER}`, boxShadow: '0 24px 80px rgba(0,0,0,0.5)', color: TEXT, fontFamily: 'Manrope, system-ui, sans-serif', animation: 'scaleIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards' }}>
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             EDIT MESSAGE
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4 }}>×</button>

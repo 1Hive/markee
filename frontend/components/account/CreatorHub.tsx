@@ -7,6 +7,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowUpRight, Eye, EyeOff } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { LiveDot } from '@/components/ui/LiveDot'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
 import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, CARD_BG } from '@/lib/design-tokens'
 import type { AnyLeaderboard } from '@/components/account/types'
@@ -92,7 +93,7 @@ function MarkeeTableHead() {
 }
 
 export function PulseDot() {
-  return <span className="acct-pulse" style={{ width: 7, height: 7, borderRadius: 99, background: GREEN, flexShrink: 0, display: 'inline-block' }} />
+  return <LiveDot color={GREEN} size={7} />
 }
 
 function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRestore, onManage }: {

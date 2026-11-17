@@ -15,6 +15,7 @@ import { useActiveWallet } from '@/hooks/useActiveWallet'
 import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, BG2, BG, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { DEFAULT_MAX_MESSAGE_BYTES, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const MAX_LEN = DEFAULT_MAX_MESSAGE_BYTES
 
@@ -108,7 +109,7 @@ export function EditMessageModal({
         {/* Header */}
         <div style={{ padding: '18px 22px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             EDIT MESSAGE
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4 }}>×</button>

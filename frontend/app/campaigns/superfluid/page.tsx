@@ -21,6 +21,7 @@ import { type Strategy } from '@/lib/strategy'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const PURP = '#7B6AF4'
 const SECONDS_IN_MONTH = 2_628_000n
@@ -125,11 +126,6 @@ function EyeIcon({ size = 10, color = MUTED }: { size?: number; color?: string }
 }
 
 // ── Verified globe SVG ────────────────────────────────────────────────────────
-function LiveDot() {
-  return (
-    <span style={{ width: 6, height: 6, borderRadius: 99, background: GREEN, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-  )
-}
 
 // ── Rocket SVG ────────────────────────────────────────────────────────────────
 function RocketIcon({ size = 12, color = PINK }: { size?: number; color?: string }) {
@@ -674,14 +670,7 @@ export default function SuperfluidCampaignPage() {
                     borderRadius: 99,
                     whiteSpace: 'nowrap',
                   }}>
-                    <span style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 99,
-                      background: GREEN,
-                      display: 'inline-block',
-                      animation: 'glowPulse 1.5s ease-in-out infinite',
-                    }} />
+                    <LiveDot color={GREEN} size={6} />
                     {campaign?.name ?? 'Superfluid Rewards'}
                   </span>
                 </div>
@@ -739,7 +728,7 @@ export default function SuperfluidCampaignPage() {
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 32, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{activeSignsCount}</span>
               <span style={{ color: MUTED }}>active signs</span>
             </div>
@@ -812,7 +801,7 @@ export default function SuperfluidCampaignPage() {
       <section style={{ padding: '44px 40px', borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1240, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <LiveDot />
+            <LiveDot color={GREEN} size={6} />
             <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Live Superfluid Markees</span>
           </div>
           <p style={{ margin: '0 0 20px', color: MUTED, fontSize: 13.5 }}>

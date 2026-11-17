@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Eye, MonitorSmartphone, Plus, Zap } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
+import { LiveDot } from '@/components/ui/LiveDot'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
 import { ONE_HIVE_BONUS_SIGNS, ONE_HIVE_SPONSOR_URL, ONE_HIVE_TERMS } from '@/lib/campaigns/oneHive'
 import { BonusSlider } from './BonusSlider'
@@ -25,10 +26,6 @@ const STEPS = [
   { n: '03', title: 'Get paid', body: 'Up to $1k/mo. based on traffic', Icon: Zap },
 ]
 
-function LiveDot() {
-  return <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: GREEN, boxShadow: `0 0 8px ${GREEN}` }} aria-hidden />
-}
-
 const usd = (n: number) => `$${n.toLocaleString('en-US')}`
 
 export default function OneHiveCampaignPage() {
@@ -50,7 +47,7 @@ export default function OneHiveCampaignPage() {
               className="inline-flex items-center gap-2 rounded-full border border-[#8A8FBF]/25 bg-[#0A0F3D]/80 px-3 py-1.5 text-xs"
               style={{ fontFamily: MONO, color: TEXT2 }}
             >
-              <LiveDot /> limited time · sponsored by 1Hive
+              <LiveDot color={GREEN} /> limited time · sponsored by 1Hive
             </span>
             <h1 className="mt-6 text-[44px] font-extrabold leading-[1.02] tracking-[-2px] sm:text-[64px] sm:tracking-[-3px]" style={{ color: TEXT }}>
               Earn up to <span style={{ color: PINK }}>$1k/mo</span> when you add a Markee to your site.
@@ -114,7 +111,7 @@ export default function OneHiveCampaignPage() {
         <section id="leaderboard" className="mt-20 scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <h2 className="flex items-center gap-3 text-[26px] font-extrabold tracking-[-1px]" style={{ color: TEXT }}>
-              <LiveDot /> Signs earning bonuses
+              <LiveDot color={GREEN} /> Signs earning bonuses
             </h2>
             <span className="text-xs" style={{ fontFamily: MONO, color: MUTED }}>ranked by views · updated weekly</span>
           </div>

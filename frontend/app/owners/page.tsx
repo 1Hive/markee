@@ -5,6 +5,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { RevnetBuyWidget } from '@/components/widgets/RevnetBuyWidget'
 import { MARKEE_TOKEN_PHASES } from '@/lib/tokenPhases'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const C = {
   bg: '#060A2A', bg2: '#0A0F3D',
@@ -290,7 +291,7 @@ export default function Owners() {
       {/* Tab content */}
       <section style={{ maxWidth: 1180, margin: '0 auto', padding: '48px 40px 96px' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jetbrains-mono)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: C.pink, marginBottom: 18 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 99, background: C.pink, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+          <LiveDot />
           Own the Network
         </div>
         {tab === 'how' && <AboutMarkee setTab={setTab} />}

@@ -6,6 +6,7 @@ import { EmbedPanel } from '@/components/board-detail/shared'
 import { WebsiteEmbedWizard } from '@/components/modals/WebsiteEmbedWizard'
 import type { EmbedStrategy } from '@/lib/embedPrompt/fragments'
 import { MONO, BG, BG2, PINK, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 type Platform = 'website' | 'github'
 
@@ -84,7 +85,7 @@ export function EmbedModal({ isOpen, onClose, leaderboard, initialPlatform }: Em
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             {header.label}
           </div>
           <button

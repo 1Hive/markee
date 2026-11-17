@@ -28,6 +28,7 @@ import { WalletTimeoutNotice } from '@/components/tx/WalletTimeoutNotice'
 import { ModeratedContent, ModeratedAuthor } from '@/components/moderation'
 import type { Markee } from '@/types'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const GOLD = '#FFD700'
@@ -508,7 +509,7 @@ export function BuyMessageModal({
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               {stepLabel}
             </div>
             {subtitle && !txStep && (

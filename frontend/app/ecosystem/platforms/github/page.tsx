@@ -15,6 +15,7 @@ import { imputeEffectiveRate, type Strategy } from '@/lib/strategy'
 import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -339,7 +340,7 @@ export default function GithubPlatformPage() {
           {/* Stat pills */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 32, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{leaderboards.length}</span>
               <span style={{ color: MUTED }}>active signs</span>
             </div>
@@ -409,7 +410,7 @@ export default function GithubPlatformPage() {
       <section style={{ padding: '44px 40px 80px', maxWidth: 1240, margin: '0 auto' }}>
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             GitHub Markees
           </div>
           <h2 style={{ margin: 0, fontSize: 'clamp(22px,2.8vw,30px)', fontWeight: 800, color: TEXT, letterSpacing: -0.4 }}>
