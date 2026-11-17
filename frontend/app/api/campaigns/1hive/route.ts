@@ -1,8 +1,8 @@
 // app/api/campaigns/1hive/route.ts
 //
-// The /1hive "Signs earning bonuses" leaderboard. Every new For Rent or For Sale Markee activated at
-// or after ONE_HIVE_CAMPAIGN_START is listed automatically; ONE_HIVE_EXCLUDED_BOARDS removes rejected
-// ones. Rules are in lib/campaigns/oneHive.ts. This route only reads:
+// The /1hive "Signs earning bonuses" leaderboard. Every new For Rent or For Sale Markee activated
+// since the v1.4 launch (ONE_HIVE_CAMPAIGN_START) is listed automatically; ONE_HIVE_EXCLUDED_BOARDS
+// removes rejected ones. Rules are in lib/campaigns/oneHive.ts. This route only reads:
 //
 //   - boards and on-chain totals from the cached marketplace listing (/api/ecosystem/leaderboards),
 //     which already hides boards without a verified site embed;
@@ -12,15 +12,16 @@
 //     that has held #1 on it.
 //
 // Served through the shared listing snapshot cache (60 s fresh), so viewers never fan out to KV/RPC.
+// Public and read-only: there is no ?bust=1 here (nothing on this page needs a post-transaction
+// refresh), so callers can't force fresh chain reads across every listing.
 
 import { NextResponse } from 'next/server'
-import { kv } from '@vercel/kv'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { cachedListing } from '@/lib/leaderboards/cached'
 import { readTopHistories } from '@/lib/leaderboard/topHistory'
-import { dailyViewsKey } from '@/lib/stats/keys'
+import { dailyViewsKey, hgetalls } from '@/lib/stats/daily'
 import {
-  activationTime, campaignOriginal, isCampaignStrategy, isEligibleBoard, siteLabel, utcDay, viewAddresses, viewsSince,
+  activationTime, isCampaignBoard, isEligibleBoard, siteLabel, utcDay, viewAddresses, viewsSince,
   type CampaignListingRow, type OneHiveSign,
 } from '@/lib/campaigns/oneHive'
 
@@ -30,41 +31,34 @@ const CACHE_KEY = 'cache:campaign:1hive'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
 type ListingRow = CampaignListingRow & {
-  topMessage?: string | null
   topRateRaw?: string
-  topFundsAddedRaw?: string
   totalFundsRaw?: string
   streamedRateRaw?: string
   streamedAt?: number
 }
 
-async function load(request: Request) {
+async function load() {
   try {
-    const bust = new URL(request.url).searchParams.get('bust') === '1'
-    const res = await fetch(`${internalOrigin()}/api/ecosystem/leaderboards${bust ? '?bust=1' : ''}`, { cache: 'no-store', headers: internalHeaders() })
+    const res = await fetch(`${internalOrigin()}/api/ecosystem/leaderboards`, { cache: 'no-store', headers: internalHeaders() })
     if (!res.ok) throw new Error(`ecosystem listing ${res.status}`)
-    const listing = await res.json() as { leaderboards?: ListingRow[]; ethPriceUsd?: number | null; stale?: boolean }
+    // A stale upstream listing is still the best data available; it is cached here like a fresh one
+    // for 60 s rather than re-loaded on every request.
+    const listing = await res.json() as { leaderboards?: ListingRow[]; ethPriceUsd?: number | null }
 
-    const candidates = (listing.leaderboards ?? []).filter(isCampaignStrategy)
-    const histories = await readTopHistories(candidates.flatMap(r => [r.address, campaignOriginal(r)]))
-    const historiesOf = (r: ListingRow) => [...new Set([r.address.toLowerCase(), campaignOriginal(r)])].map(a => histories.get(a))
+    const candidates = (listing.leaderboards ?? []).filter(isCampaignBoard)
+    const histories = await readTopHistories(candidates.map(r => r.address))
 
     const eligible = candidates.flatMap(row => {
-      const hs = historiesOf(row)
-      const activatedAt = activationTime(hs)
-      return isEligibleBoard(row, activatedAt) ? [{ row, hs, activatedAt: activatedAt! }] : []
+      const spans = histories.get(row.address.toLowerCase())
+      const activatedAt = activationTime(row, spans)
+      return isEligibleBoard(row, activatedAt) ? [{ row, spans, activatedAt: activatedAt! }] : []
     })
 
-    // One pipelined KV round trip for every daily counter the eligible signs need.
-    const addressesPer = eligible.map(e => viewAddresses(e.row, e.hs))
-    const keys = [...new Set(addressesPer.flat())].map(dailyViewsKey)
-    const dailies = new Map<string, Record<string, number> | null>()
-    if (keys.length) {
-      const pipeline = kv.pipeline()
-      keys.forEach(k => pipeline.hgetall(k))
-      const results = await pipeline.exec<(Record<string, number> | null)[]>()
-      keys.forEach((k, i) => dailies.set(k, results[i] ?? null))
-    }
+    // Every daily counter the eligible signs need, read in chunked pipelines.
+    const addressesPer = eligible.map(e => viewAddresses(e.row, e.spans))
+    const keys = [...new Set(addressesPer.flat().map(dailyViewsKey))]
+    const hashes = await hgetalls(keys)
+    const dailies = new Map(keys.map((k, i) => [k, hashes[i]]))
 
     const signs: OneHiveSign[] = eligible.map(({ row, activatedAt }, i) => {
       const streaming = row.strategy === 'streaming'
@@ -90,8 +84,7 @@ async function load(request: Request) {
       return diff > 0n ? 1 : diff < 0n ? -1 : a.activatedAt - b.activatedAt
     })
 
-    // cachedListing keeps a stale upstream listing as a fallback rather than publishing it as fresh.
-    return NextResponse.json({ leaderboards: signs, ethPriceUsd: listing.ethPriceUsd ?? null, ...(listing.stale ? { stale: true } : {}) }, { headers: NO_CACHE })
+    return NextResponse.json({ leaderboards: signs, ethPriceUsd: listing.ethPriceUsd ?? null }, { headers: NO_CACHE })
   } catch (err) {
     console.error('[campaigns/1hive] error:', err)
     return NextResponse.json({ error: 'Campaign leaderboard unavailable' }, { status: 503, headers: NO_CACHE })
@@ -99,5 +92,9 @@ async function load(request: Request) {
 }
 
 export async function GET(request: Request) {
-  return cachedListing(request, CACHE_KEY, load, NO_CACHE)
+  // Drop every query parameter (notably ?bust=1, which cachedListing would honour) so the public
+  // route always serves the shared snapshot.
+  const url = new URL(request.url)
+  url.search = ''
+  return cachedListing(new Request(url, request), CACHE_KEY, () => load(), NO_CACHE)
 }

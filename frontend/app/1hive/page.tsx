@@ -9,6 +9,7 @@ import { ONE_HIVE_SPONSOR_URL, ONE_HIVE_TERMS } from '@/lib/campaigns/oneHive'
 import { BonusSlider } from './BonusSlider'
 import { HeroSignCard } from './HeroSignCard'
 import { SignsLeaderboard } from './SignsLeaderboard'
+import { CAMPAIGN_CARD } from './styles'
 
 export const metadata: Metadata = {
   title: 'Earn up to $1k/mo · Markee × 1Hive',
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 
 const CREATE_HREF = '/create-a-markee'
 
-const CARD = 'rounded-2xl border border-[#8A8FBF]/20 bg-[#0A0F3D]/70'
+const CARD = CAMPAIGN_CARD
 const PRIMARY_BTN =
   'inline-flex items-center gap-2 rounded-lg bg-[#F897FE] px-5 py-3 text-[15px] font-bold text-[#060A2A] shadow-[0_8px_32px_rgba(248,151,254,0.3)] transition-transform duration-[140ms] hover:-translate-y-px'
 const SECONDARY_BTN =

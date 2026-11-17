@@ -12,8 +12,8 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { SECONDS_IN_MONTH } from '@/lib/strategy'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
 import type { OneHiveSign } from '@/lib/campaigns/oneHive'
+import { CAMPAIGN_CARD } from './styles'
 
-const CARD = 'rounded-2xl border border-[#8A8FBF]/20 bg-[#0A0F3D]/70'
 const COLS = 6
 
 function SignRow({ sign, rank, ethPrice }: { sign: OneHiveSign; rank: number; ethPrice: number | null }) {
@@ -31,12 +31,17 @@ function SignRow({ sign, rank, ethPrice }: { sign: OneHiveSign; rank: number; et
         <Link href={`/markee/${sign.address}`} className="hover:text-[#F897FE]">{sign.site}</Link>
       </td>
       <td className="max-w-[320px] px-4 py-5" style={{ color: TEXT }}>
-        <span className="flex items-center gap-3">
-          <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={sign.topMessage ?? ''} markeeId={sign.topMarkeeAddress ?? sign.address} className="min-w-0">
-            <span className="block truncate">{sign.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}</span>
-          </ModeratedContent>
+        <div className="flex items-center gap-3">
+          {/* No current #1 (e.g. every stream has stopped): nothing to moderate, so skip the check. */}
+          {sign.topMessage && sign.topMarkeeAddress ? (
+            <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={sign.topMessage} markeeId={sign.topMarkeeAddress} className="min-w-0">
+              <div className="truncate">{sign.topMessage}</div>
+            </ModeratedContent>
+          ) : (
+            <div className="min-w-0 truncate" style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</div>
+          )}
           <StrategyBadge strategy={sign.strategy} size="xs" />
-        </span>
+        </div>
       </td>
       <td className="px-4 py-5 text-right tabular-nums" style={{ color: TEXT }}>{sign.views.toLocaleString('en-US')}</td>
       <td className="px-4 py-5 text-right font-bold tabular-nums" style={{ color: PINK }}>
@@ -88,7 +93,7 @@ export function SignsLeaderboard({ createHref }: { createHref: string }) {
   const empty = signs !== null && signs.length === 0
 
   return (
-    <div className={`${CARD} overflow-hidden`}>
+    <div className={`${CAMPAIGN_CARD} overflow-hidden`}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] text-sm" style={{ fontFamily: MONO }}>
           <thead>
