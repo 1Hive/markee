@@ -135,7 +135,15 @@ test('platform activation challenge rejects unauthorized and duplicate boards; d
     const request = (account: string) => ({ action: 'challenge', placement: revnetPlacement, strategy: 'sale', beneficiary: wallet, account });
     await assert.rejects(platformActivate(request(nextOwner)), /cannot activate/);
     const challenge = await platformActivate(request(owner));
-    assert.equal((challenge.typedData as { message: { beneficiary: string } }).message.beneficiary, wallet);
+    const typed = challenge.typedData as { domain: { version: string; verifyingContract: string }; message: { beneficiary: string; activator: string; strategy: number; factory: string; identityChainId: string; communityKey: string } };
+    assert.equal(typed.domain.version, '2');
+    assert.equal(typed.domain.verifyingContract, registrar);
+    assert.equal(typed.message.beneficiary, wallet);
+    assert.equal(typed.message.activator, owner);
+    assert.equal(typed.message.strategy, 1);
+    assert.equal(typed.message.factory, factory);
+    assert.equal(typed.message.identityChainId, '8453');
+    assert.equal(typed.message.communityKey, platformKey(revnetPlacement));
     currentOwner = nextOwner;
     await assert.rejects(platformActivate({ action: 'verify', nonce: challenge.nonce, signature: '0x123456' }), /permissions changed/);
     currentOwner = owner;
@@ -155,6 +163,11 @@ test('v1 HTTP boundary rejects unknown platforms and does not offer gated activa
   }), { params: { path: ['platform', 'activate-direct'] } });
   assert.equal(activated.status, 503);
   assert.equal((await activated.json()).code, 'PLATFORM_DISABLED');
+  const badBeneficiary = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate-direct', {
+    method: 'POST', body: JSON.stringify({ action: 'challenge', placement: revnetPlacement, strategy: 'sale', beneficiary: empty, account: owner }),
+  }), { params: { path: ['platform', 'activate-direct'] } });
+  assert.equal(badBeneficiary.status, 400);
+  assert.equal((await badBeneficiary.json()).code, 'INVALID_ADDRESS');
   const former = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate', { method: 'POST', body: '{}' }), { params: { path: ['platform', 'activate'] } });
   assert.equal(former.status, 426);
   assert.equal((await former.json()).code, 'PLATFORM_UPGRADE_REQUIRED');
