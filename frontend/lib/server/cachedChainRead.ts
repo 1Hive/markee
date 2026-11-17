@@ -43,12 +43,21 @@ export async function cachedChainRead<T>(request: Request, options: CachedChainR
     return NextResponse.json({ data: await load(), updatedAt: Date.now(), stale: false }, { headers: NO_CACHE })
   }
 
+  // A KV error in a limit check must not keep the route from serving its cache or last-good copy:
+  // the per-IP limit then lets the request through, and a forced refresh is simply not forced.
   const ip = clientIp(request)
-  if (!await chainReadDeps.underRateLimit(scope, ip, maxPerMinute, 60)) {
+  const underLimit = (limitScope: string, max: number, onError: boolean) =>
+    chainReadDeps.underRateLimit(limitScope, ip, max, 60).catch(error => {
+      console.error(`[${limitScope}] rate limit check failed:`, error)
+      return onError
+    })
+  if (!await underLimit(scope, maxPerMinute, true)) {
     return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': '60' } })
   }
   const wantsFresh = new URL(request.url).searchParams.get('fresh') === '1'
-  const force = wantsFresh && await chainReadDeps.underRateLimit(`${scope}:fresh`, ip, maxForcedPerMinute, 60)
+  // A forced read only accepts a load that began after this request arrived. Fixed once, so a retry
+  // that waited on another request's load can accept that result instead of moving the cutoff.
+  const force: number | false = wantsFresh && await underLimit(`${scope}:fresh`, maxForcedPerMinute, false) ? Date.now() : false
 
   const store = chainReadDeps.store()
   const lastGoodKey = `chain-read:last-good:${scope}:${key}`

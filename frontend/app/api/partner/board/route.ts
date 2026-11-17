@@ -56,11 +56,12 @@ export async function GET(request: NextRequest) {
   if (!partner?.leaderboardAddress) {
     return NextResponse.json({ error: 'Unknown partner leaderboard' }, { status: 404 })
   }
-  // Follow a finished board migration to its successor (cached; falls back to the registry address).
-  const leaderboard = await currentBoardOrSelf(partner.leaderboardAddress)
+  // Follows a finished board migration to its successor inside the load, so the lookup sits behind
+  // the per-IP limit and the refresh lease. The payload's leaderboardAddress names the board read.
+  const registered = partner.leaderboardAddress
   return cachedChainRead(request, {
     scope: 'partner-board',
-    key: leaderboard.toLowerCase(),
-    load: () => loadPartnerBoard(leaderboard),
+    key: partner.slug,
+    load: async () => loadPartnerBoard(await currentBoardOrSelf(registered)),
   })
 }
