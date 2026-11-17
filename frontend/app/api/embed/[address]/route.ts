@@ -1,6 +1,7 @@
 // GET /api/embed/[address]
 // Returns the current top message for a leaderboard. CORS-open so any site
-// can poll it. KV-cached for 60 s; bust with ?bust=1. A message its board's
+// can poll it. KV-cached for 60 s. A former public ?bust=1 bypass is ignored so
+// callers cannot force a fresh chain read on every request. A message its board's
 // moderators flagged comes back with `flagged: true` and its text and author
 // blanked, since this feeds other sites (markee.xyz-only flags don't apply).
 // Moderation is evaluated on every response, separately from cached financial/display data.
@@ -57,7 +58,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { address: string } },
 ) {
   const address = params.address.toLowerCase()
@@ -65,17 +66,14 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid address' }, { status: 400, headers: CORS })
   }
 
-  const bust = req.nextUrl.searchParams.get('bust') === '1'
   const rpc = getClient()
   const board = (await currentBoardOrSelf(address as `0x${string}`, rpc)).toLowerCase()
   const CACHE_KEY = `cache:embed:${board}`
   const forRequest = (payload: EmbedPayload) => ({ ...payload, address, currentAddress: board })
 
-  if (!bust) {
-    const cached = await kv.get<EmbedPayload>(CACHE_KEY).catch(() => null)
-    if (cached) {
-      return NextResponse.json(await moderateEmbed(forRequest(cached)), { headers: { ...CORS, 'X-Cache': 'HIT' } })
-    }
+  const cached = await kv.get<EmbedPayload>(CACHE_KEY).catch(() => null)
+  if (cached) {
+    return NextResponse.json(await moderateEmbed(forRequest(cached)), { headers: { ...CORS, 'X-Cache': 'HIT' } })
   }
 
   const addr = board as `0x${string}`

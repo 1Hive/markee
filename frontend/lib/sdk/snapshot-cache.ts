@@ -14,6 +14,8 @@ export type Snapshot<T> = {
   staleUntil: number
   stale: boolean
   refreshing: boolean
+  /** Served from the long-lived retained record after live refresh failed. */
+  retained?: boolean
 }
 
 export class SnapshotUnavailable extends Error {
@@ -44,6 +46,7 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
     freshSeconds = 30,
     staleSeconds = 300,
     forceRefresh: boolean | number = false,
+    shouldServeStale: (error: unknown) => boolean = () => true,
   ): Promise<Snapshot<T>> {
     const snapshotKey = `sdk:snapshots:v1:${key}`
     const lockKey = `${snapshotKey}:lock`
@@ -94,6 +97,7 @@ export function createSnapshotCache(store: SnapshotStore, now = Date.now) {
       if (published !== 1) throw new SnapshotUnavailable(2)
       return { ...snapshot, stale: false, refreshing: false }
     } catch (error) {
+      if (!shouldServeStale(error)) throw error
       try {
         await store.eval(BACKOFF, [lockKey, retryKey], [token, 15])
       } catch {
