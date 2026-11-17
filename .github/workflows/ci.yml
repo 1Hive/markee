@@ -50,6 +50,9 @@ jobs:
       - name: Streaming campaign math
         run: npm run test:streaming-campaign
 
+      - name: 1Hive campaign eligibility
+        run: npm run test:one-hive
+
       - name: Keeper logic
         run: npm run test:keeper
 

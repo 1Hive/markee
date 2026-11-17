@@ -12,23 +12,127 @@ export function oneHiveMonthlyBonusUsd(views: number): number {
   return Math.round(Math.sqrt(Math.min(views, ONE_HIVE_MAX_VIEWS)))
 }
 
-export interface OneHiveBonusSign {
-  /** Display label for the host site, e.g. "example.com/blog". */
-  site: string
-  /** Optional link to the board detail page or the host site. */
-  href?: string
-  currentMessage: string
-  /** True while 1Hive still owns the displayed message; false once someone has outbid it. */
-  ownedBy1Hive: boolean
-  views: number
-  monthlyUsd: number
-  totalEarnedUsd: number
+// ── Leaderboard eligibility ──────────────────────────────────────────────────
+//
+// Every new For Rent or For Sale Markee activated (first message live) at or after the campaign
+// start is listed automatically, as long as it has a verified site embed (the marketplace's own
+// rule, applied upstream by /api/ecosystem/leaderboards). Rejected signs are removed by hand via
+// ONE_HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive does the reads.
+
+/** 2026-11-17 21:00 UTC. Boards activated before this are not part of the campaign. */
+export const ONE_HIVE_CAMPAIGN_START = 1794949200
+
+/**
+ * Signs rejected from the campaign: board address (any case; original or current address after a
+ * migration) -> why it was removed. Add an entry and deploy to take a sign off the leaderboard.
+ */
+export const ONE_HIVE_EXCLUDED_BOARDS: Record<string, string> = {}
+
+/** The subset of an /api/ecosystem/leaderboards row the campaign reads. */
+export interface CampaignListingRow {
+  address: string
+  migratedFrom?: string | null
+  strategy?: string
+  /** Set by /api/forsale/leaderboards: the current, vertical-agnostic For Sale factory. */
+  verificationGated?: boolean
+  name?: string
+  leaderboardName?: string
+  verifiedUrl?: string | null
+  verifiedUrls?: string[]
+  linkedFiles?: { verified?: boolean; repoFullName?: string }[]
+  topMarkeeAddress?: string | null
 }
 
-// Signs currently earning a bonus, maintained by hand and updated weekly as payouts are set.
-// Leave empty until real signs are approved: the page shows an empty state rather than placeholder
-// figures, so no earnings are displayed that haven't actually been paid.
-export const ONE_HIVE_BONUS_SIGNS: OneHiveBonusSign[] = []
+/** One stretch at #1 from the board's top history (lib/leaderboard/topHistory.ts). */
+export interface CampaignTopSpan { markee: string; from: number; to: number | null }
+
+const lower = (a: string | null | undefined) => (a ?? '').toLowerCase()
+
+/** The board's original address: a migrated board keeps its predecessor's identity. */
+export const campaignOriginal = (row: CampaignListingRow) => lower(row.migratedFrom ?? row.address)
+
+/** Only boards from the current For Rent and For Sale factories count as "new" signs. */
+export function isCampaignStrategy(row: CampaignListingRow): boolean {
+  return row.strategy === 'streaming' || row.verificationGated === true
+}
+
+export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = ONE_HIVE_EXCLUDED_BOARDS): boolean {
+  const out = new Set(Object.keys(excluded).map(lower))
+  return out.has(lower(row.address)) || out.has(campaignOriginal(row))
+}
+
+/**
+ * When the board's first message went live: the earliest #1 span across its original and current
+ * histories (a migration starts a fresh history on the successor). Null until the moderation scan
+ * has recorded one, so a just-activated board appears within one scan.
+ */
+export function activationTime(histories: (CampaignTopSpan[] | undefined)[]): number | null {
+  const starts = histories.flatMap(spans => spans?.length ? [spans[0].from] : [])
+  return starts.length ? Math.min(...starts) : null
+}
+
+export function isEligibleBoard(row: CampaignListingRow, activatedAt: number | null, start = ONE_HIVE_CAMPAIGN_START, excluded = ONE_HIVE_EXCLUDED_BOARDS): boolean {
+  return isCampaignStrategy(row) && !isExcludedBoard(row, excluded) && activatedAt !== null && activatedAt >= start
+}
+
+/**
+ * Every address a sign's views were counted under: the board (original and current) and each
+ * message that has been #1 on it. Views stay with a message, so including past #1 messages means
+ * being outbid never takes views away from the sign.
+ */
+export function viewAddresses(row: CampaignListingRow, histories: (CampaignTopSpan[] | undefined)[]): string[] {
+  return [...new Set([
+    lower(row.address), campaignOriginal(row), lower(row.topMarkeeAddress),
+    ...histories.flatMap(spans => (spans ?? []).map(s => lower(s.markee))),
+  ].filter(Boolean))]
+}
+
+/** UTC day string (YYYY-MM-DD), matching the daily view counters' field names. */
+export const utcDay = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString().slice(0, 10)
+
+/** Sums daily view counters ({ 'YYYY-MM-DD': count }) from `fromDay` onward, inclusive. */
+export function viewsSince(dailies: (Record<string, number | string> | null | undefined)[], fromDay: string): number {
+  let total = 0
+  for (const daily of dailies) {
+    for (const [day, count] of Object.entries(daily ?? {})) {
+      if (day >= fromDay) total += Number(count) || 0
+    }
+  }
+  return total
+}
+
+/** "host/path" of the first verified site, else the verified GitHub repo, else the board name. */
+export function siteLabel(row: CampaignListingRow): string {
+  const url = row.verifiedUrls?.[0] ?? row.verifiedUrl
+  if (url) {
+    try {
+      const u = new URL(url)
+      return `${u.hostname.replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}`
+    } catch { /* fall through */ }
+  }
+  const repo = row.linkedFiles?.find(f => f.verified && f.repoFullName)?.repoFullName
+  if (repo) return `github.com/${repo}`
+  return row.leaderboardName || row.name || row.address
+}
+
+/** What /api/campaigns/1hive returns per sign. Amounts are wei strings; USD is priced client-side. */
+export interface OneHiveSign {
+  address: string
+  site: string
+  strategy: 'streaming' | 'fixed'
+  topMessage: string | null
+  topMarkeeAddress: string | null
+  activatedAt: number
+  views: number
+  /** For Rent: the winning stream rate (wei/sec). For Sale: 0. */
+  topRateRaw: string
+  /** For Sale: the winning message's total (wei). For Rent: 0. */
+  topBidRaw: string
+  totalFundsRaw: string
+  /** For Rent: total ticks forward at this rate (wei/sec) from streamedAt. */
+  streamedRateRaw: string
+  streamedAt: number
+}
 
 export const ONE_HIVE_TERMS: string[] = [
   'Signs need at least 100 views to get funded.',
