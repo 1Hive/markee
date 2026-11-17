@@ -27,7 +27,9 @@ const fs = require('fs');
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const RESUME_FACTORY = process.env.RESUME_FACTORY || null;
-const RPC = 'https://base-mainnet.g.alchemy.com/v2/MfatE-JTmlEIgHxhW40pO';
+// Base RPC from the environment, e.g. `cd frontend && npm run env:dev -- node ../scripts/<this file>`.
+const RPC = process.env.ALCHEMY_BASE_URL;
+if (!RPC) throw new Error('Set ALCHEMY_BASE_URL (a Base mainnet RPC URL) to run this script.');
 // Fresh EOA for this migration — the original automation wallet has EIP-7702 delegation
 // that immediately forwards any received ETH, making it unusable for gas.
 const AUTOMATION_WALLET_PK = '0x79a2f8669bec361add9f5ea7327d645f32d14a16c1969df9087f318bc6acb8d0';

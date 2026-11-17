@@ -36,8 +36,11 @@ function wcwidth(str: string): number {
   return w
 }
 
+// Batched: the parallel reads in readBillboardState (and those of boards synced concurrently)
+// share one eth_call instead of one each.
 const client = createPublicClient({
   chain: base,
+  batch: { multicall: true },
   transport: http(process.env.ALCHEMY_BASE_URL ?? undefined),
 })
 
@@ -382,6 +385,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
   const succeeded = results.filter(r => r.success)
   const failed    = results.filter(r => !r.success)
   const delimiterFails = failed.filter(r => r.error?.toLowerCase().includes('delimiter'))
+  for (const r of failed) console.warn(`[update-markee-file] ${r.repoFullName}/${r.filePath} not synced: ${r.error}`)
 
   let topLevelError: string | undefined
   if (succeeded.length === 0) {
