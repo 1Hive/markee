@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 
@@ -99,13 +100,7 @@ async function loadListing(request: Request) {
     // Use a fixed large limit instead of fetching leaderboardCount first.
     // The two-call pattern (count then fetch) causes new leaderboards to be
     // dropped when Alchemy returns a cached count that's behind the actual state.
-    const addresses = await client.readContract({
-      address: LEADERBOARD_FACTORY_ADDRESS,
-      abi: FACTORY_ABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-      blockNumber,
-    })
+    const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.GITHUB, [LEADERBOARD_FACTORY_ADDRESS, V14_FACTORIES.GITHUB], blockNumber)
 
     if (!addresses || addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0' }, { headers: NO_CACHE })
@@ -158,13 +153,13 @@ async function loadListing(request: Request) {
 
     // Read KV linked files, last-known GitHub traffic counts, and resolved creators in parallel
     const [linkedFilesMap, trafficCounts, origins] = await Promise.all([
-      getLinkedFilesBatch(addresses),
+      getLinkedFilesBatch(addresses, predecessorOf),
       kv.mget<({ count: number } | null)[]>(
         ...addresses.map(addr => `views:github:last:${addr.toLowerCase()}`)
       ),
-      resolveBoardOrigins(client, addresses, {
+      resolveBoardOrigins(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'gh',
-        factories: [LEADERBOARD_FACTORY_ADDRESS],
+        factories: [LEADERBOARD_FACTORY_ADDRESS, V14_FACTORIES.GITHUB],
         fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         logLabel: 'github/leaderboards',
       }),
@@ -192,6 +187,7 @@ async function loadListing(request: Request) {
 
       return {
         address: addr,
+        migratedFrom: predecessorOf.get(addr.toLowerCase()) ?? null,
         name,
         totalFunds: formatEther(displayTotalFundsWei),
         totalFundsRaw: displayTotalFundsWei.toString(),

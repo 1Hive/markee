@@ -30,6 +30,7 @@ function storage(t: any) {
   t.mock.method(viewsWriteDeps, 'get', async () => null)
   t.mock.method(viewsWriteDeps, 'set', async () => 'OK')
   t.mock.method(viewsWriteDeps, 'underRateLimit', async () => true)
+  t.mock.method(viewsWriteDeps, 'currentAddress', async (address: string) => address)
   t.mock.method(automaticDeps, 'get', async (key: string) => records.get(key) ?? null)
   t.mock.method(automaticDeps, 'members', async () => [...soft])
   t.mock.method(automaticDeps, 'mget', async (...keys: string[]) => keys.map(key => records.get(key) ?? null))

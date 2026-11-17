@@ -13,7 +13,8 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
@@ -25,6 +26,7 @@ const CACHE_KEY = 'cache:openinternet:leaderboards'
 
 const OI_FACTORY_ADDRESSES = [
   '0xFD488A0fE8D4Fa99B4A6016EA9C49a860A553F7c', // v1.3 — all OI leaderboards
+  V14_FACTORIES.OPEN_INTERNET,
 ] as const
 
 // Scopes getLogs to just creation events instead of every log the factory has ever emitted
@@ -107,12 +109,7 @@ async function loadListing(request: Request) {
       return results
     }
 
-    const addresses = await client.readContract({
-      address: OI_FACTORY_ADDRESSES[0],
-      abi: LeaderboardFactoryABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }).then(r => r as `0x${string}`[]).catch(() => [] as `0x${string}`[])
+    const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.OPEN_INTERNET, OI_FACTORY_ADDRESSES)
 
     // Multicall for OI factory leaderboard metadata
     const metaCalls = addresses.flatMap(addr => [
@@ -148,7 +145,7 @@ async function loadListing(request: Request) {
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveBoardOrigins(client, addresses, {
+      resolveBoardOrigins(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'oi',
         factories: OI_FACTORY_ADDRESSES,
         fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
@@ -161,7 +158,7 @@ async function loadListing(request: Request) {
       // share the same address-keyed github:markee:{address} KV namespace as forsale/streaming
       // boards, so a website-platform board can have one too even though this factory predates the
       // GitHub integration.
-      getLinkedFilesBatch(addresses),
+      getLinkedFilesBatch(addresses, predecessorOf),
     ])
 
     let markeeCallIndex = 0
@@ -187,11 +184,12 @@ async function loadListing(request: Request) {
       }
 
       const kvMeta = kvMetas[i]
-      const partnerMeta = PARTNER_META[addr.toLowerCase()]
+      const partnerMeta = PARTNER_META[originalBoard(addr, predecessorOf).toLowerCase()]
       const meta = partnerMeta ?? kvMeta
       const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,
+        migratedFrom: predecessorOf.get(addr.toLowerCase()) ?? null,
         name,
         platform: 'website' as const,
         isLegacy: false,

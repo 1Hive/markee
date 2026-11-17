@@ -12,6 +12,7 @@ import { ANVIL, APP_PORT, E2E_ACCOUNT, FORK_BLOCK, KV, KV_TOKEN } from './env'
 const SNAPSHOT_FILE = join(__dirname, '.anvil-snapshot')
 const INSTANCE_FILE = join(__dirname, '.anvil-instance')
 const FOR_SALE_BOARD = '0xa52EB22029677029D4e609aD5e54ca6552c0B31F'
+const BOARD_BEACONS = join(__dirname, 'board-beacons.json')
 
 async function rpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
   const res = await fetch(ANVIL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
@@ -37,6 +38,7 @@ export default async function globalSetup() {
     if (reused || Number(await rpc<string>('eth_blockNumber', [])) !== FORK_BLOCK) {
       throw new Error('The E2E fork cannot restore its clean snapshot. Restart the local fork server before retrying.')
     }
+    await deployBoardBeacons()
     await rpc('eth_call', [{
       from: E2E_ACCOUNT,
       to: FOR_SALE_BOARD,
@@ -50,6 +52,33 @@ export default async function globalSetup() {
   if (!res.ok) throw new Error(`KV flush failed: HTTP ${res.status}`)
 
   await warmUp()
+}
+
+// The pinned block predates the beacon-backed v1.4 factories and migrators. Replaying the recorded
+// mainnet deployment from the same deployer and starting nonce recreates them at their real addresses,
+// so the fork matches production before any board has migrated.
+async function deployBoardBeacons() {
+  const { deployer, nonce, transactions } = JSON.parse(readFileSync(BOARD_BEACONS, 'utf8')) as {
+    deployer: string; nonce: string; transactions: { to: string | null; data: string; gas: string; address?: string }[]
+  }
+  if (await rpc<string>('eth_getCode', [transactions.find(t => t.address)!.address, 'latest']) !== '0x') return
+  await rpc('anvil_impersonateAccount', [deployer])
+  await rpc('anvil_setBalance', [deployer, `0x${parseEther('1').toString(16)}`])
+  await rpc('anvil_setNonce', [deployer, nonce])
+  for (const tx of transactions) {
+    const hash = await rpc<string>('eth_sendTransaction', [{ from: deployer, ...(tx.to ? { to: tx.to } : {}), data: tx.data, gas: tx.gas }])
+    let receipt: { status: string; contractAddress: string | null } | null = null
+    for (let attempt = 0; !receipt && attempt < 60; attempt++) {
+      receipt = await rpc('eth_getTransactionReceipt', [hash])
+      if (!receipt) await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    if (!receipt) throw new Error(`Board beacon deployment replay was never mined: ${hash}`)
+    if (receipt.status !== '0x1') throw new Error(`Board beacon deployment replay reverted at ${tx.address ?? tx.to}`)
+    if (tx.address && receipt.contractAddress?.toLowerCase() !== tx.address.toLowerCase()) {
+      throw new Error(`Board beacon replay deployed ${receipt.contractAddress}, expected ${tx.address}`)
+    }
+  }
+  await rpc('anvil_stopImpersonatingAccount', [deployer])
 }
 
 // The first request to each route compiles it (next dev) and makes Anvil fetch the factories' log

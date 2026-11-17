@@ -20,6 +20,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
+import { BOARD_MIGRATORS, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -30,15 +32,8 @@ const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79'.to
 const BASELINE_PREFIX = 'superfluid:s6:baseline:'
 const KV_RPC_LAST_BLOCK = 'superfluid:cron:rpcLastBlock'
 const KV_SF_MIG_LAST_BLOCK = 'superfluid:cron:sfMigLastBlock'
+const KV_V14_LAST_BLOCK = 'superfluid:cron:v14LastBlock'
 const CACHE_KEY = 'cache:superfluid:leaderboards'
-
-const FACTORY_ABI = [{
-  inputs: [{ name: 'offset', type: 'uint256' }, { name: 'limit', type: 'uint256' }],
-  name: 'getLeaderboards',
-  outputs: [{ name: 'result', type: 'address[]' }],
-  stateMutability: 'view',
-  type: 'function',
-}] as const
 
 const LEADERBOARD_ABI = [{
   inputs: [{ name: 'limit', type: 'uint256' }],
@@ -59,14 +54,9 @@ export async function GET(request: NextRequest) {
     transport: http(process.env.ALCHEMY_BASE_URL ?? 'https://mainnet.base.org'),
   })
 
-  const addresses = await client.readContract({
-    address: SUPERFLUID_FACTORY,
-    abi: FACTORY_ABI,
-    functionName: 'getLeaderboards',
-    args: [0n, 1000n],
-  }) as `0x${string}`[]
+  const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.SUPERFLUID, [SUPERFLUID_FACTORY, V14_FACTORIES.SUPERFLUID])
 
-  const toSnapshot = addresses.filter(a => a.toLowerCase() !== SF_MIGRATION_LEADERBOARD)
+  const toSnapshot = addresses.filter(a => originalBoard(a, predecessorOf).toLowerCase() !== SF_MIGRATION_LEADERBOARD)
 
   // Multicall getTopMarkees(1) for each leaderboard
   const calls = toSnapshot.map(addr => ({
@@ -106,6 +96,7 @@ export async function GET(request: NextRequest) {
   await Promise.all([
     kv.set(KV_RPC_LAST_BLOCK, latestBlock.toString()),
     kv.set(KV_SF_MIG_LAST_BLOCK, latestBlock.toString()),
+    kv.set(KV_V14_LAST_BLOCK, latestBlock.toString()),
     kv.del(CACHE_KEY),
     kv.del(`sdk:snapshots:v1:listings:${CACHE_KEY}`),
   ])
