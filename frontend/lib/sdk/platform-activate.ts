@@ -5,7 +5,8 @@ import type { Placement } from '../../../packages/sdk/src/types';
 import { getEnvPublicClient, getRpcUrlForChain, resolveClientChain } from './chains';
 import { consumeMarkeeChallenge, reserveMarkeeChallengeIssue, saveMarkeeChallenge } from './gardens/challenge-store';
 import { recordAdminBroadcast } from './operations';
-import { platformAdapter, platformCommunity, platformEnabled, platformIdHash, platformKey, registrarABI, registrarAddress, type PlatformPlacement, type Strategy } from './platforms';
+import { markeeAdapter } from './gardens/revenue';
+import { platformAdapter, platformCommunity, platformEnabled, platformIdHash, platformKey, platformTag, registrarABI, registrarAddress, type PlatformPlacement, type Strategy } from './platforms';
 import { address, object, placement, SDKError } from './validation';
 
 const namespace = 'platform-activate-direct-v2';
@@ -36,6 +37,12 @@ function domain(c: Challenge) {
 async function currentFactory(registrar: Address, strategy: Strategy) {
   return getEnvPublicClient(8453).readContract({ address: registrar, abi: registrarABI, functionName: strategy === 'sale' ? 'saleFactory' : 'rentFactory' });
 }
+/** A Gardens community already live through the gardens-community router must not get a second board. */
+async function legacyGardensBoard(p: PlatformPlacement): Promise<boolean> {
+  if (p.platformId !== 'gardens') return false;
+  const { integration } = await markeeAdapter.getCommunityIntegration(p.chainId, getAddress(p.communityId));
+  return integration.leaderboardAddress !== null || integration.vaultAddress !== null;
+}
 function parseChallenge(raw: unknown) {
   const body = object(raw);
   const p: Placement = placement(body.placement);
@@ -51,12 +58,13 @@ export async function platformActivate(raw: unknown): Promise<Record<string, unk
     const registrar = registrarAddress();
     const operator = operatorAccount();
     await reserveMarkeeChallengeIssue({ namespace, subject: `${platformKey(request.placement)}:${request.account}` });
-    const [community, authority, operatorEnabled, factory] = await Promise.all([
-      platformCommunity(request.placement), platformAdapter(request.placement).authority(request.placement, request.account),
+    const [community, legacy, authority, operatorEnabled, factory] = await Promise.all([
+      platformCommunity(request.placement), legacyGardensBoard(request.placement),
+      platformAdapter(request.placement).authority(request.placement, request.account),
       getEnvPublicClient(8453).readContract({ address: registrar, abi: registrarABI, functionName: 'operators', args: [operator.address] }),
       currentFactory(registrar, request.strategy),
     ]);
-    if (community.integration.status !== 'not_integrated') throw new SDKError('ALREADY_ACTIVE', 'This community already has a Markee board.', 409);
+    if (community.integration.status !== 'not_integrated' || legacy) throw new SDKError('ALREADY_ACTIVE', 'This community already has a Markee board.', 409);
     if (!authority.authorized) throw new SDKError('NOT_AUTHORIZED', 'The connected wallet cannot activate this community.', 403);
     if (!operatorEnabled || factory === zeroAddress) throw new SDKError('PLATFORM_NOT_CONFIGURED', 'Community creation is not enabled.', 503);
     const nonce = BigInt(`0x${randomBytes(32).toString('hex')}`) || 1n;
@@ -77,7 +85,7 @@ export async function platformActivate(raw: unknown): Promise<Record<string, unk
   if (!challenge || challenge.deadline <= Math.floor(Date.now() / 1000)) throw new SDKError('AUTHORIZATION_EXPIRED', 'Authorization expired or was already used.', 401);
   if (!platformEnabled(challenge.placement)) throw new SDKError('PLATFORM_DISABLED', 'Platform activation is not enabled.', 503);
   const current = await platformCommunity(challenge.placement, challenge.account);
-  if (current.integration.status !== 'not_integrated') throw new SDKError('ALREADY_ACTIVE', 'This community already has a Markee board.', 409);
+  if (current.integration.status !== 'not_integrated' || await legacyGardensBoard(challenge.placement)) throw new SDKError('ALREADY_ACTIVE', 'This community already has a Markee board.', 409);
   if (!current.permissions?.canActivate) throw new SDKError('AUTHORIZATION_CHANGED', 'Community permissions changed. Request a new authorization.', 409);
   if (registrarAddress() !== challenge.registrar || await currentFactory(challenge.registrar, challenge.strategy) !== challenge.factory) throw new SDKError('AUTHORIZATION_CHANGED', 'The community registrar changed. Request a new authorization.', 409);
   const client = getEnvPublicClient(challenge.placement.chainId);
@@ -89,7 +97,7 @@ export async function platformActivate(raw: unknown): Promise<Record<string, unk
   const args = [platformIdHash(challenge.placement.platformId), BigInt(challenge.placement.chainId), challenge.message.communityId,
     strategyNumber(challenge.strategy), challenge.account, challenge.beneficiary,
     `${challenge.placement.platformId} community ${challenge.placement.communityId}`,
-    challenge.placement.platformId, challenge.placement.communityId] as const;
+    challenge.placement.platformId, platformTag(challenge.placement)] as const;
   const simulation = await base.simulateContract({ account, address: challenge.registrar, abi: registrarABI, functionName: 'createBoard', args });
   const gas = (await base.estimateContractGas(simulation.request) * 125n + 99n) / 100n;
   const gasPrice = await base.getGasPrice();

@@ -58,6 +58,35 @@ contract MockExistingBoard {
     }
 }
 
+contract MockAdministeredBoard {
+    address public admin;
+    address public seedOwner;
+
+    constructor(address owner) {
+        admin = owner;
+        seedOwner = owner;
+    }
+
+    function setAdmin(address next) external {
+        require(msg.sender == admin);
+        admin = next;
+    }
+
+    function transferMarkeeOwnership(address, address next) external {
+        require(msg.sender == seedOwner);
+        seedOwner = next;
+    }
+}
+
+contract MockAdministeredRentFactory {
+    function createLeaderboard(address, string calldata, string calldata, string calldata)
+        external
+        returns (address board, address seedMarkee)
+    {
+        return (address(new MockAdministeredBoard(msg.sender)), address(0xB12));
+    }
+}
+
 contract MockGivethProjectData {
     address public recipient;
     bool public available = true;
@@ -116,6 +145,41 @@ contract PlatformIntegrationTest is RevenueTestBase {
         registrar.createBoard(
             REVNET, 8453, bytes32(uint256(8)), CommunityBoardRegistrar.Strategy.Rent, "Other", "Revnet", "8"
         );
+    }
+
+    function testGovernanceHandsOffRegistrarBoardAndSeed() public {
+        CommunityBoardRegistrar registrar = CommunityBoardRegistrar(
+            address(
+                new ERC1967Proxy(
+                    address(new CommunityBoardRegistrar()),
+                    abi.encodeCall(
+                        CommunityBoardRegistrar.initialize,
+                        (address(this), address(router), address(new MockSaleFactory()), address(new MockAdministeredRentFactory()))
+                    )
+                )
+            )
+        );
+        router.setRegistrar(REVNET, address(registrar));
+        registrar.setOperator(address(this), true);
+        bytes32 id = bytes32(uint256(7));
+        CommunityBoardRegistrar.Integration memory created =
+            registrar.createBoard(REVNET, 8453, id, CommunityBoardRegistrar.Strategy.Rent, "Sample", "Revnet", "7");
+        bytes32 boardKey = RevenueIdentity.key(REVNET, 8453, id);
+        MockAdministeredBoard board = MockAdministeredBoard(created.board);
+        assertEq(board.admin(), address(registrar));
+        assertEq(board.seedOwner(), address(registrar));
+        vm.prank(address(0xBAD));
+        vm.expectRevert();
+        registrar.setBoardAdmin(boardKey, address(0xBAD));
+        vm.prank(address(0xBAD));
+        vm.expectRevert();
+        registrar.transferSeedMarkee(boardKey, address(0xBAD));
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.setBoardAdmin(bytes32(uint256(1)), safe);
+        registrar.transferSeedMarkee(boardKey, safe);
+        registrar.setBoardAdmin(boardKey, safe);
+        assertEq(board.seedOwner(), safe);
+        assertEq(board.admin(), safe);
     }
 
     function testGivethPrototypeDeliversToCurrentBaseRecipientAndEscrowsOutage() public {

@@ -14,7 +14,6 @@ export interface PlatformAdapter {
   recipient(p: PlatformIdentity): Promise<Address | null>;
 }
 
-const councilABI = parseAbi(['function isOwner(address) view returns (bool)']);
 const registryFactoryABI = parseAbi(['function getCommunityValidity(address) view returns (bool)']);
 const projectsABI = parseAbi(['function ownerOf(uint256) view returns (address)']);
 const permissionsABI = parseAbi(['function hasPermission(address operator, address account, uint256 projectId, uint256 permissionId, bool includeRoot, bool includeWildcardProjectId) view returns (bool)']);
@@ -42,8 +41,9 @@ const gardens: PlatformAdapter = {
   async authority(p, account) {
     const recipient = await this.recipient(p);
     if (!recipient) return { authorized: false, recipient };
-    const authorized = same(account, recipient) || await getEnvPublicClient(p.chainId).readContract({ address: recipient, abi: councilABI, functionName: 'isOwner', args: [account] });
-    return { authorized, recipient };
+    // Only the council Safe itself (ERC-1271, so its threshold applies) may
+    // activate. A single Safe owner must not choose the board admin and payout.
+    return { authorized: same(account, recipient), recipient };
   },
 };
 
@@ -72,6 +72,11 @@ export function platformAdapter(p: PlatformPlacement): PlatformAdapter {
   throw new SDKError('UNSUPPORTED_PLATFORM', 'This platform is not enabled.', 422);
 }
 export const platformIdHash = (id: string) => keccak256(stringToHex(id));
+/** Factory platform tags are capped at 31 bytes; the registrar mapping is the authoritative identity. */
+export function platformTag(p: PlatformIdentity): string {
+  const id = p.platformId === 'gardens' ? getAddress(p.communityId).toLowerCase() : projectId(p).toString();
+  return id.slice(0, 31);
+}
 export function platformKey(p: PlatformPlacement): Hex {
   if (!['gardens', 'revnet', 'giveth'].includes(p.platformId)) throw new SDKError('UNSUPPORTED_PLATFORM', 'Unknown platform.', 422);
   const id = p.platformId === 'gardens' ? gardens.communityId(p) : `0x${projectId(p).toString(16).padStart(64, '0')}` as Hex;

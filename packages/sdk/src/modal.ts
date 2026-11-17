@@ -37,6 +37,13 @@ export const boardMessageCount = (s: Pick<Snapshot, 'entries' | 'nextOffset' | '
 const btn = (cmd: string, label: string, cls = '', attrs = '') => `<button type="button" class="btn ${cls}" data-cmd="${cmd}" ${attrs}>${label}</button>`;
 const link = (url: string, label: string) => /^https:\/\//.test(url) ? `<a href="${e(url)}" target="_blank" rel="noopener noreferrer">${e(label)} ↗</a>` : '';
 
+/** Compare platform placements by identity, not by key order or ID formatting. */
+function samePlatformPlacement(a: Placement | undefined, b: Placement): boolean {
+  if (a?.kind !== 'platform-community' || b.kind !== 'platform-community') return false;
+  const id = (p: typeof b) => { try { return p.platformId === 'gardens' ? p.communityId.toLowerCase() : BigInt(p.communityId).toString(); } catch { return p.communityId; } };
+  return a.platformId === b.platformId && a.chainId === b.chainId && id(a) === id(b);
+}
+
 export class MarkeeModal {
   private host: HTMLDivElement;
   private root: ShadowRoot;
@@ -171,7 +178,7 @@ export class MarkeeModal {
       const auth = this.client.pendingAuthorization();
       this.adminProcessing = !!auth && auth.account.toLowerCase() === account?.toLowerCase() && auth.chainId === this.options.placement.chainId && (
         this.options.placement.kind === 'gardens-community' && auth.community?.toLowerCase() === this.options.placement.community.toLowerCase()
-        || this.options.placement.kind === 'platform-community' && JSON.stringify(auth.placement) === JSON.stringify(this.options.placement));
+        || this.options.placement.kind === 'platform-community' && samePlatformPlacement(auth.placement, this.options.placement));
       this.render();
       if (this.pending) void this.poll();
     } catch (error) { if (!this.closed && epoch === this.epoch) this.fail(error); }

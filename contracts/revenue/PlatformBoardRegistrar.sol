@@ -17,6 +17,9 @@ interface IPlatformBoard {
     function beneficiaryAddress() external view returns (address);
     function setAdmin(address newAdmin) external;
 }
+interface IPlatformRentBoard {
+    function transferMarkeeOwnership(address markee, address newOwner) external;
+}
 
 /// @notice One Base leaderboard per registered platform identity. No vault or bridge is involved.
 /// @dev Markee's API verifies the platform owner's signed activation before its operator calls createBoard.
@@ -38,6 +41,7 @@ contract PlatformBoardRegistrar is RevenueUpgradeable {
 
     event OperatorSet(address indexed operator, bool enabled);
     event FactoriesSet(address indexed saleFactory, address indexed rentFactory);
+    event SeedMarkeeTransferred(bytes32 indexed key, address indexed seedMarkee, address indexed newOwner);
     event BoardRegistered(bytes32 indexed key, bytes32 indexed platformId, uint256 chainId, bytes32 communityId,
         Strategy strategy, address board, address seedMarkee, address activator, address beneficiary);
 
@@ -90,5 +94,17 @@ contract PlatformBoardRegistrar is RevenueUpgradeable {
         integration = Integration(board, seedMarkee, strategy, activator, beneficiary);
         integrations[key] = integration;
         emit BoardRegistered(key, platformId, chainId, communityId, strategy, board, seedMarkee, activator, beneficiary);
+    }
+
+    /// @notice The board's current admin takes over the seed Markee the factory assigned to this registrar.
+    /// @dev Only For Rent boards expose a seed-ownership transfer; For Sale v1.4 boards do not.
+    function transferSeedMarkee(bytes32 key, address newOwner) external nonReentrant {
+        Integration memory integration = integrations[key];
+        if (integration.board == address(0) || integration.strategy != Strategy.Rent || newOwner == address(0)) {
+            revert InvalidConfiguration();
+        }
+        if (msg.sender != IPlatformBoard(integration.board).admin()) revert Unauthorized();
+        IPlatformRentBoard(integration.board).transferMarkeeOwnership(integration.seedMarkee, newOwner);
+        emit SeedMarkeeTransferred(key, integration.seedMarkee, newOwner);
     }
 }
