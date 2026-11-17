@@ -197,6 +197,12 @@ Refunds flow automatically when connected to the message’s refund pool. **Coll
 
 Community activation supports the current council Safe, a current Safe owner, or the configured authorized keeper. Revenue claims support the current Safe or its current owners and always pay the council treasury. Existing outbound Across, Squid and LI.FI routing lives on Markee's server.
 
+### Platform communities (deployment preview)
+
+The SDK also accepts `{ kind: 'platform-community', platformId: 'gardens', chainId: 100, communityId: registryCommunityAddress }` or `{ kind: 'platform-community', platformId: 'revnet', chainId: 8453, communityId: projectId }`. Markee's API resolves the owner, destination and board; the host app supplies neither RPC credentials nor a revenue wallet. `allowedStrategies?: Array<'sale' | 'rent'>` limits the choices shown at activation. The API still checks the platform owner/signature independently. Activation selects exactly one strategy, permanently for that community board.
+
+The generic registrar and revenue route must be deployed and configured before these placements can activate. Giveth Projects are a mock-only adapter design test and are not a public placement. Existing `board` and `gardens-community` placements remain supported. This branch does not yet provide a generic revenue-claim action or a live cross-chain delivery guarantee; do not use its new placement for a production community until those rollout gates are met.
+
 ## Integration boundaries
 
 - Current board versions: `1.3.0` and `1.4.0` For Sale and `streaming-1.0.0` and `streaming-1.1.0` For Rent, on Base and configured Sepolia deployments. Additional factories must be enabled on Markee's server. Legacy strategy versions are rejected explicitly.

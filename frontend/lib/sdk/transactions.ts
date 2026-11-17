@@ -36,7 +36,7 @@ export function verifyEnvelope(id: string): Envelope {
 export async function prepare(p: Placement, account: Address, action: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
   const resolved = await resolvePlacement(p);
   if (!resolved.board) throw new SDKError('INACTIVE_COMMUNITY', 'Activate the community Markee first.', 409);
-  const c = await boardContext(resolved.chainId, resolved.board, p.kind === 'gardens-community');
+  const c = await boardContext(resolved.chainId, resolved.board, p.kind !== 'board');
   let to = c.board;
   let data: Hex;
   let value = 0n;

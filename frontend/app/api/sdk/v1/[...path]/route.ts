@@ -22,6 +22,7 @@ import * as views from '@/app/api/views/route';
 import { checkoutEnabled, checkoutOrigin, createCheckout, checkoutRequest } from '@/lib/sdk/checkout';
 import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
+import { platformActivate } from '@/lib/sdk/platform-activate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,6 +69,16 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
     }
     if (request.method === 'POST') {
       if (path === 'moderation/check') return cors(await moderationCheck(request), request);
+      if (path === 'platform/activate') {
+        const body = object(await readLimitedJsonBody(request, 16 * 1024));
+        if (body.action !== 'verify') return cors(NextResponse.json(await platformActivate(body)), request);
+        if (typeof body.nonce !== 'string' || !/^[1-9][0-9]{0,77}$/.test(body.nonce) || typeof body.signature !== 'string' || !isHex(body.signature)) throw new SDKError('INVALID_AUTHORIZATION', 'Invalid authorization.');
+        const rebuilt = new Request(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        return cors(await executeAdmin(path, rebuilt, { nonce: body.nonce, signature: body.signature }, async () => {
+          try { return Response.json(await platformActivate(body)); }
+          catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Community activation failed.' }, { status: error instanceof SDKError ? error.status : 502 }); }
+        }), request);
+      }
       if (path === 'community/activate' || path === 'community/claim') {
         const body = object(await readLimitedJsonBody(request, 16 * 1024));
         const handler = path === 'community/activate' ? activate.POST : claim.POST;

@@ -48,7 +48,7 @@ export async function discoverWallets(): Promise<DiscoveredWallet[]> {
 const isAddress = (value: unknown): value is Address => typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value);
 const isHash = (value: unknown): value is Hex => typeof value === 'string' && /^0x[\da-f]{64}$/i.test(value);
 export interface PendingTransaction { preparation: PreparedAction; hash: Hex }
-export interface PendingAuthorization { kind: 'activate' | 'claim'; nonce: string; signature: Hex; account: Address; community: Address; chainId: number }
+export interface PendingAuthorization { kind: 'activate' | 'claim' | 'platform-activate'; nonce: string; signature: Hex; account: Address; community?: Address; chainId: number; placement?: Placement }
 
 export class MarkeeClient {
   readonly apiUrl: string;
@@ -212,6 +212,20 @@ export class MarkeeClient {
     if (!account) throw new MarkeeError('Connect your community council wallet first.');
     return this.request(`community/${kind}`, { action: 'challenge', chainId: placement.chainId, community: placement.community, account });
   }
+  async authorizePlatform(placement: Extract<Placement, { kind: 'platform-community' }>, strategy: 'sale' | 'rent'): Promise<Authorization> {
+    const account = await this.account();
+    if (!account) throw new MarkeeError('Connect the community owner wallet first.', 'NOT_CONNECTED');
+    return this.request('platform/activate', { action: 'challenge', placement, strategy, account });
+  }
+  async executePlatformAuthorization(placement: Extract<Placement, { kind: 'platform-community' }>, authorization: Authorization, account: Address): Promise<AdminOperation> {
+    if (this.pendingAuthorization()) throw new MarkeeError('An earlier community authorization is still processing. Check its status first.');
+    const typedData = authorization.typedData;
+    const provider = await this.ensureWallet(account, typedData.domain.chainId);
+    const signature = await provider.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify({ ...typedData, types: { ...typedData.types, EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }] } })] });
+    if (typeof signature !== 'string' || !/^0x[\da-f]+$/i.test(signature)) throw new MarkeeError('Wallet did not return a typed-data signature.');
+    this.saveAuthorization({ kind: 'platform-activate', nonce: authorization.nonce, signature: signature as Hex, account, placement, chainId: placement.chainId });
+    return this.resumeAuthorization();
+  }
   async executeAuthorization(kind: 'activate' | 'claim', authorization: Authorization, account: Address): Promise<AdminOperation> {
     if (this.pendingAuthorization()) throw new MarkeeError('An earlier community authorization is still processing. Check its status first.');
     const typedData = authorization.typedData;
@@ -226,7 +240,7 @@ export class MarkeeClient {
     for (const origin of storageOrigins(this.apiUrl)) {
       try {
         const saved = JSON.parse(localStorage.getItem(`${this.storageKey(origin)}:admin`) || 'null');
-        if (saved && ['activate', 'claim'].includes(saved.kind) && isAddress(saved.account) && isAddress(saved.community) && typeof saved.nonce === 'string' && typeof saved.signature === 'string') {
+        if (saved && ['activate', 'claim', 'platform-activate'].includes(saved.kind) && isAddress(saved.account) && (saved.kind === 'platform-activate' ? saved.placement?.kind === 'platform-community' : isAddress(saved.community)) && typeof saved.nonce === 'string' && typeof saved.signature === 'string') {
           this.adminOrigin = origin; return saved;
         }
       } catch { /* Continue searching the known prior API. */ }
@@ -241,8 +255,9 @@ export class MarkeeClient {
   async resumeAuthorization(): Promise<AdminOperation> {
     const pending = this.pendingAuthorization();
     if (!pending) throw new MarkeeError('There is no pending community authorization.');
-    const op = await this.recoveryClient(this.adminOrigin).request<AdminOperation>(`community/${pending.kind}`, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
-    if (op.status === 'complete' && op.result) {
+    const route = pending.kind === 'platform-activate' ? 'platform/activate' : `community/${pending.kind}`;
+    const op = await this.recoveryClient(this.adminOrigin).request<AdminOperation>(route, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
+    if (op.status === 'complete' && op.result && pending.community) {
       const key = `${pending.chainId}:${pending.community.toLowerCase()}`;
       this.communityReceipts[key] = op.result;
       try { if (typeof localStorage !== 'undefined') localStorage.setItem(`${this.storageKey()}:community:${key}`, JSON.stringify(op.result)); } catch { /* Session fallback. */ }

@@ -6,6 +6,7 @@ import { MARKEE_TOKEN } from '../contracts/addresses';
 import { boardABI, cfaABI, gdaABI, messageABI, poolABI, tokenABI } from './abi';
 import { getEnvPublicClient, registryCommunityABI } from './chains';
 import { markeeAdapter } from './gardens/revenue';
+import { platformCommunity } from './platforms';
 import { CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, getMarkeeEthxAddress, getMarkeeWithdrawableDeposit, superfluidHostABI } from './gardens/streaming';
 import { SDKError } from './validation';
 import { strategyForBoardVersion, type Strategy } from '../strategy';
@@ -32,6 +33,10 @@ export async function communityPermissions(chainId: number, community: Address, 
 export async function resolvePlacement(p: Placement, account?: Address) {
   let community: CommunityState | undefined;
   if (p.kind === 'board') return { board: p.address, chainId: p.chainId, community };
+  if (p.kind === 'platform-community') {
+    community = await platformCommunity(p, account);
+    return { board: community.integration.leaderboardAddress, chainId: community.markeeChainId, community };
+  }
   community = await markeeAdapter.getCommunityIntegration(p.chainId, p.community);
   if (account) {
     community.permissions = await communityPermissions(p.chainId, p.community, account);
@@ -111,8 +116,8 @@ export async function walletState(c: BoardContext, account: Address): Promise<Wa
 async function loadSnapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
   const resolved = await resolvePlacement(p);
   const warnings: string[] = [];
-  if (!resolved.board) return { apiVersion: 1, placement: p, board: null, chainId: resolved.chainId, strategy: 'rent', name: 'Community Markee', minimum: '0', maxMessageBytes: 0, maxNameBytes: 0, revnetEnabled: false, token: null, entries: [], nextOffset: null, count: 0, top: null, rankedTop: null, wallet: null, community: resolved.community, warnings, blockNumber: '0' };
-  const c = await boardContext(resolved.chainId, getAddress(resolved.board), p.kind === 'gardens-community');
+  if (!resolved.board) return { apiVersion: 1, placement: p, board: null, chainId: resolved.chainId, strategy: p.kind === 'platform-community' && p.platformId === 'revnet' ? 'sale' : 'rent', name: 'Community Markee', minimum: '0', maxMessageBytes: 0, maxNameBytes: 0, revnetEnabled: false, token: null, entries: [], nextOffset: null, count: 0, top: null, rankedTop: null, wallet: null, community: resolved.community, warnings, blockNumber: '0' };
+  const c = await boardContext(resolved.chainId, getAddress(resolved.board), p.kind !== 'board');
   const [addresses, wallet] = await Promise.all([
     offset !== undefined ? c.r<Address[]>('getMarkees', [BigInt(offset), 20n]) : c.ranked[0],
     account ? walletState(c, account) : null,
@@ -153,9 +158,14 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
   }
   // Permissions are never cached with display data. Preparation separately
   // resolves current routing; a display cache is never an authorization source.
-  if (p.kind === 'gardens-community' && account) {
-    const permissions = await communityPermissions(p.chainId, p.community, account);
-    if (result.community) result = { ...result, community: { ...result.community, permissions } };
+  if (p.kind !== 'board' && account) {
+    if (p.kind === 'gardens-community') {
+      const permissions = await communityPermissions(p.chainId, p.community, account);
+      if (result.community) result = { ...result, community: { ...result.community, permissions } };
+    } else {
+      const current = await platformCommunity(p, account);
+      if (result.community) result = { ...result, community: { ...result.community, permissions: current.permissions, platform: current.platform } };
+    }
   }
   return applySnapshotModeration(result, severity);
 }

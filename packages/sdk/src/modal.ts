@@ -50,7 +50,8 @@ export class MarkeeModal {
   private renderedView = '';
   private form?: FormState;
   private review?: PreparedAction;
-  private authorization?: { kind: 'activate' | 'claim'; value: Authorization; account: Address };
+  private authorization?: { kind: 'activate' | 'claim' | 'platform-activate'; value: Authorization; account: Address };
+  private selectedStrategy: 'sale' | 'rent' = 'rent';
   private adminResult?: AdminResult;
   private adminProcessing = false;
   private result?: TransactionResult;
@@ -90,6 +91,9 @@ export class MarkeeModal {
   };
   constructor(readonly client: MarkeeClient, readonly options: ModalOptions) {
     if (typeof document === 'undefined') throw new Error('Open the Markee modal in a browser.');
+    if (options.placement.kind === 'platform-community' && options.placement.platformId === 'revnet') {
+      this.selectedStrategy = 'sale';
+    }
     client.registerSite(options.placement);
     this.previousFocus = document.activeElement as HTMLElement | null;
     this.previousOverflow = document.body.style.overflow;
@@ -159,7 +163,9 @@ export class MarkeeModal {
       if (this.options.placement.kind === 'gardens-community') this.adminResult = this.client.communityReceipt(this.options.placement) || undefined;
       this.pending = account ? this.client.pending(this.options.placement, account) : undefined;
       const auth = this.client.pendingAuthorization();
-      this.adminProcessing = !!auth && this.options.placement.kind === 'gardens-community' && auth.account.toLowerCase() === account?.toLowerCase() && auth.community.toLowerCase() === this.options.placement.community.toLowerCase() && auth.chainId === this.options.placement.chainId;
+      this.adminProcessing = !!auth && auth.account.toLowerCase() === account?.toLowerCase() && auth.chainId === this.options.placement.chainId && (
+        this.options.placement.kind === 'gardens-community' && auth.community?.toLowerCase() === this.options.placement.community.toLowerCase()
+        || this.options.placement.kind === 'platform-community' && JSON.stringify(auth.placement) === JSON.stringify(this.options.placement));
       this.render();
       if (this.pending) void this.poll();
     } catch (error) { if (!this.closed && epoch === this.epoch) this.fail(error); }
@@ -273,6 +279,7 @@ export class MarkeeModal {
     if (this.busy) return;
     this.captureDraft();
     if (cmd === 'leaderboard') { this.leaderboardOpen = !this.leaderboardOpen; this.render(); return; }
+    if (cmd.startsWith('strategy:')) { const strategy = cmd.slice(9); if (strategy === 'sale' || strategy === 'rent') { this.selectedStrategy = strategy; this.render(); } return; }
     if (cmd === 'create') { this.tab = 'main'; this.form = undefined; this.review = undefined; this.render(); return; }
     if (cmd.startsWith('tab:')) { this.tab = cmd.slice(4); this.review = undefined; this.authorization = undefined; this.render(); return; }
     if (cmd === 'back') {
@@ -365,13 +372,20 @@ export class MarkeeModal {
         const [kind, markee] = cmd.split(':'); await this.prepare({ kind, markee } as Action);
       } else if (cmd === 'activate' || cmd === 'claim') {
         const placement = this.options.placement;
-        if (placement.kind !== 'gardens-community' || !this.account) return;
+        if (placement.kind === 'board' || !this.account) return;
         const account = this.account;
-        this.authorization = { kind: cmd, account, value: await this.client.authorize(placement, cmd) };
+        if (placement.kind === 'platform-community') {
+          if (cmd !== 'activate') return;
+          const allowed = this.allowedStrategies();
+          const strategy = allowed.includes(this.selectedStrategy) ? this.selectedStrategy : allowed[0];
+          this.authorization = { kind: 'platform-activate', account, value: await this.client.authorizePlatform(placement, strategy) };
+        } else this.authorization = { kind: cmd, account, value: await this.client.authorize(placement, cmd) };
         this.review = undefined;
       } else if (cmd === 'sign' && this.authorization) {
         const auth = this.authorization;
-        try { await this.applyAdmin(await this.client.executeAuthorization(auth.kind, auth.value, auth.account)); }
+        try { await this.applyAdmin(await (auth.kind === 'platform-activate' && this.options.placement.kind === 'platform-community'
+          ? this.client.executePlatformAuthorization(this.options.placement, auth.value, auth.account)
+          : this.client.executeAuthorization(auth.kind as 'activate' | 'claim', auth.value, auth.account))); }
         finally { if (this.client.pendingAuthorization()) { this.authorization = undefined; this.adminProcessing = true; } }
       } else if (cmd === 'admin-check') {
         await this.applyAdmin(await this.client.resumeAuthorization());
@@ -469,7 +483,7 @@ export class MarkeeModal {
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
-    return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'activate' ? 'Activate this community’s Markee' : 'Claim community revenue'}</h2><p>A signed authorization lets Markee’s keeper execute this action. The server rechecks your current council role before submitting it.</p><div class="card stack">${['registryCommunity', 'recipient', 'leaderboardFactory'].filter(k => message[k]).map(k => `<div class="meta">${e(k)}<br><strong class="mono">${e(message[k])}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community council treasury. Bridged claims remain pending until destination delivery is confirmed.' : 'This creates the community board and its revenue vault on the Markee chain.'}</p>`;
+    return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'claim' ? 'Claim community revenue' : 'Activate this community’s Markee'}</h2><p>A signed authorization lets Markee’s operator execute this action after checking your current community rights.</p><div class="card stack">${['registryCommunity', 'recipient', 'leaderboardFactory', 'communityKey', 'factory', 'strategy'].filter(k => message[k] !== undefined).map(k => `<div class="meta">${e(k)}<br><strong class="mono">${e(String(message[k]))}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community treasury. Bridged claims remain pending until destination delivery is confirmed.' : 'This creates one community board and its revenue vault on Base.'}</p>`;
   }
   private entryMessage(entry: Entry) {
     return entry.moderated === false ? entry.message : entry.moderation?.state === 'soft-flagged' ? entry.moderation?.reason || 'This message is hidden by automatic moderation.' : 'This message is hidden by moderation.';
@@ -564,10 +578,19 @@ export class MarkeeModal {
     html += `<div class="divider"></div><div class="card"><div class="stat"><span>Available ETHx</span><strong>${formatEth(w.ethx)} ETHx</strong></div><div class="stat"><span>This board’s monthly rate</span><strong>${formatEth((BigInt(w.flowRate) * 2628000n).toString())} ETH</strong></div><div class="stat"><span>Refund flow / month</span><strong>${formatEth((BigInt(w.refundRate) * 2628000n).toString())} ETHx</strong></div><div class="stat"><span>Runway across all ETHx flows</span><strong>${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div><p class="meta">Snapshot at ${new Date(w.observedAt * 1000).toLocaleTimeString()}. Balances and rates can change.</p><div class="row">${BigInt(w.flowRate) > 0n ? btn('stop', 'Stop stream', 'danger') : ''}${w.backedMarkee && !w.poolConnected ? btn(`connect-refund:${w.backedMarkee}`, 'Connect refund pool', 'accent') : ''}${btn('refresh', 'Refresh balances')}</div></div><div class="divider"></div><h3>Manage ETHx</h3><form data-form="balance"><div class="grid"><div><label for="kind">Action</label><select id="kind" name="kind"><option value="wrap">Deposit ETH → ETHx</option><option value="unwrap">Withdraw ETHx → ETH</option></select></div>${this.field('amount', 'Amount', '0.001')}</div><button type="submit" class="btn">Review balance change</button></form><div class="divider"></div><div class="card"><h3>Buffer and rewards</h3><div class="stat"><span>Refundable board buffer</span><strong>${formatEth(w.withdrawableDeposit)} ETHx</strong></div><div class="stat"><span>Accrued rent to settle</span><strong>${formatEth(w.pendingSettlement)} ETH</strong></div><p class="meta">Rewards come from actual rent spent, not the ETH deposited into your wallet.</p><div class="row">${BigInt(w.withdrawableDeposit) > 0n ? btn('withdraw-buffer', 'Recover buffer') : ''}${BigInt(w.pendingSettlement) > 0n ? btn('settle', s.revnetEnabled ? 'Claim MARKEE' : 'Settle rent', 'primary') : ''}${w.backedMarkee && BigInt(w.poolClaimable) > 0n ? btn(`claim-refund:${w.backedMarkee}`, 'Collect pool refund') : ''}</div></div>`;
     return html;
   }
+  private allowedStrategies(): Array<'sale' | 'rent'> {
+    if (this.options.placement.kind !== 'platform-community') return ['rent'];
+    const supported: Array<'sale' | 'rent'> = this.options.placement.platformId === 'gardens' ? ['rent'] : ['sale', 'rent'];
+    const chosen = this.client.options.allowedStrategies;
+    return chosen?.length ? supported.filter(strategy => chosen.includes(strategy)) : supported;
+  }
   private communityHtml() {
     const c = this.snapshot!.community;
     if (!c) return '';
-    return `<h2>Community treasury</h2><p class="muted">Community council members can activate Markee and collect community revenue.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}<div class="row">${this.adminProcessing ? '<p class="note">A signed community action is processing. Check it before authorizing another.</p>' + btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect council wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>${this.adminResult ? `<div class="success">Source transaction confirmed. ${link(this.adminResult.transactionUrl || '', 'View transaction')}${this.adminResult.bridged ? '<p>Bridge delivery is tracked separately from the source transaction.</p>' : ''}${btn('bridge', 'Check transfer status')}</div>` : ''}`;
+    const generic = this.options.placement.kind === 'platform-community';
+    const strategies = generic && c.integration.status !== 'active' ? this.allowedStrategies() : [];
+    const choice = strategies.length > 1 ? `<div class="row" role="group" aria-label="Board strategy">${strategies.map(strategy => btn(`strategy:${strategy}`, strategy === 'rent' ? 'For Rent' : 'For Sale', strategy === this.selectedStrategy ? 'selected' : '')).join('')}</div>` : '';
+    return `<h2>Community treasury</h2><p class="muted">Authorized community members can activate Markee and collect community revenue.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.platform?.recipient ? `<p class="meta">Revenue destination<br><span class="mono">${e(c.platform.recipient)}</span></p>` : c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}${choice}<div class="row">${this.adminProcessing ? '<p class="note">A signed community action is processing. Check it before authorizing another.</p>' + btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect community wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate && (!generic || strategies.length) ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>${this.adminResult ? `<div class="success">Source transaction confirmed. ${link(this.adminResult.transactionUrl || '', 'View transaction')}${this.adminResult.bridged ? '<p>Bridge delivery is tracked separately from the source transaction.</p>' : ''}${btn('bridge', 'Check transfer status')}</div>` : ''}`;
   }
   private title() {
     const s = this.snapshot;

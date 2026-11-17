@@ -20,7 +20,7 @@ export function MarkeeModal(props: MarkeeModalProps) {
   }, [props.siteUrl, props.apiUrl, props.fetch, placementKey]);
   useEffect(() => {
     if (!props.open) return;
-    const instance = createMarkee({ apiUrl: props.apiUrl, fetch: props.fetch, theme: current.current.theme, moderation: props.moderation, checkoutWindow: props.checkoutWindow,
+    const instance = createMarkee({ apiUrl: props.apiUrl, fetch: props.fetch, theme: current.current.theme, moderation: props.moderation, checkoutWindow: props.checkoutWindow, allowedStrategies: props.allowedStrategies,
       wallet: props.wallet ? { getProvider: () => current.current.wallet!.getProvider(), connect: () => {
         const connect = current.current.wallet?.connect;
         if (!connect) return Promise.reject(new Error('Connect the app wallet first.'));
@@ -32,7 +32,7 @@ export function MarkeeModal(props: MarkeeModalProps) {
     let disposing = false;
     instance.open({ placement: props.placement, onClose: () => { if (!disposing) current.current.onClose(); } });
     return () => { disposing = true; instance.close(); instanceRef.current = undefined; };
-  }, [props.open, props.apiUrl, props.fetch, props.checkoutWindow, moderationKey, !!props.wallet, placementKey]);
+  }, [props.open, props.apiUrl, props.fetch, props.checkoutWindow, JSON.stringify(props.allowedStrategies), moderationKey, !!props.wallet, placementKey]);
   useEffect(() => { instanceRef.current?.setTheme(props.theme); }, [props.theme]);
   return props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null;
 }

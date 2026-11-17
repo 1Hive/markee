@@ -17,6 +17,11 @@ export function placement(value: unknown): Placement {
   const p = object(value);
   if (typeof p.chainId !== 'number' || !chainConfigMap[p.chainId]) throw new SDKError('UNSUPPORTED_CHAIN', 'Unsupported chain.');
   if (p.kind === 'gardens-community') return { kind: p.kind, chainId: p.chainId, community: address(p.community) };
+  if (p.kind === 'platform-community') {
+    if (p.platformId === 'gardens') return { kind: p.kind, platformId: p.platformId, chainId: p.chainId, communityId: address(p.communityId) };
+    if (p.platformId === 'revnet' && typeof p.communityId === 'string' && p.communityId.length <= 78 && /^0*[1-9][0-9]*$/.test(p.communityId) && BigInt(p.communityId) < 2n ** 256n) return { kind: p.kind, platformId: p.platformId, chainId: p.chainId, communityId: BigInt(p.communityId).toString() };
+    throw new SDKError('INVALID_PLACEMENT', 'Unknown platform or community identifier.');
+  }
   if (p.kind === 'board' && [8453, 11155111].includes(p.chainId)) return { kind: p.kind, chainId: p.chainId, address: address(p.address) };
   throw new SDKError('INVALID_PLACEMENT', 'Use a Base/Sepolia board or a supported Gardens community.');
 }

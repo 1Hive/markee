@@ -17,7 +17,8 @@ export function displayCacheConfigured() {
 
 export function displayKey(placement: Placement, account?: string, offset?: number) {
   return JSON.stringify([placement.kind, placement.chainId,
-    (placement.kind === 'board' ? placement.address : placement.community).toLowerCase(),
+    placement.kind === 'platform-community' ? placement.platformId : null,
+    (placement.kind === 'board' ? placement.address : placement.kind === 'gardens-community' ? placement.community : placement.communityId).toLowerCase(),
     account?.toLowerCase() || null, offset ?? null]);
 }
 

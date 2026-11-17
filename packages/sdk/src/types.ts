@@ -22,7 +22,9 @@ export type Address = `0x${string}`;
 export type Hex = `0x${string}`;
 export type Placement =
   | { kind: 'board'; chainId: number; address: Address }
-  | { kind: 'gardens-community'; chainId: number; community: Address };
+  | { kind: 'gardens-community'; chainId: number; community: Address }
+  /** A platform-controlled community; chainId identifies the destination chain. */
+  | { kind: 'platform-community'; platformId: 'gardens' | 'revnet'; chainId: number; communityId: string };
 export interface Entry {
   address: Address; owner: Address; message: string; name: string;
   score: string; totalFunds: string; aggregateRate: string; legacyFloor: string;
@@ -39,6 +41,8 @@ export interface CommunityState {
   integration: { status: 'not_integrated' | 'active'; leaderboardAddress: Address | null; vaultAddress: Address | null };
   markeeChainId: number; revenue: { claimableAmount: string; symbol: string };
   permissions?: { canActivate: boolean; canClaim: boolean; councilSafe: Address | null };
+  /** Additive platform metadata. Older clients may ignore it. */
+  platform?: { id: string; communityId: string; destinationChainId: number; recipient: Address | null };
 }
 export interface Snapshot {
   autoModerationEnabled?: boolean;
@@ -141,6 +145,8 @@ export interface MarkeeTheme {
 export interface SDKOptions {
   /** Automatic moderation preset and/or individual rules. Defaults to Standard; manual flags always apply. */
   moderation?: ModerationOptions;
+  /** Activation choices shown by this integration. This is a display preference, not an API authorization rule. */
+  allowedStrategies?: Array<'sale' | 'rent'>;
   /** Optional development override; defaults to the Markee-hosted API. */
   checkoutWindow?: 'tab' | 'redirect';
   apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;
