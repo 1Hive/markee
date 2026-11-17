@@ -18,8 +18,6 @@ const councilABI = parseAbi(['function isOwner(address) view returns (bool)']);
 const registryFactoryABI = parseAbi(['function getCommunityValidity(address) view returns (bool)']);
 const projectsABI = parseAbi(['function ownerOf(uint256) view returns (address)']);
 const permissionsABI = parseAbi(['function hasPermission(address operator, address account, uint256 projectId, uint256 permissionId, bool includeRoot, bool includeWildcardProjectId) view returns (bool)']);
-const directoryABI = parseAbi(['function primaryTerminalOf(uint256 projectId, address token) view returns (address)']);
-const nativeToken = '0x000000000000000000000000000000000000EEEe' as Address;
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const projectId = (p: PlatformIdentity) => BigInt(p.communityId);
 const configuredAddress = (name: string): Address => {
@@ -52,13 +50,9 @@ const gardens: PlatformAdapter = {
 const revnet: PlatformAdapter = {
   id: 'revnet',
   communityId(p) { return `0x${projectId(p).toString(16).padStart(64, '0')}` as Hex; },
-  async recipient(p) {
-    const directory = configuredAddress(`MARKEE_REVNET_V6_DIRECTORY_${p.chainId}`);
-    const terminal = await getEnvPublicClient(p.chainId).readContract({ address: directory, abi: directoryABI, functionName: 'primaryTerminalOf', args: [projectId(p), nativeToken] });
-    return terminal === zeroAddress ? null : getAddress(terminal);
-  },
+  async recipient() { return null; },
   async authority(p, account) {
-    // Revnet v6 stays disabled until its deployment, projects, directory and
+    // Revnet v6 stays disabled until its deployment, projects and
     // explicit operator permission ID have been verified and configured.
     const projects = configuredAddress(`MARKEE_REVNET_V6_PROJECTS_${p.chainId}`);
     const permissions = configuredAddress(`MARKEE_REVNET_V6_PERMISSIONS_${p.chainId}`);
@@ -67,7 +61,8 @@ const revnet: PlatformAdapter = {
     const client = getEnvPublicClient(p.chainId);
     const owner = await client.readContract({ address: projects, abi: projectsABI, functionName: 'ownerOf', args: [projectId(p)] });
     const delegated = same(owner, account) ? false : await client.readContract({ address: permissions, abi: permissionsABI, functionName: 'hasPermission', args: [account, owner, projectId(p), BigInt(permissionId), true, false] });
-    return { authorized: same(owner, account) || delegated, recipient: await this.recipient(p) };
+    // The beneficiary is selected on Base during activation; a Revnet terminal is not the payout route.
+    return { authorized: same(owner, account) || delegated, recipient: null };
   },
 };
 
@@ -78,37 +73,47 @@ export function platformAdapter(p: PlatformPlacement): PlatformAdapter {
 }
 export const platformIdHash = (id: string) => keccak256(stringToHex(id));
 export function platformKey(p: PlatformPlacement): Hex {
-  const adapter = platformAdapter(p);
-  return keccak256(encodeAbiParameters([{ type: 'bytes32' }, { type: 'uint256' }, { type: 'bytes32' }], [platformIdHash(p.platformId), BigInt(p.chainId), adapter.communityId(p)]));
+  if (!['gardens', 'revnet', 'giveth'].includes(p.platformId)) throw new SDKError('UNSUPPORTED_PLATFORM', 'Unknown platform.', 422);
+  const id = p.platformId === 'gardens' ? gardens.communityId(p) : `0x${projectId(p).toString(16).padStart(64, '0')}` as Hex;
+  return keccak256(encodeAbiParameters([{ type: 'bytes32' }, { type: 'uint256' }, { type: 'bytes32' }], [platformIdHash(p.platformId), BigInt(p.chainId), id]));
 }
 export const registrarABI = parseAbi([
-  'function integrations(bytes32) view returns (address vault, address board, address seedMarkee, uint8 strategy)',
+  'function integrations(bytes32) view returns (address board, address seedMarkee, uint8 strategy, address activator, address initialBeneficiary)',
   'function operators(address) view returns (bool)',
   'function saleFactory() view returns (address)',
   'function rentFactory() view returns (address)',
-  'function createBoard(bytes32 platformId, uint256 chainId, bytes32 communityId, uint8 strategy, string name, string platformName, string platformKey) returns ((address vault, address board, address seedMarkee, uint8 strategy))',
+  'function createBoard(bytes32 platformId, uint256 chainId, bytes32 communityId, uint8 strategy, address activator, address beneficiary, string name, string platformName, string platformKey) returns ((address board, address seedMarkee, uint8 strategy, address activator, address initialBeneficiary))',
 ]);
-export const vaultABI = parseAbi(['function availableRevenue() view returns (uint256)']);
+const boardAdminABI = parseAbi(['function admin() view returns (address)', 'function beneficiaryAddress() view returns (address)']);
+export function platformEnabled(p: PlatformPlacement): boolean {
+  // Explicit server-side rollout gates. Giveth has no verified owner source yet.
+  return p.platformId === 'gardens' ? process.env.MARKEE_PLATFORM_GARDENS_ENABLED === 'true'
+    : p.platformId === 'revnet' && process.env.MARKEE_PLATFORM_REVNET_ENABLED === 'true';
+}
 export function registrarAddress(): Address {
-  return configuredAddress('MARKEE_GENERIC_REGISTRAR_ADDRESS_BASE');
+  return configuredAddress('MARKEE_PLATFORM_BOARD_REGISTRAR_ADDRESS_BASE');
 }
 export async function platformCommunity(p: PlatformPlacement, account?: Address): Promise<CommunityState> {
-  const adapter = platformAdapter(p);
-  const registrar = registrarAddress();
+  const key = platformKey(p);
+  const enabled = platformEnabled(p);
+  const registrar = process.env.MARKEE_PLATFORM_BOARD_REGISTRAR_ADDRESS_BASE;
+  if (!registrar && enabled) throw new SDKError('PLATFORM_NOT_CONFIGURED', 'Platform board registrar is not configured.', 503);
   const base = getEnvPublicClient(8453);
-  const integration = await base.readContract({ address: registrar, abi: registrarABI, functionName: 'integrations', args: [platformKey(p)] });
-  const board = integration[1] === zeroAddress ? null : getAddress(integration[1]);
-  const vault = integration[0] === zeroAddress ? null : getAddress(integration[0]);
-  const [recipient, authority, revenue] = await Promise.all([
-    adapter.recipient(p), account ? adapter.authority(p, account) : null,
-    vault ? base.readContract({ address: vault, abi: vaultABI, functionName: 'availableRevenue' }) : 0n,
+  const integration = registrar ? await base.readContract({ address: registrarAddress(), abi: registrarABI, functionName: 'integrations', args: [key] }) : null;
+  const board = integration && integration[0] !== zeroAddress ? getAddress(integration[0]) : null;
+  const [admin, beneficiary, authority] = await Promise.all([
+    board ? base.readContract({ address: board, abi: boardAdminABI, functionName: 'admin' }) : null,
+    board ? base.readContract({ address: board, abi: boardAdminABI, functionName: 'beneficiaryAddress' }) : null,
+    account && enabled && !board ? platformAdapter(p).authority(p, account) : null,
   ]);
+  const status = board ? (admin && integration && same(admin, integration[3]) ? 'active' : 'pending_admin') : enabled ? 'not_integrated' : 'disabled';
   return {
-    integration: { status: board ? 'active' : 'not_integrated', leaderboardAddress: board, vaultAddress: vault },
+    integration: { status, leaderboardAddress: board, vaultAddress: null },
     markeeChainId: 8453,
-    revenue: { claimableAmount: revenue.toString(), symbol: 'ETH' },
-    permissions: account ? { canActivate: !!authority?.authorized && !board, canClaim: false, councilSafe: p.platformId === 'gardens' ? recipient : null } : undefined,
-    platform: { id: p.platformId, communityId: p.communityId, destinationChainId: p.chainId, recipient },
+    revenue: { claimableAmount: '0', symbol: 'ETH' },
+    permissions: account ? { canActivate: !!authority?.authorized && !board, canClaim: false, councilSafe: null } : undefined,
+    platform: { id: p.platformId, communityId: p.communityId, destinationChainId: p.chainId, recipient: null,
+      enabled, beneficiary: beneficiary ? getAddress(beneficiary) : null, boardOwner: integration && integration[3] !== zeroAddress ? getAddress(integration[3]) : null },
   };
 }
 

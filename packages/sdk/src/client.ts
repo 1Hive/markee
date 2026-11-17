@@ -48,7 +48,7 @@ export async function discoverWallets(): Promise<DiscoveredWallet[]> {
 const isAddress = (value: unknown): value is Address => typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value);
 const isHash = (value: unknown): value is Hex => typeof value === 'string' && /^0x[\da-f]{64}$/i.test(value);
 export interface PendingTransaction { preparation: PreparedAction; hash: Hex }
-export interface PendingAuthorization { kind: 'activate' | 'claim' | 'platform-activate'; nonce: string; signature: Hex; account: Address; community?: Address; chainId: number; placement?: Placement }
+export interface PendingAuthorization { kind: 'activate' | 'claim' | 'platform-activate' | 'platform-activate-direct'; nonce: string; signature: Hex; account: Address; community?: Address; chainId: number; placement?: Placement }
 
 export class MarkeeClient {
   readonly apiUrl: string;
@@ -60,6 +60,7 @@ export class MarkeeClient {
   private inMemoryPending: PendingTransaction[] = [];
   private adminMemory: PendingAuthorization | null = null;
   private communityReceipts: Record<string, AdminResult> = {};
+  private adminAcceptanceMemory = new Map<string, Hex>();
   constructor(readonly options: SDKOptions = {}) {
     const url = new URL(options.apiUrl ?? DEFAULT_MARKEE_API_URL);
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new MarkeeError('Use an HTTPS Markee API URL (HTTP is allowed on localhost).');
@@ -212,10 +213,52 @@ export class MarkeeClient {
     if (!account) throw new MarkeeError('Connect your community council wallet first.');
     return this.request(`community/${kind}`, { action: 'challenge', chainId: placement.chainId, community: placement.community, account });
   }
-  async authorizePlatform(placement: Extract<Placement, { kind: 'platform-community' }>, strategy: 'sale' | 'rent'): Promise<Authorization> {
+  async authorizePlatform(placement: Extract<Placement, { kind: 'platform-community' }>, strategy: 'sale' | 'rent', beneficiary: Address): Promise<Authorization> {
     const account = await this.account();
     if (!account) throw new MarkeeError('Connect the community owner wallet first.', 'NOT_CONNECTED');
-    return this.request('platform/activate', { action: 'challenge', placement, strategy, account });
+    return this.request('platform/activate-direct', { action: 'challenge', placement, strategy, beneficiary, account });
+  }
+  /** The activator completes a factory's two-step board-admin handoff on Base. */
+  async acceptPlatformAdmin(placement: Extract<Placement, { kind: 'platform-community' }>, board: Address): Promise<Hex> {
+    const account = await this.account();
+    if (!account) throw new MarkeeError('Connect the board owner wallet first.', 'NOT_CONNECTED');
+    const state = await this.snapshot(placement, account);
+    if (state.community?.integration.status !== 'pending_admin' || state.board?.toLowerCase() !== board.toLowerCase()
+      || state.community.platform?.boardOwner?.toLowerCase() !== account.toLowerCase()) {
+      throw new MarkeeError('This wallet is not the pending board owner.', 'NOT_AUTHORIZED');
+    }
+    if (this.pendingPlatformAdmin(placement, account)) {
+      const status = await this.platformAdminStatus(placement, account);
+      if (status === 'pending') throw new MarkeeError('Board ownership acceptance is still pending. Check its status before retrying.', 'ADMIN_PENDING');
+    }
+    const provider = await this.ensureWallet(account, 8453);
+    const hash = await provider.request({ method: 'eth_sendTransaction', params: [{ from: account, to: board, data: '0x0e18b681' }] });
+    if (!isHash(hash)) throw new MarkeeError('Wallet did not return a transaction hash. Check its activity before retrying.');
+    this.savePlatformAdmin(placement, account, hash);
+    return hash;
+  }
+  private platformAdminKey(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): string {
+    return `${this.storageKey()}:platform-admin-v1:${placement.platformId}:${placement.chainId}:${placement.communityId}:${account.toLowerCase()}`;
+  }
+  private savePlatformAdmin(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address, hash: Hex | null) {
+    const key = this.platformAdminKey(placement, account);
+    if (hash) this.adminAcceptanceMemory.set(key, hash); else this.adminAcceptanceMemory.delete(key);
+    try { if (typeof localStorage !== 'undefined') hash ? localStorage.setItem(key, hash) : localStorage.removeItem(key); } catch { /* In-memory fallback. */ }
+  }
+  pendingPlatformAdmin(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): Hex | null {
+    const key = this.platformAdminKey(placement, account);
+    try { if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(key);
+      if (isHash(saved)) return saved;
+    } } catch { /* In-memory fallback. */ }
+    return this.adminAcceptanceMemory.get(key) || null;
+  }
+  async platformAdminStatus(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): Promise<'pending' | 'confirmed' | 'reverted'> {
+    const transactionHash = this.pendingPlatformAdmin(placement, account);
+    if (!transactionHash) throw new MarkeeError('No pending board-admin transaction.', 'NO_PENDING_ADMIN');
+    const status = await this.request<{ status: 'pending' | 'confirmed' | 'reverted' }>(`platform/admin-status?${new URLSearchParams({ placement: JSON.stringify(placement), account, transactionHash })}`);
+    if (status.status === 'confirmed' || status.status === 'reverted') this.savePlatformAdmin(placement, account, null);
+    return status.status;
   }
   async executePlatformAuthorization(placement: Extract<Placement, { kind: 'platform-community' }>, authorization: Authorization, account: Address): Promise<AdminOperation> {
     if (this.pendingAuthorization()) throw new MarkeeError('An earlier community authorization is still processing. Check its status first.');
@@ -223,7 +266,7 @@ export class MarkeeClient {
     const provider = await this.ensureWallet(account, typedData.domain.chainId);
     const signature = await provider.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify({ ...typedData, types: { ...typedData.types, EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }] } })] });
     if (typeof signature !== 'string' || !/^0x[\da-f]+$/i.test(signature)) throw new MarkeeError('Wallet did not return a typed-data signature.');
-    this.saveAuthorization({ kind: 'platform-activate', nonce: authorization.nonce, signature: signature as Hex, account, placement, chainId: placement.chainId });
+    this.saveAuthorization({ kind: 'platform-activate-direct', nonce: authorization.nonce, signature: signature as Hex, account, placement, chainId: placement.chainId });
     return this.resumeAuthorization();
   }
   async executeAuthorization(kind: 'activate' | 'claim', authorization: Authorization, account: Address): Promise<AdminOperation> {
@@ -240,7 +283,7 @@ export class MarkeeClient {
     for (const origin of storageOrigins(this.apiUrl)) {
       try {
         const saved = JSON.parse(localStorage.getItem(`${this.storageKey(origin)}:admin`) || 'null');
-        if (saved && ['activate', 'claim', 'platform-activate'].includes(saved.kind) && isAddress(saved.account) && (saved.kind === 'platform-activate' ? saved.placement?.kind === 'platform-community' : isAddress(saved.community)) && typeof saved.nonce === 'string' && typeof saved.signature === 'string') {
+        if (saved && ['activate', 'claim', 'platform-activate', 'platform-activate-direct'].includes(saved.kind) && isAddress(saved.account) && (saved.kind.startsWith('platform-activate') ? saved.placement?.kind === 'platform-community' : isAddress(saved.community)) && typeof saved.nonce === 'string' && typeof saved.signature === 'string') {
           this.adminOrigin = origin; return saved;
         }
       } catch { /* Continue searching the known prior API. */ }
@@ -255,7 +298,8 @@ export class MarkeeClient {
   async resumeAuthorization(): Promise<AdminOperation> {
     const pending = this.pendingAuthorization();
     if (!pending) throw new MarkeeError('There is no pending community authorization.');
-    const route = pending.kind === 'platform-activate' ? 'platform/activate' : `community/${pending.kind}`;
+    const route = pending.kind === 'platform-activate-direct' ? 'platform/activate-direct'
+      : pending.kind === 'platform-activate' ? 'platform/activate' : `community/${pending.kind}`;
     const op = await this.recoveryClient(this.adminOrigin).request<AdminOperation>(route, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
     if (op.status === 'complete' && op.result && pending.community) {
       const key = `${pending.chainId}:${pending.community.toLowerCase()}`;

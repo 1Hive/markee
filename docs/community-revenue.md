@@ -1,5 +1,7 @@
 # Platform-neutral community revenue
 
+The bridge/vault route below is retained for historical tests and the unmigrated Gardens pilot. **New SDK `multiBoard` activation uses the direct Base beneficiary route** in [direct-platform-boards.md](direct-platform-boards.md). Do not use this bridge deployment procedure to enable `multiBoard`.
+
 Status: local implementation and tests, **not deployed and not connected to the production keeper**. Existing Gardens routing is unchanged. This is not an audit certification. The generic SDK activation path requires the registrar, destination receiver, operator, and platform contracts to be configured before use; a locally passing test is not a live payout.
 
 ## Boundaries

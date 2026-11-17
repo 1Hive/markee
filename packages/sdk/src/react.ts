@@ -1,24 +1,27 @@
 'use client';
-import { createElement, useEffect, useRef, type ReactNode } from 'react';
+import { createElement, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { MarkeeClient, moderationParams } from './client.js';
 import { createMarkee } from './modal.js';
 import { createMarkeeSign, type MarkeeSignOptions } from './sign.js';
-import type { Placement, SDKOptions } from './types.js';
+import type { SDKOptions } from './types.js';
+import type { PlacementInput } from './types.js';
+import { resolvePlacementInput } from './placement-input.js';
 
-export interface MarkeeModalProps extends SDKOptions { open: boolean; placement: Placement; onClose(): void }
+export type MarkeeModalProps = SDKOptions & PlacementInput & { open: boolean; onClose(): void };
 /** No wagmi, ConnectKit, Privy, or React provider is required by this wrapper. */
 export function MarkeeModal(props: MarkeeModalProps) {
+  const placement = resolvePlacementInput(props);
   const current = useRef(props); current.current = props;
   const instanceRef = useRef<ReturnType<typeof createMarkee>>();
-  const placementKey = JSON.stringify(props.placement);
+  const placementKey = JSON.stringify(placement);
   const moderationKey = JSON.stringify(moderationParams(props.moderation));
   useEffect(() => {
     if (!props.siteUrl) return;
     const client = new MarkeeClient({ apiUrl: props.apiUrl, fetch: props.fetch, siteUrl: props.siteUrl,
       onSiteVerification: result => current.current.onSiteVerification?.(result) });
-    client.registerSite(props.placement);
+    if (placement.kind === 'board') client.registerSite(placement);
   }, [props.siteUrl, props.apiUrl, props.fetch, placementKey]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!props.open) return;
     const instance = createMarkee({ apiUrl: props.apiUrl, fetch: props.fetch, theme: current.current.theme, moderation: props.moderation, checkoutWindow: props.checkoutWindow, allowedStrategies: props.allowedStrategies,
       wallet: props.wallet ? { getProvider: () => current.current.wallet!.getProvider(), connect: () => {
@@ -30,26 +33,27 @@ export function MarkeeModal(props: MarkeeModalProps) {
     });
     instanceRef.current = instance;
     let disposing = false;
-    instance.open({ placement: props.placement, onClose: () => { if (!disposing) current.current.onClose(); } });
+    instance.open({ placement, onClose: () => { if (!disposing) current.current.onClose(); } });
     return () => { disposing = true; instance.close(); instanceRef.current = undefined; };
   }, [props.open, props.apiUrl, props.fetch, props.checkoutWindow, JSON.stringify(props.allowedStrategies), moderationKey, !!props.wallet, placementKey]);
   useEffect(() => { instanceRef.current?.setTheme(props.theme); }, [props.theme]);
-  return props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null;
+  return placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': placement.address }) : null;
 }
 
 export function MarkeeButton({ children = 'Open Markee', onClick, ...props }: { children?: ReactNode; onClick(): void; className?: string; disabled?: boolean }) {
   return createElement('button', { ...props, type: 'button', onClick }, children);
 }
 
-export interface MarkeeSignProps extends MarkeeSignOptions { className?: string }
+export type MarkeeSignProps = MarkeeSignOptions & { className?: string };
 /** The current sign, including Markee-hosted moderation, without an app-side data provider. */
 export function MarkeeSign(props: MarkeeSignProps) {
+  const placement = resolvePlacementInput(props);
   const container = useRef<HTMLDivElement>(null);
   const current = useRef(props); current.current = props;
   const instance = useRef<ReturnType<typeof createMarkeeSign>>();
-  const placementKey = JSON.stringify(props.placement);
+  const placementKey = JSON.stringify(placement);
   const moderationKey = JSON.stringify(moderationParams(props.moderation));
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!container.current) return;
     const sign = createMarkeeSign(container.current, { ...current.current, wallet: current.current.wallet ? {
       getProvider: () => current.current.wallet!.getProvider(),
@@ -64,5 +68,5 @@ export function MarkeeSign(props: MarkeeSignProps) {
   }, [placementKey, props.apiUrl, props.fetch, props.showAction, moderationKey, props.refreshIntervalMs, props.siteUrl, !!props.wallet, !!props.onOpen]);
   useEffect(() => { instance.current?.setTheme(props.theme); }, [props.theme]);
   return createElement('div', { ref: container, className: props.className },
-    props.placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': props.placement.address }) : null);
+    placement.kind === 'board' ? createElement('span', { hidden: true, 'data-markee-address': placement.address }) : null);
 }

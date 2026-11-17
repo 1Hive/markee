@@ -23,8 +23,11 @@ export type Hex = `0x${string}`;
 export type Placement =
   | { kind: 'board'; chainId: number; address: Address }
   | { kind: 'gardens-community'; chainId: number; community: Address }
-  /** A platform-controlled community; chainId identifies the destination chain. */
-  | { kind: 'platform-community'; platformId: 'gardens' | 'revnet'; chainId: number; communityId: string };
+  /** A Markee-registered platform identity; chainId identifies the platform's identity chain. */
+  | { kind: 'platform-community'; platformId: string; chainId: number; communityId: string };
+export interface MultiBoard { platformId: string; chainId: number; communityId: string }
+/** Existing placements remain supported; multiBoard is the three-field platform shorthand. */
+export type PlacementInput = { placement: Placement; multiBoard?: never } | { placement?: never; multiBoard: MultiBoard };
 export interface Entry {
   address: Address; owner: Address; message: string; name: string;
   score: string; totalFunds: string; aggregateRate: string; legacyFloor: string;
@@ -38,11 +41,11 @@ export interface WalletState {
   runwaySeconds: string | null; observedAt: number;
 }
 export interface CommunityState {
-  integration: { status: 'not_integrated' | 'active'; leaderboardAddress: Address | null; vaultAddress: Address | null };
+  integration: { status: 'not_integrated' | 'pending_admin' | 'active' | 'disabled'; leaderboardAddress: Address | null; vaultAddress: Address | null };
   markeeChainId: number; revenue: { claimableAmount: string; symbol: string };
   permissions?: { canActivate: boolean; canClaim: boolean; councilSafe: Address | null };
   /** Additive platform metadata. Older clients may ignore it. */
-  platform?: { id: string; communityId: string; destinationChainId: number; recipient: Address | null };
+  platform?: { id: string; communityId: string; destinationChainId: number; recipient: Address | null; enabled?: boolean; beneficiary?: Address | null; boardOwner?: Address | null };
 }
 export interface Snapshot {
   autoModerationEnabled?: boolean;

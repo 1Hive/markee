@@ -5,6 +5,7 @@ import { POST as moderationCheck } from '@/app/api/moderation/check/route';
 import { underRateLimit } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import { isHex, type Hex } from 'viem';
+import { createHash } from 'node:crypto';
 import { executeAdmin, operationStatus } from '@/lib/sdk/operations';
 import { snapshot, resolvePlacement } from '@/lib/sdk/snapshot';
 import { prepare, verifyTransaction } from '@/lib/sdk/transactions';
@@ -23,6 +24,8 @@ import { checkoutEnabled, checkoutOrigin, createCheckout, checkoutRequest } from
 import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
 import { platformActivate } from '@/lib/sdk/platform-activate';
+import { platformCommunity } from '@/lib/sdk/platforms';
+import { getEnvPublicClient } from '@/lib/sdk/chains';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,6 +62,28 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
       }
       if (path === 'community') return cors(await community.GET(request), request);
       if (path === 'community/quote') return cors(await quote.GET(request), request);
+      if (path === 'platform/admin-status') {
+        let raw: unknown;
+        try { raw = JSON.parse(search.get('placement') || '{}'); }
+        catch { throw new SDKError('INVALID_PLACEMENT', 'Invalid platform placement.'); }
+        const p = placement(raw);
+        if (p.kind !== 'platform-community') throw new SDKError('INVALID_PLACEMENT', 'A platform community is required.');
+        const account = address(search.get('account'));
+        const transactionHash = hash(search.get('transactionHash'));
+        const communityState = await platformCommunity(p);
+        const board = communityState.integration.leaderboardAddress;
+        if (!board || communityState.platform?.boardOwner?.toLowerCase() !== account.toLowerCase()) throw new SDKError('NOT_FOUND', 'No pending board for this account.', 404);
+        const base = getEnvPublicClient(8453);
+        const transaction = await base.getTransaction({ hash: transactionHash }).catch(() => null);
+        if (!transaction) return cors(NextResponse.json({ status: 'pending' }), request);
+        if (transaction.from.toLowerCase() !== account.toLowerCase() || transaction.to?.toLowerCase() !== board.toLowerCase()
+          || transaction.input !== '0x0e18b681') throw new SDKError('TRANSACTION_MISMATCH', 'This is not the board-admin acceptance transaction.', 409);
+        const receipt = await base.getTransactionReceipt({ hash: transactionHash }).catch(() => null);
+        if (!receipt) return cors(NextResponse.json({ status: 'pending' }), request);
+        if (receipt.status !== 'success') return cors(NextResponse.json({ status: 'reverted' }), request);
+        const refreshed = await platformCommunity(p);
+        return cors(NextResponse.json({ status: refreshed.integration.status === 'active' ? 'confirmed' : 'pending' }), request);
+      }
       if (path === 'community/status') {
         const protocol = search.get('protocol');
         if (!['none', 'squid', 'lifi', 'across'].includes(protocol || '')) throw new SDKError('INVALID_PROTOCOL', 'Unknown bridge protocol.');
@@ -70,6 +95,15 @@ async function handle(request: NextRequest, context: { params: { path: string[] 
     if (request.method === 'POST') {
       if (path === 'moderation/check') return cors(await moderationCheck(request), request);
       if (path === 'platform/activate') {
+        const body = object(await readLimitedJsonBody(request, 16 * 1024));
+        if (body.action === 'verify' && typeof body.nonce === 'string' && typeof body.signature === 'string' && isHex(body.signature)) {
+          const id = createHash('sha256').update(`${path}:${body.nonce}:${body.signature}`).digest('hex');
+          try { return cors(NextResponse.json(await operationStatus(id)), request); }
+          catch (error) { if (!(error instanceof SDKError) || error.code !== 'OPERATION_NOT_FOUND') throw error; }
+        }
+        throw new SDKError('PLATFORM_UPGRADE_REQUIRED', 'This preview activation flow has changed. Upgrade @markee_team/sdk and request a new authorization. Existing payment recovery remains available.', 426);
+      }
+      if (path === 'platform/activate-direct') {
         const body = object(await readLimitedJsonBody(request, 16 * 1024));
         if (body.action !== 'verify') return cors(NextResponse.json(await platformActivate(body)), request);
         if (typeof body.nonce !== 'string' || !/^[1-9][0-9]{0,77}$/.test(body.nonce) || typeof body.signature !== 'string' || !isHex(body.signature)) throw new SDKError('INVALID_AUTHORIZATION', 'Invalid authorization.');

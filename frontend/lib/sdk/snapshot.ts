@@ -149,7 +149,10 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
 
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
   let result: Snapshot;
-  if (displayCacheConfigured()) {
+  // Platform board existence and admin handoff must be current; never authorize from a display cache.
+  if (p.kind === 'platform-community') {
+    result = await loadSnapshot(p, account, offset);
+  } else if (displayCacheConfigured()) {
     const cached = await displayCache().read(displayKey(p, account, offset), () => loadSnapshot(p, account, offset), !!account);
     result = { ...cached.data, freshness: { updatedAt: cached.updatedAt, freshUntil: cached.freshUntil, staleUntil: cached.staleUntil, stale: cached.stale, refreshing: cached.refreshing } };
   } else {

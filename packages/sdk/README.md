@@ -21,6 +21,8 @@ npm ci --prefix packages/sdk
 npm run build --prefix packages/sdk
 ```
 
+Coding assistants can follow the packaged [Markee integration skill](https://unpkg.com/@markee_team/sdk@latest/skills/markee-integration/SKILL.md) at `skills/markee-integration/SKILL.md` in the installed package. Install the latest SDK first, then read its installed README and types. Commit the consumer app's lockfile.
+
 ## Create and connect your leaderboard
 
 The SDK connects to an existing leaderboard; installing it does not create one.
@@ -43,6 +45,8 @@ Markee fetches the public page and verifies that its HTML contains the matching 
 ```
 
 The marker must be present in the HTML returned by the server, not only injected by JavaScript. The supplied URL must use HTTPS, match the app's origin, and return the final HTML page without redirects. Localhost and private-network sites cannot be publicly verified. Registration currently supports Base boards. It verifies the board's presence, not legal domain ownership.
+
+For `multiBoard`, resolve the community's board address first and render the matching marker in that community page's server-returned HTML. Supplying `multiBoard` alone does not verify a domain; the SDK can request verification only after the board exists.
 
 For an explicit retry after deployment, call `new MarkeeClient().verifySite(placement, siteUrl)`. The endpoint is `POST /api/sdk/v1/sites/verify` with `{ placement, siteUrl }`. Unverified sites are never added to the verified list.
 
@@ -197,11 +201,26 @@ Refunds flow automatically when connected to the message’s refund pool. **Coll
 
 Community activation supports the current council Safe, a current Safe owner, or the configured authorized keeper. Revenue claims support the current Safe or its current owners and always pay the council treasury. Existing outbound Across, Squid and LI.FI routing lives on Markee's server.
 
-### Platform communities (deployment preview)
+### Platform communities with many boards
 
-The SDK also accepts `{ kind: 'platform-community', platformId: 'gardens', chainId: 100, communityId: registryCommunityAddress }` or `{ kind: 'platform-community', platformId: 'revnet', chainId: 8453, communityId: projectId }`. Markee's API resolves the owner, destination and board; the host app supplies neither RPC credentials nor a revenue wallet. `allowedStrategies?: Array<'sale' | 'rent'>` limits the choices shown at activation. The API still checks the platform owner/signature independently. Activation selects exactly one strategy, permanently for that community board.
+Use the three-value shorthand on the sign and the independently controlled modal. The equivalent plain JavaScript option works in `createMarkeeSign` and `markee.open`. Supply exactly one of `placement` or `multiBoard`.
 
-The generic registrar and revenue route must be deployed and configured before these placements can activate. Giveth Projects are a mock-only adapter design test and are not a public placement. Existing `board` and `gardens-community` placements remain supported. This branch does not yet provide a generic revenue-claim action or a live cross-chain delivery guarantee; do not use its new placement for a production community until those rollout gates are met.
+```tsx
+const multiBoard = {
+  platformId: 'revnet', // a Markee-registered platform ID
+  chainId: project.chainId, // identity chain, not the board chain
+  communityId: String(project.id), // current route's project ID
+};
+<MarkeeSign multiBoard={multiBoard} onOpen={() => setOpen(true)} />
+<MarkeeModal multiBoard={multiBoard} open={open} onClose={() => setOpen(false)} />
+```
+
+```ts
+createMarkeeSign(container, { multiBoard });
+markee.open({ multiBoard });
+```
+
+The API checks the Base registrar mapping for this identity. An **active** board displays its current moderated sign. An **unactivated** community can offer activation when its platform is enabled and the connected account is authorized; activation collects one strategy and a Base beneficiary. A board **awaiting admin acceptance** shows setup until its activator accepts ownership on Base. **Disabled** platforms show no activation action, and an **unavailable** lookup withholds the message. The beneficiary receives payments directly on Base; this flow does not bridge. `allowedStrategies?: Array<'sale' | 'rent'>` restricts the visible options, while Markee's API independently checks identity and authorization. Gardens is a controlled pilot behind a server gate; Revnet and Giveth activation remain gated prototypes. Existing `board` and `gardens-community` placements remain supported, and the existing Gardens board is not migrated.
 
 ## Integration boundaries
 

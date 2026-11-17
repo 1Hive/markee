@@ -102,6 +102,37 @@ test('site registration sends placement and URL once without wallet or credentia
   assert.equal(calls, 1);
 });
 
+test('admin acceptance is bound to the community and cannot be sent twice while pending', async () => {
+  const placement = { kind: 'platform-community' as const, platformId: 'revnet', chainId: 8453, communityId: '42' };
+  const state = { community: { integration: { status: 'pending_admin' }, platform: { boardOwner: account } }, board: other };
+  let status: 'pending' | 'confirmed' | 'reverted' = 'pending';
+  let sends = 0;
+  const provider: EIP1193Provider = { async request({ method, params }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (method === 'eth_sendTransaction') {
+      sends++;
+      assert.deepEqual(params, [{ from: account, to: other, data: '0x0e18b681' }]);
+      return hash;
+    }
+    throw new Error(`Unexpected wallet method ${method}`);
+  } };
+  const client = new MarkeeClient({ apiUrl: 'http://localhost:3000/api/sdk/v1', wallet: { getProvider: async () => provider },
+    fetch: async url => Response.json(String(url).includes('admin-status') ? { status } : state) });
+  assert.equal(await client.acceptPlatformAdmin(placement, other), hash);
+  assert.equal(client.pendingPlatformAdmin(placement, account), hash);
+  await assert.rejects(client.acceptPlatformAdmin(placement, other), /still pending/);
+  assert.equal(sends, 1);
+  status = 'reverted';
+  assert.equal(await client.platformAdminStatus(placement, account), 'reverted');
+  assert.equal(client.pendingPlatformAdmin(placement, account), null);
+  assert.equal(await client.acceptPlatformAdmin(placement, other), hash);
+  assert.equal(sends, 2);
+  status = 'confirmed';
+  assert.equal(await client.platformAdminStatus(placement, account), 'confirmed');
+  assert.equal(client.pendingPlatformAdmin(placement, account), null);
+});
+
 test('configured moderation severity reaches draft, published snapshot, preparation, and view requests', async () => {
   const requests: { url: string; body: any }[] = [];
   const client = new MarkeeClient({ moderation: { severity: 'strict' }, wallet: { getProvider: async () => ({ request: async () => [account] }) }, fetch: async (url, init) => {
