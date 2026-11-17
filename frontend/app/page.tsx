@@ -470,9 +470,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── 1Hive campaign promo ───────────────────────────────────────────── */}
-      <OneHiveBanner />
-
       {/* ── Pay to be seen + metrics ──────────────────────────────────────── */}
       <section
         className="metrics-section"
@@ -487,6 +484,8 @@ export default function Home() {
             Pay to be <span style={{ color: '#F897FE' }}>seen</span>
           </h1>
           <MetricsRow stats={ecoStats} loaded={ecoStatsLoaded} />
+          {/* 1Hive campaign promo */}
+          <OneHiveBanner />
         </div>
       </section>
 
