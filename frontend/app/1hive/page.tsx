@@ -75,7 +75,7 @@ export default function OneHiveCampaignPage() {
               </span>
             </div>
             <p className="mt-4 text-[22px] font-bold leading-snug sm:text-[26px]" style={{ fontFamily: MONO, color: PINK }}>
-              This is your sign... to join the Markee network 🪧
+              This is your sign...<br />to join the Markee network 🪧
             </p>
             <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#8A8FBF]/20 pt-4 text-xs">
               <span style={{ fontFamily: MONO, color: MUTED }}>yoursite.com</span>
@@ -173,8 +173,8 @@ export default function OneHiveCampaignPage() {
         className="border-t border-[#8A8FBF]/15 px-4 py-20 sm:px-6"
         style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 100%, rgba(248,151,254,0.12), transparent 70%)' }}
       >
-        <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-[36px] font-extrabold leading-[1.05] tracking-[-1.5px] sm:text-[56px] sm:tracking-[-2.5px]" style={{ color: TEXT }}>
+        <div className="mx-auto max-w-6xl text-center">
+          <h2 style={{ color: TEXT, textWrap: 'balance' }} className="text-[36px] font-extrabold leading-[1.05] tracking-[-1.5px] sm:text-[56px] sm:tracking-[-2.5px]">
             Limited time. <span style={{ color: PINK }}>While funding lasts.</span>
           </h2>
           <Link href={CREATE_HREF} className={`${PRIMARY_BTN} mt-8`}>
