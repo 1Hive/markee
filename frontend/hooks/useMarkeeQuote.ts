@@ -44,9 +44,11 @@ function usePlanEstimate(plan: PayPlan | null, account: Address, enabled: boolea
   const key = plan ? plan.pays.map(p => `${p.beneficiary}:${p.amount}`).join(',') : ''
   const debouncedKey = useDebounced(key)
   const settled = debouncedKey === key
+  // Without settled: a quote waiting on the debounce is still loading; one that can't run is not.
+  const canQuote = enabled && !!client && !!plan && plan.buyerIndex !== null
   const query = useQuery({
     queryKey: ['markee-quote', plan?.terminal, plan?.projectId?.toString(), account, debouncedKey],
-    enabled: enabled && !!client && !!plan && plan.buyerIndex !== null && settled,
+    enabled: canQuote && settled,
     queryFn: () => quotePayPlan(client!, plan!, account),
     staleTime: 15_000,
     refetchInterval: 30_000,
@@ -55,7 +57,7 @@ function usePlanEstimate(plan: PayPlan | null, account: Address, enabled: boolea
   const floor = plan ? mintFloorTokens(plan) : null
   if (plan && plan.buyerIndex === null) return { quoted: 0, floor: 0, loading: false }
   const quoted = settled && query.data !== undefined ? Number(formatEther(query.data)) : null
-  return { quoted, floor, loading: !!plan && quoted === null && !query.isError }
+  return { quoted, floor, loading: canQuote && quoted === null && !query.isError }
 }
 
 export function useMarkeePurchaseQuote(strategy: Address | undefined, amountWei: bigint, account: Address | undefined, enabled = true) {

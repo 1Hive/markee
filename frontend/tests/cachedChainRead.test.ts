@@ -94,3 +94,35 @@ test('callers over the per-IP limit are rejected before any chain read', async t
   assert.equal(result.status, 429)
   assert.equal(loads, 0)
 })
+
+test('a rate-limit storage error still serves the cache, without forcing a refresh', async t => {
+  setup(t)
+  let loads = 0
+  const load = async () => ({ value: ++loads })
+  await cachedChainRead(request(), { scope: 's', key: 'k', load })
+  t.mock.method(chainReadDeps, 'underRateLimit', async () => { throw new Error('KV unavailable') })
+  const plain = await body(await cachedChainRead(request(), { scope: 's', key: 'k', load }))
+  assert.equal(plain.status, 200)
+  assert.deepEqual(plain.data, { value: 1 })
+  const forced = await body(await cachedChainRead(request('?fresh=1'), { scope: 's', key: 'k', load }))
+  assert.deepEqual(forced.data, { value: 1 }, 'an unchecked forced refresh is answered from the cache')
+  assert.equal(loads, 1)
+})
+
+test('a forced read waiting on another refresh accepts it when that load began after the request', async t => {
+  const { advance } = setup(t)
+  await cachedChainRead(request(), { scope: 's', key: 'k', load: async () => ({ value: 'old' }) })
+  advance(1)
+  let started = false
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const holder = cachedChainRead(request('?fresh=1'), { scope: 's', key: 'k', load: async () => { started = true; await gate; return { value: 'new' } } })
+  while (!started) await new Promise(resolve => setImmediate(resolve))
+  // Arrives at the same instant the holder's load began, then waits on its lease.
+  let ownLoads = 0
+  const waiter = cachedChainRead(request('?fresh=1'), { scope: 's', key: 'k', load: async () => ({ value: `own ${++ownLoads}` }) })
+  setTimeout(() => { advance(1000); release() }, 100)
+  assert.deepEqual((await body(await holder)).data, { value: 'new' })
+  assert.deepEqual((await body(await waiter)).data, { value: 'new' })
+  assert.equal(ownLoads, 0, 'the waiter must not start a second chain read')
+})

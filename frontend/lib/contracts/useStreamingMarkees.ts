@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Address } from 'viem'
 import type { StreamingBoardSnapshot } from '@/lib/streaming/boardSnapshot'
-import { BOARD_MESSAGE_LIMIT, isListedStreamingMarkee } from '@/lib/streaming/listing'
+import { isListedStreamingMarkee } from '@/lib/streaming/listing'
 
 // A Markee on a streaming board, ranked by its effective rate (wei/sec): the on-chain
 // max(live aggregate stream rate, decaying grandfather floor) that getTopMarkees sorts by.
@@ -33,8 +33,8 @@ export interface StreamingBoardMeta {
 
 type BoardResponse = { data: StreamingBoardSnapshot; updatedAt: number; stale: boolean }
 
-async function fetchBoard(board: Address, limit: number, fresh: boolean): Promise<StreamingBoardSnapshot> {
-  const params = new URLSearchParams({ board, limit: String(limit), ...(fresh ? { fresh: '1' } : {}) })
+async function fetchBoard(board: Address, fresh: boolean): Promise<StreamingBoardSnapshot> {
+  const params = new URLSearchParams({ board, ...(fresh ? { fresh: '1' } : {}) })
   const response = await fetch(`/api/streaming/board?${params}`, { cache: 'no-store' })
   if (!response.ok) throw new Error('Failed to load board')
   return (await response.json() as BoardResponse).data
@@ -46,15 +46,16 @@ const big = (value?: string) => value === undefined ? undefined : BigInt(value)
 // on the server (/api/streaming/board) and are shared by every viewer, so polling here costs one
 // cached request instead of RPC calls from each visitor's browser. getTopMarkees already returns
 // (addresses, rates) in descending-rate order; zero-rate entries (the genesis seed Markee and any
-// natively-created Markee with no stream and no grandfather floor) are dropped below.
-export function useStreamingMarkees(board?: Address, limit = BOARD_MESSAGE_LIMIT) {
+// natively-created Markee with no stream and no grandfather floor) are dropped below. The server
+// returns the top BOARD_MESSAGE_LIMIT (lib/streaming/listing.ts) markees.
+export function useStreamingMarkees(board?: Address) {
   const enabled = !!board
   const queryClient = useQueryClient()
-  const queryKey = useMemo(() => ['streaming-board', board?.toLowerCase(), limit], [board, limit])
+  const queryKey = useMemo(() => ['streaming-board', board?.toLowerCase()], [board])
 
   const { data, isLoading: isBoardLoading } = useQuery({
     queryKey,
-    queryFn: () => fetchBoard(board!, limit, false),
+    queryFn: () => fetchBoard(board!, false),
     enabled,
     refetchInterval: 30_000,
   })
@@ -110,10 +111,10 @@ export function useStreamingMarkees(board?: Address, limit = BOARD_MESSAGE_LIMIT
   // After a transaction: ask the server for a fresh chain read rather than the shared snapshot.
   const refetch = useCallback(() => {
     if (!board) return
-    fetchBoard(board, limit, true)
+    fetchBoard(board, true)
       .then(next => queryClient.setQueryData(queryKey, next))
       .catch(() => queryClient.invalidateQueries({ queryKey }))
-  }, [board, limit, queryClient, queryKey])
+  }, [board, queryClient, queryKey])
 
   return {
     meta,

@@ -1,7 +1,8 @@
-// GET /api/streaming/board?board=0x...[&limit=100][&fresh=1]
+// GET /api/streaming/board?board=0x...[&fresh=1]
 // A streaming (For Rent) board's metadata and ranked markees, read on the server and shared by every
 // viewer through the snapshot cache (30 s fresh). ?fresh=1 is for post-transaction refreshes and is
 // rate-limited per IP. During an RPC outage the last good payload is served with stale: true.
+// The page size is fixed (BOARD_MESSAGE_LIMIT) so callers cannot multiply cache entries per board.
 import { NextRequest, NextResponse } from 'next/server'
 import { isAddress, type Address } from 'viem'
 import { cachedChainRead } from '@/lib/server/cachedChainRead'
@@ -17,12 +18,9 @@ export async function GET(request: NextRequest) {
   if (!board || !isAddress(board)) {
     return NextResponse.json({ error: 'Valid board address is required' }, { status: 400 })
   }
-  const requested = Number(params.get('limit') ?? BOARD_MESSAGE_LIMIT)
-  const limit = Number.isInteger(requested) && requested > 0 ? Math.min(requested, BOARD_MESSAGE_LIMIT) : BOARD_MESSAGE_LIMIT
-
   return cachedChainRead(request, {
     scope: 'streaming-board',
-    key: `${board}:${limit}`,
-    load: () => loadStreamingBoard(board as Address, limit),
+    key: board,
+    load: () => loadStreamingBoard(board as Address, BOARD_MESSAGE_LIMIT),
   })
 }
