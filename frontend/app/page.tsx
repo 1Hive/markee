@@ -283,7 +283,7 @@ export default function Home() {
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
         if (!data) return
-        const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
+        const leaderboards: { address: string; topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
         // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude gamed
         setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))

@@ -19,9 +19,9 @@ export function OneHiveBanner() {
         <span className="inline-flex items-center gap-2 text-xs" style={{ fontFamily: MONO, color: TEXT2 }}>
           <LiveDot color={GREEN} /> limited time · sponsored by 1Hive
         </span>
-        <h2 className="mt-2 text-[20px] font-extrabold leading-[1.15] tracking-[-0.5px] sm:text-[22px]" style={{ color: TEXT, textWrap: 'balance' }}>
+        <h3 className="mt-2 text-[20px] font-extrabold leading-[1.15] tracking-[-0.5px] sm:text-[22px]" style={{ color: TEXT, textWrap: 'balance' }}>
           Earn up to <span style={{ color: PINK }}>$1k/mo</span> when you add a Markee to your site.
-        </h2>
+        </h3>
       </div>
 
       <div className="flex flex-wrap items-center gap-5 md:gap-7">
