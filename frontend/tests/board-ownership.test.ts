@@ -46,7 +46,7 @@ function fakeBackends(t: any, opts: { push?: boolean; content?: string } = {}) {
       }
       return Response.json({ full_name: 'dev/repo', name: 'repo', owner: { login: 'dev', avatar_url: '' }, html_url: '', private: false, permissions: { push: opts.push ?? true } })
     }
-    if (!url.startsWith('https://kv.test')) throw new Error(`Unexpected fetch ${url}`)
+    if (new URL(url).origin !== 'https://kv.test') throw new Error(`Unexpected fetch ${url}`)
     const b64 = new Headers(init?.headers).get('upstash-encoding') === 'base64'
     const run = ([cmd, ...args]: string[]): unknown => {
       switch (cmd.toUpperCase()) {
