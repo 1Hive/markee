@@ -3,13 +3,15 @@
 // and shared by every viewer through the snapshot cache (30 s fresh). Only registered partner slugs
 // are accepted, so callers cannot point this route at arbitrary contracts. ?fresh=1 is for
 // post-transaction refreshes and is rate-limited per IP; during an RPC outage the last good payload
-// is served with stale: true.
+// is served with stale: true. A partner board that finished migrating is read from its successor,
+// and leaderboardAddress in the payload tells the page which board to buy on.
 import { NextRequest, NextResponse } from 'next/server'
 import type { Address } from 'viem'
 import { PARTNERS, type PartnerBoardSnapshot } from '@/lib/contracts/partners'
 import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { createStreamingClient } from '@/lib/streaming/client'
 import { cachedChainRead } from '@/lib/server/cachedChainRead'
+import { currentBoardOrSelf } from '@/lib/contracts/currentAddressCache'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -36,6 +38,7 @@ async function loadPartnerBoard(leaderboard: Address): Promise<PartnerBoardSnaps
     : []
   const at = (i: number) => details[i]?.status === 'success' ? String(details[i].result) : undefined
   return {
+    leaderboardAddress: leaderboard,
     markees: addresses.map((address, i) => ({
       address,
       message: at(i * 4) ?? '',
@@ -53,7 +56,8 @@ export async function GET(request: NextRequest) {
   if (!partner?.leaderboardAddress) {
     return NextResponse.json({ error: 'Unknown partner leaderboard' }, { status: 404 })
   }
-  const leaderboard = partner.leaderboardAddress
+  // Follow a finished board migration to its successor (cached; falls back to the registry address).
+  const leaderboard = await currentBoardOrSelf(partner.leaderboardAddress)
   return cachedChainRead(request, {
     scope: 'partner-board',
     key: leaderboard.toLowerCase(),

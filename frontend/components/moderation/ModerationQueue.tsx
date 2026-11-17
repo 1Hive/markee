@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowUpRight, Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
+import { Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
@@ -15,20 +15,23 @@ const itemId = (it: ModerationItem) => `${it.markee}:${it.blockNumber}`
 const ago = (it: ModerationItem) => it.at > 0 ? formatDistanceToNow(it.at * 1000, { addSuffix: true }) : null
 const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '0 12px', height: 32, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7 }
 
-// A link to the board's page, where the message shows on its Markee sign.
-function SignLink({ item, board }: { item: { board: string }; board: { name?: string } | undefined }) {
-  return (
-    <a href={`/markee/${item.board}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11.5, color: TEXT2, textDecoration: 'none' }}>
-      {board?.name || fmtAddr(item.board)} <ArrowUpRight size={11} />
-    </a>
-  )
+// The message opens its board's page, where it shows on the Markee sign.
+function SignLink({ board, style, children }: { board: string; style: React.CSSProperties; children: React.ReactNode }) {
+  return <a href={`/markee/${board}`} style={{ ...style, display: 'block', textDecoration: 'none' }}>{children}</a>
+}
+
+function BoardTag({ item, board }: { item: { board: string }; board: { name?: string } | undefined }) {
+  return <span style={{ fontFamily: MONO, fontSize: 11.5, color: TEXT2 }}>{board?.name || fmtAddr(item.board)}</span>
 }
 
 // One message awaiting review, used by both the Activity Feed and the Creator Hub Moderation panel.
-export function ModerationItemRow({ item, board, onReview }: {
+export function ModerationItemRow({ item, board, onReview, selected, onSelect }: {
   item: ModerationItem
   board: QueueBoard | undefined
   onReview: (action: QueueAction, ids: string[]) => Promise<void>
+  // Given together, show a checkbox for batch approval.
+  selected?: boolean
+  onSelect?: (selected: boolean) => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,12 +51,21 @@ export function ModerationItemRow({ item, board, onReview }: {
   }
 
   return (
-    <div style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
+    <div style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: onSelect ? 'auto minmax(0,1fr) auto' : 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
+      {onSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={e => onSelect(e.target.checked)}
+          aria-label={`Select ${item.message ? `"${item.message}"` : 'empty message'} for approval`}
+          style={{ width: 16, height: 16, margin: 0, accentColor: PINK, cursor: 'pointer' }}
+        />
+      )}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <SignLink board={item.board} style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.message || 'Empty message'}
           {item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
-        </div>
+        </SignLink>
         {edited && item.previousMessage !== null && item.previousMessage !== item.message && (
           <div style={{ marginTop: 3, color: MUTED, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             was <span style={{ textDecoration: 'line-through' }}>{item.previousMessage || 'empty'}</span>
@@ -66,7 +78,7 @@ export function ModerationItemRow({ item, board, onReview }: {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 5, fontSize: 12, color: MUTED }}>
           {ago(item) && <span>{ago(item)}</span>}
-          <SignLink item={item} board={board} />
+          <BoardTag item={item} board={board} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
@@ -103,13 +115,13 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
+        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
           {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
-        </div>
+        </SignLink>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.automatic && <span>{item.automatic.siteState === 'visible' ? 'Approved on Markee only · Still hidden in SDK integrations' : `Automatic · ${item.automatic.reason || 'Matched automatic moderation rule'}`}</span>}
           {ago(item) && <span>{ago(item)}</span>}
-          <SignLink item={item} board={board} />
+          <BoardTag item={item} board={board} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
@@ -148,20 +160,57 @@ function VisibleRow({ item, onReview }: { item: VisibleMessage; onReview: (actio
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.message || 'Empty message'}{item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
-        </div>
+        </SignLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.rank === 1
             ? <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: PINK }}>Winning</span>
             : <span style={{ fontFamily: MONO, fontSize: 11 }}>#{item.rank}</span>}
-          <SignLink item={item} board={{ name: item.boardName }} />
+          <BoardTag item={item} board={{ name: item.boardName }} />
         </div>
         {error && <div style={{ marginTop: 6, fontSize: 12, color: DANGER }}>{error}</div>}
       </div>
       {busy ? <WalletPending /> : (
         <button onClick={flag} style={{ ...ghost, color: DANGER, border: '1px solid rgba(255,138,155,0.45)' }}>Flag</button>
       )}
+    </div>
+  )
+}
+
+// Asks before approving several messages at once, since each one goes live on every site.
+function ConfirmApproveModal({ count, busy, error, onConfirm, onCancel }: { count: number; busy: boolean; error: string | null; onConfirm: () => void; onCancel: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [busy, onCancel])
+  const noun = count === 1 ? 'message' : 'messages'
+  return (
+    <div onClick={busy ? undefined : onCancel} style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(6,10,42,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-approve-title"
+        onClick={e => e.stopPropagation()}
+        style={{ width: 'min(420px, 100%)', background: BG2, border: `1px solid ${BORDER}`, borderRadius: 14, boxShadow: '0 24px 80px rgba(0,0,0,0.5)', padding: '22px 22px 18px', fontFamily: SANS }}
+      >
+        <h2 id="confirm-approve-title" style={{ margin: 0, fontSize: 17, fontWeight: 700, color: TEXT }}>
+          {count === 1 ? 'Approve the selected message?' : `Approve all ${count} selected ${noun}?`}
+        </h2>
+        <p style={{ margin: '8px 0 0', fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>
+          They will show on Markee and every SDK integration of your boards. You can still flag them later.
+        </p>
+        {error && <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: DANGER }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          {busy ? <WalletPending label={`Approving ${count} ${noun}…`} /> : (
+            <>
+              <button onClick={onCancel} style={{ ...ghost, color: TEXT2, border: `1px solid ${BORDER}` }}>Cancel</button>
+              <button autoFocus onClick={onConfirm} style={{ ...ghost, color: TEXT, border: '1px solid rgba(237,238,255,0.55)' }}>Approve {count}</button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -178,6 +227,11 @@ export function ModerationQueue() {
   const [visiblePage, setVisiblePage] = useState(0)
   const [visible, setVisible] = useState<{ total: number; items: VisibleMessage[] } | null>(null)
   const [visibleKey, setVisibleKey] = useState(0)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [confirming, setConfirming] = useState(false)
+  const [batchBusy, setBatchBusy] = useState(false)
+  const [batchError, setBatchError] = useState<string | null>(null)
+  const toast = useToast()
   const boardOf = (it: { board: string }) => boards.find(b => b.address === it.board)
   const me = address?.toLowerCase()
 
@@ -195,6 +249,33 @@ export function ModerationQueue() {
   const reviewAndRefresh = async (action: QueueAction, ids: string[]) => {
     await review(action, ids)
     setVisibleKey(k => k + 1)
+  }
+
+  // Drop selections for messages that left the queue (reviewed here, elsewhere, or edited).
+  const queued = new Set(items.map(it => it.markee))
+  const picked = [...selected].filter(id => queued.has(id))
+  const toggle = (id: string, on: boolean) => setSelected(prev => {
+    const next = new Set(prev)
+    if (on) next.add(id); else next.delete(id)
+    return next
+  })
+  const allPicked = items.length > 0 && picked.length === items.length
+
+  const approveSelected = async () => {
+    setBatchBusy(true)
+    setBatchError(null)
+    try {
+      await reviewAndRefresh('approve', picked)
+      toast(picked.length === 1 ? 'Message approved on Markee and SDK integrations' : `${picked.length} messages approved on Markee and SDK integrations`)
+      setSelected(new Set())
+      setConfirming(false)
+    } catch (e) {
+      // Approvals before the failure stay approved; the queue refetch drops them from the selection.
+      setBatchError(isUserRejection(e) ? null : 'Some approvals did not go through. Try again.')
+      if (isUserRejection(e)) setConfirming(false)
+    } finally {
+      setBatchBusy(false)
+    }
   }
 
   const flaggedShown = Math.min(flaggedPage, Math.max(0, Math.ceil(flagged.length / LIST_PAGE) - 1))
@@ -227,7 +308,27 @@ export function ModerationQueue() {
                 items={items}
                 noun={['message', 'messages']}
                 pageSize={5}
-                render={it => <ModerationItemRow key={itemId(it)} item={it} board={boardOf(it)} onReview={reviewAndRefresh} />}
+                right={items.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button onClick={() => setSelected(allPicked ? new Set() : new Set(items.map(it => it.markee)))} style={{ ...ghost, height: 28, color: TEXT2, border: `1px solid ${BORDER}` }}>
+                      {allPicked ? 'Clear selection' : 'Select all'}
+                    </button>
+                    {picked.length > 0 && (
+                      <button onClick={() => { setBatchError(null); setConfirming(true) }} style={{ ...ghost, height: 28, color: TEXT, border: '1px solid rgba(237,238,255,0.55)' }}>
+                        Approve {picked.length} selected
+                      </button>
+                    )}
+                  </div>
+                )}
+                render={it => (
+                  <ModerationItemRow
+                    key={itemId(it)}
+                    item={it}
+                    board={boardOf(it)}
+                    onReview={reviewAndRefresh}
+                    {...(items.length > 1 ? { selected: selected.has(it.markee), onSelect: (on: boolean) => toggle(it.markee, on) } : {})}
+                  />
+                )}
               />
             </div>
           )}
@@ -250,6 +351,9 @@ export function ModerationQueue() {
               : <Pager page={flaggedShown} total={flagged.length} pageSize={LIST_PAGE} onPage={setFlaggedPage} />}
           </div>
         </>
+      )}
+      {confirming && picked.length > 0 && (
+        <ConfirmApproveModal count={picked.length} busy={batchBusy} error={batchError} onConfirm={approveSelected} onCancel={() => setConfirming(false)} />
       )}
     </section>
   )

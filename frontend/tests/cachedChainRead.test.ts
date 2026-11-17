@@ -58,10 +58,12 @@ test('viewers share one chain read until it goes stale', async t => {
 })
 
 test('?fresh=1 forces a chain read, but only within the per-IP forced limit', async t => {
-  setup(t, { 's:fresh': 1 })
+  const { advance } = setup(t, { 's:fresh': 1 })
   let loads = 0
   const load = async () => ({ value: ++loads })
   await cachedChainRead(request(), { scope: 's', key: 'k', load })
+  // A forced read only accepts data loaded after it arrived, so let time pass.
+  advance(1)
   assert.deepEqual((await body(await cachedChainRead(request('?fresh=1'), { scope: 's', key: 'k', load }))).data, { value: 2 })
   assert.deepEqual((await body(await cachedChainRead(request('?fresh=1'), { scope: 's', key: 'k', load }))).data, { value: 2 },
     'a forced refresh over the limit is answered from the cache')

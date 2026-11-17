@@ -1,30 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicClient, http } from 'viem'
-import { optimism, base, arbitrum, mainnet } from 'viem/chains'
-import { MARKEE_TOKEN } from '@/lib/contracts/addresses'
-import { kv } from '@vercel/kv'
+import { isAddress } from 'viem'
+import { clientIp } from '@/lib/rate-limit'
+import { isReactionEmoji, reactionMessage, REACTION_SIGNATURE_TTL, type ReactionAction } from '@/lib/reactions'
+import { reactionsDeps } from '@/lib/reactions-deps'
 
 // @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
 export const dynamic = 'force-dynamic'
 
-const MARKEE_THRESHOLD = 100n * 10n**18n
-
-const ERC20_ABI = [
-  {
-    inputs: [{ name: 'account', type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function'
-  }
-] as const
-
-const clients = {
-  10: createPublicClient({ chain: optimism, transport: http() }),
-  8453: createPublicClient({ chain: base, transport: http() }),
-  42161: createPublicClient({ chain: arbitrum, transport: http() }),
-  1: createPublicClient({ chain: mainnet, transport: http() }),
-}
+const CHAIN_IDS = [1, 10, 8453, 42161]
+const MAX_INDEXED_MARKEES = 500
 
 interface Reaction {
   id: string
@@ -45,36 +29,57 @@ function reactionsKey(markeeAddress: string) {
 // Used by the no-param GET to bulk-load all reactions without a SCAN.
 const REACTIONS_INDEX_KEY = 'reactions:markees'
 
-async function getReactionsForMarkee(markeeAddress: string): Promise<Reaction[]> {
-  const hash = await kv.hgetall<Record<string, string>>(reactionsKey(markeeAddress))
-  if (!hash) return []
-  return Object.values(hash).map(v => JSON.parse(v) as Reaction)
+// The KV client already deserializes JSON values, while older writes may still come back as strings.
+function storedReaction(value: unknown): Reaction | null {
+  let parsed = value
+  if (typeof value === 'string') {
+    try { parsed = JSON.parse(value) } catch { return null }
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const r = parsed as Record<string, unknown>
+  if (typeof r.markeeAddress !== 'string' || !isAddress(r.markeeAddress)) return null
+  if (typeof r.userAddress !== 'string' || !isAddress(r.userAddress)) return null
+  if (!isReactionEmoji(r.emoji) || typeof r.timestamp !== 'number' || !Number.isFinite(r.timestamp)) return null
+  return {
+    id: typeof r.id === 'string' ? r.id : `${r.markeeAddress}-${r.userAddress}`,
+    markeeAddress: r.markeeAddress,
+    userAddress: r.userAddress,
+    emoji: r.emoji,
+    timestamp: r.timestamp,
+    chainId: typeof r.chainId === 'number' ? r.chainId : 8453,
+  }
 }
 
-// Balance check with 5-minute KV cache to avoid an RPC call on every request
-async function verifyBalance(address: string, chainId: number): Promise<boolean> {
-  const cacheKey = `balance:markee:${address.toLowerCase()}:${chainId}`
-  const cached = await kv.get<boolean>(cacheKey)
-  if (cached !== null) return cached
+async function getReactionsForMarkee(markeeAddress: string): Promise<Reaction[]> {
+  const hash = await reactionsDeps.hgetall(reactionsKey(markeeAddress))
+  if (!hash) return []
+  return Object.values(hash).map(storedReaction).filter((r): r is Reaction => r !== null)
+}
 
-  try {
-    const client = clients[chainId as keyof typeof clients]
-    if (!client) return false
+type Signed = { ok: true; markee: string; user: `0x${string}` } | { ok: false; response: NextResponse }
 
-    const balance = await client.readContract({
-      address: MARKEE_TOKEN,
-      abi: ERC20_ABI,
-      functionName: 'balanceOf',
-      args: [address as `0x${string}`]
-    })
-
-    const hasBalance = balance >= MARKEE_THRESHOLD
-    await kv.set(cacheKey, hasBalance, { ex: 300 }) // 5 min
-    return hasBalance
-  } catch (error) {
-    console.error('[Reactions] Balance check error:', error)
-    return false
+async function verifySigned(action: ReactionAction, body: Record<string, unknown>, emoji: string): Promise<Signed> {
+  const { markeeAddress, userAddress, signature, timestamp } = body
+  const fail = (error: string, status: number): Signed => ({ ok: false, response: NextResponse.json({ error }, { status }) })
+  if (typeof markeeAddress !== 'string' || !isAddress(markeeAddress) || typeof userAddress !== 'string' || !isAddress(userAddress)) {
+    return fail('Valid markeeAddress and userAddress are required', 400)
   }
+  if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]+$/.test(signature) || typeof timestamp !== 'number' || !Number.isInteger(timestamp)) {
+    return fail('Sign the reaction with your wallet to continue', 401)
+  }
+  if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > REACTION_SIGNATURE_TTL) return fail('Signature expired', 401)
+  const valid = await reactionsDeps.verifyMessage({
+    address: userAddress,
+    message: reactionMessage(action, markeeAddress, emoji, timestamp),
+    signature: signature as `0x${string}`,
+  })
+  if (!valid) return fail('Invalid signature', 401)
+  return { ok: true, markee: markeeAddress.toLowerCase(), user: userAddress.toLowerCase() as `0x${string}` }
+}
+
+async function readBody(request: NextRequest): Promise<Record<string, unknown> | null> {
+  const body: unknown = await request.json().catch(() => null)
+  return body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null
 }
 
 // GET /api/reactions?markeeAddress=0x... (omit param to fetch all)
@@ -83,25 +88,15 @@ export async function GET(request: NextRequest) {
     const markeeAddress = request.nextUrl.searchParams.get('markeeAddress')
 
     if (markeeAddress) {
-      const reactions = await getReactionsForMarkee(markeeAddress)
-      return NextResponse.json({ reactions })
+      if (!isAddress(markeeAddress)) return NextResponse.json({ error: 'Invalid markeeAddress' }, { status: 400 })
+      return NextResponse.json({ reactions: await getReactionsForMarkee(markeeAddress) })
     }
 
-    // No markeeAddress — load all reactions via the markee index set
-    const markeeAddresses = await kv.smembers<string[]>(REACTIONS_INDEX_KEY)
-    if (!markeeAddresses || markeeAddresses.length === 0) {
-      return NextResponse.json({ reactions: [] })
-    }
-    const hashes = await Promise.all(
-      markeeAddresses.map(addr => kv.hgetall<Record<string, string>>(reactionsKey(addr)))
-    )
-    const allReactions: Reaction[] = []
-    for (const hash of hashes) {
-      if (hash) {
-        allReactions.push(...Object.values(hash).map(v => JSON.parse(v) as Reaction))
-      }
-    }
-    return NextResponse.json({ reactions: allReactions })
+    const markeeAddresses = (await reactionsDeps.smembers(REACTIONS_INDEX_KEY) ?? [])
+      .filter(addr => typeof addr === 'string' && isAddress(addr))
+      .slice(0, MAX_INDEXED_MARKEES)
+    const lists = await Promise.all(markeeAddresses.map(getReactionsForMarkee))
+    return NextResponse.json({ reactions: lists.flat() })
   } catch (error) {
     console.error('[Reactions] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch reactions' }, { status: 500 })
@@ -109,27 +104,28 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/reactions
+//   { markeeAddress, userAddress, emoji, chainId, signature, timestamp }
+//   The signature covers reactionMessage('react', markeeAddress, emoji, timestamp).
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { markeeAddress, userAddress, emoji, chainId } = body
+    const body = await readBody(request)
+    if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    const { emoji, chainId } = body
+    if (!isReactionEmoji(emoji)) return NextResponse.json({ error: 'Unsupported reaction' }, { status: 400 })
+    if (typeof chainId !== 'number' || !CHAIN_IDS.includes(chainId)) return NextResponse.json({ error: 'Unsupported chain' }, { status: 400 })
 
-    if (!markeeAddress || !userAddress || !emoji || !chainId) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    if (!await reactionsDeps.underRateLimit('reactions-ip', clientIp(request), 30, 60)) {
+      return NextResponse.json({ error: 'Too many requests. Please wait before reacting again.' }, { status: 429 })
     }
 
-    // Rate limit: 1 reaction change per user per 30 seconds
-    const rateLimitKey = `ratelimit:reactions:${userAddress.toLowerCase()}`
-    const acquired = await kv.set(rateLimitKey, 1, { ex: 30, nx: true })
-    if (acquired === null) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please wait before reacting again.' },
-        { status: 429 }
-      )
+    const signed = await verifySigned('react', body, emoji)
+    if (!signed.ok) return signed.response
+
+    if (!await reactionsDeps.cooldown(signed.user)) {
+      return NextResponse.json({ error: 'Too many requests. Please wait before reacting again.' }, { status: 429 })
     }
 
-    const hasBalance = await verifyBalance(userAddress, chainId)
-    if (!hasBalance) {
+    if (!await reactionsDeps.holdsEnoughMarkee(signed.user)) {
       return NextResponse.json(
         { error: 'Insufficient MARKEE balance. You need at least 100 MARKEE tokens to react.' },
         { status: 403 }
@@ -137,20 +133,16 @@ export async function POST(request: NextRequest) {
     }
 
     const reaction: Reaction = {
-      id: `${markeeAddress}-${userAddress}`,
-      markeeAddress,
-      userAddress,
+      id: `${signed.markee}-${signed.user}`,
+      markeeAddress: signed.markee,
+      userAddress: signed.user,
       emoji,
       timestamp: Date.now(),
       chainId,
     }
 
-    // Atomic hset — one command, no race condition
-    await kv.hset(reactionsKey(markeeAddress), {
-      [userAddress.toLowerCase()]: JSON.stringify(reaction),
-    })
-    // Track this markee in the index so the no-param GET can find it
-    await kv.sadd(REACTIONS_INDEX_KEY, markeeAddress.toLowerCase())
+    await reactionsDeps.hset(reactionsKey(signed.markee), signed.user, JSON.stringify(reaction))
+    await reactionsDeps.sadd(REACTIONS_INDEX_KEY, signed.markee)
 
     return NextResponse.json({ success: true, reaction })
   } catch (error) {
@@ -159,20 +151,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/reactions?markeeAddress=0x...&userAddress=0x...
+// DELETE /api/reactions
+//   { markeeAddress, userAddress, signature, timestamp }
+//   The signature covers reactionMessage('remove', markeeAddress, '', timestamp).
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = request.nextUrl
-    const markeeAddress = searchParams.get('markeeAddress')
-    const userAddress = searchParams.get('userAddress')
+    const body = await readBody(request)
+    if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
 
-    if (!markeeAddress || !userAddress) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
+    if (!await reactionsDeps.underRateLimit('reactions-ip', clientIp(request), 30, 60)) {
+      return NextResponse.json({ error: 'Too many requests. Please wait before reacting again.' }, { status: 429 })
     }
 
-    // Atomic hdel — one command, no race condition
-    await kv.hdel(reactionsKey(markeeAddress), userAddress.toLowerCase())
+    const signed = await verifySigned('remove', body, '')
+    if (!signed.ok) return signed.response
 
+    await reactionsDeps.hdel(reactionsKey(signed.markee), signed.user)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Reactions] DELETE error:', error)

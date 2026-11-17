@@ -1,6 +1,7 @@
 // Partner registry. Kept free of client-only imports so server routes can read it too.
 // Partner configuration.
-// leaderboardAddress — v1.1 Leaderboard to query and send new purchases to; null for unmigrated partners.
+// leaderboardAddress — original Leaderboard; null for unmigrated partners. Read and buy through the
+// leaderboardAddress /api/partner/board returns, which follows a finished board migration.
 // strategyAddress — kept for reference only (no longer queried).
 export const PARTNERS = [
   {
@@ -113,8 +114,10 @@ export const PARTNERS = [
   },
 ]
 
-// Response shape of /api/partner/board (amounts are decimal strings).
+// Response shape of /api/partner/board (amounts are decimal strings). leaderboardAddress is the
+// board to read and buy on: the registry address, or its finished-migration successor.
 export interface PartnerBoardSnapshot {
+  leaderboardAddress: `0x${string}`
   markees: {
     address: `0x${string}`
     message: string

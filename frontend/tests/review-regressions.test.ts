@@ -107,7 +107,7 @@ test('published SDK view requests remain compatible with the changed API', async
     const client = new MarkeeClient({ fetch: async (url: string, init: RequestInit) => {
       const headers = new Headers(init.headers)
       headers.set('origin', origin)
-      return sdkPost(new NextRequest(url, { method: init.method, body: init.body, headers, signal: init.signal ?? undefined }), { params: { path: ['views'] } })
+      return sdkPost(new NextRequest(url, { method: init.method, body: init.body, headers, signal: init.signal ?? undefined }), { params: Promise.resolve({ path: ['views'] }) })
     } })
     const result = await client.recordView('0x3333333333333333333333333333333333333333', 'hello', origin)
     assert.deepEqual(result, { totalViews: 3, messageViews: 2, counted: false })

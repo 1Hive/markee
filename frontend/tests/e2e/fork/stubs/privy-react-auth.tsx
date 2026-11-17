@@ -17,11 +17,17 @@ export function usePrivy() {
   return {
     ready: true,
     authenticated: !!address,
-    user: address ? { id: `e2e:${address}`, wallet: { address } } : null,
+    user: address ? { id: `e2e:${address}`, wallet: { address }, linkedAccounts: [{ type: 'wallet', address }] } : null,
+    getAccessToken: async (): Promise<string | null> => null,
     login: () => {},
     logout: async () => { disconnect() },
     connectWallet: () => {},
   }
+}
+
+// No session tokens here, so useWalletAuthFetch falls back to signing with the mock connector.
+export function useIdentityToken() {
+  return { identityToken: null as string | null }
 }
 
 export function useWallets() {

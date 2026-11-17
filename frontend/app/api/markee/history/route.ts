@@ -5,7 +5,7 @@ import { kv } from '@vercel/kv'
 import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
 import { createSnapshotCache, SnapshotUnavailable } from '@/lib/sdk/snapshot-cache'
 import { displayCacheConfigured, snapshotStorage } from '@/lib/sdk/cached-display'
-import { clientIp, underRateLimit } from '@/lib/rate-limit'
+import { readRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -244,7 +244,6 @@ export async function GET(request: NextRequest) {
       { status: 400, headers: NO_CACHE },
     )
   }
-
   const client = getClient()
   const leaderboard = leaderboardAddress as `0x${string}`
   const markee = markeeAddress as `0x${string}`
@@ -294,7 +293,7 @@ export async function GET(request: NextRequest) {
       if (process.env.NODE_ENV === 'production') throw new Error('History cache storage is not configured')
       return NextResponse.json(await load(), { headers: NO_CACHE }) // Local development runs uncached.
     }
-    if (!await underRateLimit('markee:history', clientIp(request), RATE_MAX, RATE_WINDOW)) {
+    if (await readRateLimited(request, 'markee:history', RATE_MAX, RATE_WINDOW)) {
       return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
     }
     const key = `markee-history:${leaderboard.toLowerCase()}:${markee.toLowerCase()}:${strategyParam === 'streaming' ? 'streaming' : strategyParam ? 'fixed' : 'auto'}`

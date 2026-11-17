@@ -13,8 +13,11 @@ import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
-import { formatUsd, FAST_TX_GAS_RESERVE, formatMarkeeAmount } from '@/lib/utils'
-import { estimateLeaderboardPurchaseMarkeeTokens } from '@/lib/tokenPhases'
+import { formatUsd, FAST_TX_GAS_RESERVE } from '@/lib/utils'
+import { formatMarkeeEstimate, markeeEstimateHeadline, type MarkeeEstimate } from '@/lib/markee/quote'
+import { useMarkeePurchaseQuote } from '@/hooks/useMarkeeQuote'
+import { beatsTop, formatEthCeil, shortfallToWin, winAmountWei } from '@/lib/leaderboard/winAmount'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { TxProgress, InfoTip, PaymentReviewCard, PaymentReviewFooter, MessageLoading, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePendingTxsFor } from '@/hooks/usePendingTxs'
@@ -30,7 +33,6 @@ import { MONO, PINK, BLUE, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/des
 // ── Design tokens (matches BuyMessageModal's theme) ─────────────────────────────
 const PURP   = '#7B6AF4'
 
-const MIN_INCREMENT = BigInt('1000000000000000') // 0.001 ETH
 
 function fmtAddr(a: string): string {
   return `${a.slice(0, 6)}...${a.slice(-4)}`
@@ -199,10 +201,8 @@ function AmountCard({
 }
 
 // Compact 2-line layout: line 1 is [label | MARKEE amount], line 2 is the 62/38 split note.
-function ReceiveCard({ amount, compact = true }: { amount: string; compact?: boolean }) {
-  const parsed = parseFloat(amount || '0')
-  const bidNum = Number.isFinite(parsed) ? parsed : 0
-  const markeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, bidNum))
+function ReceiveCard({ estimate, compact = true }: { estimate: MarkeeEstimate & { loading?: boolean }; compact?: boolean }) {
+  const { headline, note } = markeeEstimateHeadline(estimate)
   return (
     <div style={{
       boxSizing: 'border-box',
@@ -211,10 +211,11 @@ function ReceiveCard({ amount, compact = true }: { amount: string; compact?: boo
       border: '1px solid rgba(248,151,254,0.35)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
     }}>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
         <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
-          {formatMarkeeAmount(markeeEarned)}
+          {headline}
         </span>
+        {note && <span style={{ color: PINK, fontSize: 11, fontFamily: 'Manrope, system-ui, sans-serif', opacity: 0.8, whiteSpace: 'nowrap' }}>{note}</span>}
       </div>
       {compact ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.1, flexShrink: 0 }}>
@@ -331,7 +332,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const { switchChain } = useSwitchChain()
   const ethPrice = useEthPrice()
 
-  const { meta, markees, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
+  const { meta, markees, unavailable: boardDataUnavailable, refetch: refetchLeaderboard } = useLeaderboardDetail(isOpen ? leaderboardAddress : undefined)
   const noBeneficiaryReason = meta && isZeroAddress(meta.beneficiaryAddress) ? NO_BENEFICIARY_REASON : null
   const { trust } = useBoardTrust(isOpen ? leaderboardAddress : undefined)
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN_ID })
@@ -339,6 +340,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     : trust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
     : trust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
     : 'Checking this Markee board…'
+  const boardDataReason = meta ? null
+    : boardDataUnavailable ? 'Could not load this Markee board. Check your connection and try again.'
+    : 'Loading this Markee board…'
 
   const [view, setView] = useState<View>('list')
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
@@ -378,9 +382,9 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const topFundsAdded = topMarkee?.totalFundsAdded ?? 0n
   const fundedMarkees = markees.filter(m => m.totalFundsAdded > 0n)
   const minimumAmount = meta?.minimumPrice || parseEther('0.001')
-  const minimumAmountFormatted = Number(formatEther(minimumAmount)).toFixed(3)
-  const maxLen = Number(maxMessageLength || 223)
-  const maxNameLen = Number(maxNameLength || 32)
+  const minimumAmountFormatted = formatEthCeil(minimumAmount)
+  const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
 
   // ── Views (batched, per-markee + summed for the header) ────────────────────
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -464,13 +468,12 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const maxSpendableFormatted = maxSpendableEth > 0 && maxSpendableEth < 0.001 ? maxSpendableEth.toFixed(6) : maxSpendableEth.toFixed(3)
 
   // WIN target: for "buy new" it's overtaking the current #1; for "add funds" it's overtaking #1 from this specific target's current total.
-  const winRawForCreate = topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT : null
+  const winRawForCreate = winAmountWei(topFundsAdded)
   const winForCreate = winRawForCreate && winRawForCreate >= minimumAmount ? winRawForCreate : null
-  const winRawForTarget = target && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT - target.totalFundsAdded : null
-  const winForTarget = winRawForTarget && winRawForTarget > 0n ? winRawForTarget : null
+  const winForTarget = target ? winAmountWei(topFundsAdded, target.totalFundsAdded) : null
   const winAmountFormatted = view === 'addFunds'
-    ? (winForTarget ? Number(formatEther(winForTarget)).toFixed(3) : null)
-    : (winForCreate ? Number(formatEther(winForCreate)).toFixed(3) : null)
+    ? (winForTarget ? formatEthCeil(winForTarget) : null)
+    : (winForCreate ? formatEthCeil(winForCreate) : null)
   const targetIsTop = !!target && !!topMarkee && target.address.toLowerCase() === topMarkee.address.toLowerCase()
   const isAlreadyTop = view === 'addFunds' && targetIsTop
   // 2X replaces WIN for a message that's already #1: adding its current total again doubles it.
@@ -480,24 +483,24 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // active instead of re-deriving the ranking math.
   // An edit pays nothing, so its shortfall is the top-up this message needs to reach #1.
   const reviewAmountWei = view === 'edit' ? 0n : (() => { try { return amount ? parseEther(amount) : 0n } catch { return 0n } })()
-  const reviewWinTarget = view === 'addFunds' || view === 'edit' ? winForTarget : winForCreate
+  const reviewOwnTotal = view === 'addFunds' || view === 'edit' ? target?.totalFundsAdded ?? 0n : 0n
   const reviewWillWin = view === 'edit'
     ? targetIsTop
-    : isAlreadyTop || !reviewWinTarget || reviewAmountWei >= reviewWinTarget
-  const reviewShortfallWei = !reviewWillWin && reviewWinTarget && reviewWinTarget > reviewAmountWei
-    ? reviewWinTarget - reviewAmountWei : 0n
-  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${Number(formatEther(reviewShortfallWei)).toFixed(3)} ETH` : null
-  const reviewMarkeeEarned = estimateLeaderboardPurchaseMarkeeTokens(Math.max(0, parseFloat(amount || '0')))
+    : isAlreadyTop || topFundsAdded === 0n || beatsTop(reviewAmountWei, reviewOwnTotal, topFundsAdded)
+  const reviewShortfallWei = reviewWillWin ? 0n : shortfallToWin(reviewAmountWei, reviewOwnTotal, topFundsAdded)
+  const reviewMinToWinLabel = reviewShortfallWei > 0n ? `${formatEthCeil(reviewShortfallWei)} ETH` : null
+  const markeeQuote = useMarkeePurchaseQuote(strategyAddress, reviewAmountWei, activeAddress as `0x${string}` | undefined, isOpen && view !== 'edit')
+  const reviewMarkeeEarnedLabel = formatMarkeeEstimate(markeeQuote) ?? (markeeQuote.loading ? 'Estimating MARKEE…' : 'MARKEE estimate unavailable')
 
   // Default the "buy a new message" amount to whatever it takes to win #1, falling back to the
   // floor price when there's no competition yet. Only runs while the user hasn't touched the field
   // (or a preset) themselves, and re-derives once the leaderboard data finishes loading.
   useEffect(() => {
-    if (!isOpen || view !== 'list' || hasUserEdited) return
-    if (winForCreate) { setAmount(Number(formatEther(winForCreate)).toFixed(3)); setLastPreset('win') }
+    if (!isOpen || view !== 'list' || hasUserEdited || !meta) return
+    if (winForCreate) { setAmount(formatEthCeil(winForCreate)); setLastPreset('win') }
     else { setAmount(minimumAmountFormatted); setLastPreset('min') }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, view, hasUserEdited, minimumAmountFormatted, winForCreate])
+  }, [isOpen, view, hasUserEdited, minimumAmountFormatted, winForCreate, meta])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleBuyNew = async () => {
@@ -511,7 +514,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!amount || parseFloat(amount) <= 0) { setError('Please enter an amount'); return }
     const amountWei = parseEther(amount)
     if (amountWei < minimumAmount) { setError(`Minimum payment is ${formatEther(minimumAmount)} ETH`); return }
-    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen) ?? textLimitError('Name', name.trim(), maxNameLen)
+    if (textError) { setError(textError); return }
     if (!canAffordTransaction()) { setError(getInsufficientBalanceMessage() || 'Insufficient balance'); return }
     setError(null)
     try {
@@ -564,7 +568,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     if (!hasActiveWalletConnection) { setError('Please connect your wallet'); return }
     if (!isCorrectChain) { setError(`Please switch to ${CANONICAL_CHAIN.name}`); return }
     if (!message.trim()) { setError('Please enter a message'); return }
-    if (message.length > maxLen) { setError(`Message must be ${maxLen} characters or less`); return }
+    const textError = textLimitError('Message', message, maxLen)
+    if (textError) { setError(textError); return }
     setError(null)
     try {
       writeContract({ address: strategyAddress, abi: TopDawgPartnerStrategyABI, functionName: 'updateMessage', args: [target.address as `0x${string}`, message], chainId: CANONICAL_CHAIN.id })
@@ -576,11 +581,10 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
 
   const openFund = (m: LeaderboardMarkee) => {
     const alreadyTop = !!topMarkee && m.address.toLowerCase() === topMarkee.address.toLowerCase()
-    const winRaw = !alreadyTop && topFundsAdded > 0n ? topFundsAdded + MIN_INCREMENT - m.totalFundsAdded : null
-    const win = winRaw && winRaw > 0n ? winRaw : null
+    const win = alreadyTop ? null : winAmountWei(topFundsAdded, m.totalFundsAdded)
     const defaultAmount = alreadyTop
       ? Number(formatEther(m.totalFundsAdded)).toFixed(3) // 2x: adding your current total again doubles it
-      : win ? Number(formatEther(win)).toFixed(3) : minimumAmountFormatted
+      : win ? formatEthCeil(win) : minimumAmountFormatted
     setTarget(m); setView('addFunds'); setAmount(defaultAmount); setLastPreset(alreadyTop || win ? 'win' : 'min')
     setError(null); setHasUserEdited(false); setReviewOpen(false)
   }
@@ -632,7 +636,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
     </div>
   )
 
-  const activating = view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
+  const activating = !!meta && view !== 'addFunds' && view !== 'edit' && fundedMarkees.length === 0
   const stepLabel = view === 'addFunds' ? 'ADD FUNDS' : view === 'edit' ? 'EDIT MESSAGE'
     : activating ? 'ACTIVATE MARKEE' : 'CHANGE THE MARKEE SIGN'
 
@@ -714,6 +718,19 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
             </button>
           </div>
 
+        ) : view !== 'edit' && boardDataReason ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center', flex: 1 }}>
+            <p style={{ color: TEXT2, marginBottom: 22, fontSize: 15 }}>{boardDataReason}</p>
+            {boardDataUnavailable && (
+              <button
+                onClick={() => { void refetchLeaderboard() }}
+                style={{ background: PINK, color: BG, border: 'none', borderRadius: 10, padding: '12px 24px', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+              >
+                Try again
+              </button>
+            )}
+          </div>
+
         ) : (
           <>
             <div style={{ padding: '22px 22px 0', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -734,7 +751,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     message={message}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
+                    markeeEarnedLabel={reviewMarkeeEarnedLabel}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                   />
@@ -780,16 +797,16 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set your message</span>
-                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{utf8Length(message)}/{maxLen} bytes</span>
                       </div>
                       <textarea
                         value={message}
                         onChange={e => {
                           setHasUserEdited(true)
-                          setMessage(e.target.value.slice(0, maxLen))
+                          setMessage(truncateUtf8(e.target.value, maxLen))
                           if (isMessageFieldError(error)) setError(null)
                         }}
-                        placeholder={`Your message here... (${maxLen} max)`}
+                        placeholder={`Your message here... (${maxLen} bytes max)`}
                         rows={2}
                         style={{ ...messageBoxStyle, resize: 'vertical' }}
                         disabled={busy}
@@ -804,7 +821,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       <input
                         type="text"
                         value={name}
-                        onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                        onChange={e => { setHasUserEdited(true); setName(truncateUtf8(e.target.value, maxNameLen)) }}
                         placeholder="tell the world who wrote this..."
                         style={inputStyle}
                         disabled={busy}
@@ -833,7 +850,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
-                      <ReceiveCard amount={amount} />
+                      <ReceiveCard estimate={markeeQuote} />
                       <BtnTooltip reason={btnDisabledReason}>
                         <button
                           onClick={() => setReviewOpen(true)}
@@ -873,7 +890,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                     message={target.message || ''}
                     amountLabel={`${amount || '0'} ETH`}
                     amountUsd={ethPrice && parseFloat(amount || '0') > 0 ? formatUsd(parseFloat(amount) * ethPrice) : null}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE`}
+                    markeeEarnedLabel={reviewMarkeeEarnedLabel}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                     chainId={CANONICAL_CHAIN_ID}
@@ -902,7 +919,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       winAmountFormatted={winAmountFormatted} twoXAmountFormatted={twoXAmountFormatted} isAlreadyTop={isAlreadyTop} ethPrice={ethPrice}
                       balanceData={balanceData} busy={busy} showMin={false}
                     />
-                    <ReceiveCard amount={amount} compact={false} />
+                    <ReceiveCard estimate={markeeQuote} compact={false} />
                   </div>
                 </div>
                 )
@@ -943,13 +960,13 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set new message</span>
-                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{utf8Length(message)}/{maxLen} bytes</span>
                     </div>
                     <textarea
                       value={message}
                       onChange={e => {
                         setHasUserEdited(true)
-                        setMessage(e.target.value.slice(0, maxLen))
+                        setMessage(truncateUtf8(e.target.value, maxLen))
                         if (isMessageFieldError(error)) setError(null)
                       }}
                       placeholder="Enter your new message..."

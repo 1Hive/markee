@@ -10,6 +10,7 @@ import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
 import { fundedSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
+import { readRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -354,6 +355,9 @@ export async function GET(request: Request) {
   if (!owner || !/^0x[0-9a-f]{40}$/.test(owner)) {
     return NextResponse.json({ error: 'Invalid owner' }, { status: 400 })
   }
+  if (await readRateLimited(request, 'account-funded', 30)) {
+    return NextResponse.json({ error: 'Too many requests, try again shortly' }, { status: 429 })
+  }
 
   const client = getClient()
   const headers = internalHeaders()
@@ -366,9 +370,10 @@ export async function GET(request: Request) {
   const funded = [...(fixed ?? []), ...(streaming ?? [])]
 
   // The wallet's running total put into other people's messages, for the Buyer Hub chart
-  // (lib/stats/daily.ts). Skipped when either read failed, so a partial read can't look like a refund.
-  if (fixed && streaming) {
-    const total = funded.reduce((sum, m) => sum + BigInt(m.totalContributed || '0'), 0n)
+  // (lib/stats/daily.ts). Skipped when either read failed, so a partial read can't look like a refund,
+  // and for wallets that have never funded anything.
+  const total = funded.reduce((sum, m) => sum + BigInt(m.totalContributed || '0'), 0n)
+  if (fixed && streaming && total > 0n) {
     await snapshotTotals([{ key: fundedSnapshotKey(owner), total }]).catch(e => console.error('[account/funded] snapshot failed', e))
   }
 

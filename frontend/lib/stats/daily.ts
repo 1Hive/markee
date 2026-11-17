@@ -16,6 +16,7 @@ export { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from './keys'
 export const raisedSnapshotKey = (board: string) => `stats:raised:${board.toLowerCase()}`
 export const boughtSnapshotKey = (wallet: string) => `stats:bought:${wallet.toLowerCase()}`
 export const fundedSnapshotKey = (wallet: string) => `stats:funded:${wallet.toLowerCase()}`
+export const rentSpentSnapshotKey = (wallet: string) => `stats:rent-spent:${wallet.toLowerCase()}`
 
 // Today's running total. Overwritten through the day, so the last write of the day is the day's close.
 export async function snapshotTotals(entries: { key: string; total: bigint }[]): Promise<void> {

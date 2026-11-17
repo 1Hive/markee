@@ -20,6 +20,8 @@ import { StreamingBoardDetail } from '@/components/StreamingBoardDetail'
 import { AcceptAdminBanner } from '@/components/leaderboard/TwoStepAdmin'
 import { hasTwoStepAdmin } from '@/lib/strategy'
 import { useBoardTrust } from '@/lib/contracts/boardRegistry'
+import { useCurrentBoardAddress } from '@/hooks/useCurrentBoardAddress'
+import { boardLabel } from '@/lib/leaderboards/label'
 import {
   MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
   fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
@@ -37,6 +39,7 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
   const { meta, markees: allMarkees, isLoading, refetch: refetchLeaderboard } = useLeaderboardDetail(leaderboardAddress)
   const markees = allMarkees.filter(m => m.totalFundsAdded > 0n)
   const { entry: ecoEntry, loading: ecoEntryLoading } = useServedOn(leaderboardAddress)
+  const boardTitle = boardLabel({ ...ecoEntry, name: meta?.leaderboardName })
 
   // Views for all markees
   const [viewsMap, setViewsMap] = useState<Map<string, number>>(new Map())
@@ -179,8 +182,8 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
       ) : !topMarkee ? (
         // Leaderboard exists but no messages yet
         <section style={{ maxWidth: 700, margin: '0 auto', padding: '120px 40px', textAlign: 'center' }}>
-          {meta.leaderboardName && (
-            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{meta.leaderboardName}</div>
+          {boardTitle && (
+            <div style={{ fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{boardTitle}</div>
           )}
           <h1 style={{ fontSize: 34, fontWeight: 800, color: TEXT, margin: 0 }}>Activate your Markee</h1>
           <p style={{ color: TEXT2, fontSize: 16, margin: '14px 0 30px' }}>Buy the first message to activate your Markee.</p>
@@ -438,7 +441,13 @@ const VERSION_ABI = [
 // detail; while VERSION loads we default to the (common) fixed detail, which shows its own skeletons.
 export default function MarkeeDetailPage() {
   const params = useParams()
-  const leaderboardAddress = params.address as string
+  const requestedAddress = params.address as string
+  const { ready } = useCurrentBoardAddress(requestedAddress, current => `/markee/${current}`)
+  if (!ready) return <BoardGateShell><BoardDetailSkeleton /></BoardGateShell>
+  return <CurrentMarkeeDetail leaderboardAddress={requestedAddress} />
+}
+
+function CurrentMarkeeDetail({ leaderboardAddress }: { leaderboardAddress: string }) {
   const { trust, refetch: refetchTrust } = useBoardTrust(leaderboardAddress)
   const { data: version } = useReadContract({
     address: leaderboardAddress as `0x${string}`,

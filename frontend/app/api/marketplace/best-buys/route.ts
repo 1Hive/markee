@@ -15,6 +15,7 @@ import { kv } from '@vercel/kv'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import type { BestBuy } from '@/components/account/types'
 import { readBoardViews } from '@/lib/views/boards'
+import { boardLabel, type LabelledBoard } from '@/lib/leaderboards/label'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
@@ -25,12 +26,10 @@ const LIMIT = 5
 // Matches the marketplace's priceToOvertake: the top bid plus the 0.001 ETH minimum increment.
 const MIN_INCREMENT = 1_000_000_000_000_000n
 
-interface ListedBoard {
+interface ListedBoard extends LabelledBoard {
   address: string
   platform?: string
   strategy?: 'fixed' | 'streaming'
-  leaderboardName?: string
-  name?: string
   totalFundsRaw?: string
   streamedRateRaw?: string
   streamedAt?: number
@@ -38,7 +37,6 @@ interface ListedBoard {
   topFundsAddedRaw?: string
   topMessage?: string | null
   topMarkeeAddress?: string | null
-  verifiedUrl?: string
 }
 
 export async function GET() {
@@ -78,7 +76,7 @@ export async function GET() {
       .slice(0, LIMIT)
       .map(({ lb, views, cpm, price }): BestBuy => ({
         address: lb.address,
-        name: lb.leaderboardName || lb.name || `${lb.address.slice(0, 8)}…`,
+        name: boardLabel({ ...lb, name: lb.leaderboardName || lb.name }, `${lb.address.slice(0, 8)}…`),
         platform: lb.platform ?? null,
         strategy: lb.strategy === 'streaming' ? 'streaming' : 'fixed',
         servedOn: lb.verifiedUrl ?? null,

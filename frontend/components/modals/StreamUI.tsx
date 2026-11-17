@@ -167,7 +167,7 @@ export function Row({ label, value, bold, info }: { label: string; value: string
 // its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
 export function PaymentReviewCard({
   kind, message, amountLabel, amountUsd, depositLabel, runwayLabel, markeeEarnedLabel, willWin, minToWinLabel,
-  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin, boardCreator,
+  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin,
 }: {
   kind: 'fixed' | 'rent'
   // The board's first message: there's nothing to beat yet, so the banner says what activation does.
@@ -192,7 +192,6 @@ export function PaymentReviewCard({
   chainId?: number | string
   markeeId?: string
   boardAdmin?: string | null
-  boardCreator?: string | null
 }) {
   const messageBox = (
     <div style={{
@@ -205,7 +204,7 @@ export function PaymentReviewCard({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 6 }}>
       {chainId !== undefined && markeeId ? (
-        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin} boardCreator={boardCreator}>
+        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin}>
           {messageBox}
         </ModeratedContent>
       ) : messageBox}
@@ -442,6 +441,32 @@ export function RatePriceCard({
           </span>
         )}
       </div>
+    </div>
+  )
+}
+
+export function formatFundingNeeded(wei: bigint): string {
+  const eth = Number(formatEther(wei))
+  return (Math.ceil(eth * 10000) / 10000).toFixed(4)
+}
+
+export function FundingNeededNotice({ neededWei, ethPrice, onOpenDepositManager }: {
+  neededWei: bigint
+  ethPrice: number | null
+  onOpenDepositManager: () => void
+}) {
+  const usd = ethPrice ? ` (${formatUsd(Number(formatEther(neededWei)) * ethPrice)})` : ''
+  return (
+    <div style={{ border: `1px solid rgba(248,151,254,0.35)`, background: 'rgba(248,151,254,0.08)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 700, color: TEXT, marginBottom: 4 }}>Add funds to pay for this message</div>
+      Your wallet needs about {formatFundingNeeded(neededWei)} ETH{usd} more to stream at this rate. Use Add funds to buy or transfer ETH, then come back here to finish. You can also manage your ETHx balance in the{' '}
+      <button
+        type="button"
+        onClick={onOpenDepositManager}
+        style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0 }}
+      >
+        Deposit Manager →
+      </button>
     </div>
   )
 }

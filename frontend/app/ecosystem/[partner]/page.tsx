@@ -68,6 +68,8 @@ export default function PartnerPage() {
     totalFundsAdded: BigInt(m.totalFundsAdded),
     chainId: CANONICAL_CHAIN_ID,
   }))
+  // The board to read and buy on: the server follows a finished migration to the successor.
+  const leaderboardAddress = board?.leaderboardAddress ?? null
 
   useEffect(() => {
     if (markees.length > 0) setLastUpdated(new Date())
@@ -207,7 +209,7 @@ export default function PartnerPage() {
               )}
             </div>
 
-            {partner.leaderboardAddress && !NETWORK_PAUSED ? (
+            {leaderboardAddress && !NETWORK_PAUSED ? (
               <button
                 onClick={handleCreateNew}
                 className="bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
@@ -246,7 +248,7 @@ export default function PartnerPage() {
               <div className="bg-[#0A0F3D] rounded-lg p-8 max-w-lg mx-auto border border-[#8A8FBF]/20">
                 <div className="text-6xl mb-4">🪧</div>
                 <p className="text-[#8A8FBF] text-lg mb-4">No messages yet for {partner.name}</p>
-                {partner.leaderboardAddress && !NETWORK_PAUSED && (
+                {leaderboardAddress && !NETWORK_PAUSED && (
                   <button
                     onClick={handleCreateNew}
                     className="bg-[#F897FE] text-[#060A2A] px-6 py-3 rounded-lg font-semibold hover:bg-[#7C9CFF] transition-colors"
@@ -261,7 +263,7 @@ export default function PartnerPage() {
           {markees.length > 0 && (
             <div>
               {/* #1 Hero */}
-              <Link href={`/markee/${partner.leaderboardAddress}`} className="block">
+              <Link href={`/markee/${leaderboardAddress}`} className="block">
                 <MarkeeCard 
                   markee={markees[0]} 
                   rank={1} 
@@ -280,7 +282,7 @@ export default function PartnerPage() {
               {markees.length > 1 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   {markees[1] && (
-                    <Link href={`/markee/${partner.leaderboardAddress}`} className="block">
+                    <Link href={`/markee/${leaderboardAddress}`} className="block">
                       <MarkeeCard 
                         markee={markees[1]} 
                         rank={2} 
@@ -296,7 +298,7 @@ export default function PartnerPage() {
                     </Link>
                   )}
                   {markees[2] && (
-                    <Link href={`/markee/${partner.leaderboardAddress}`} className="block">
+                    <Link href={`/markee/${leaderboardAddress}`} className="block">
                       <MarkeeCard 
                         markee={markees[2]} 
                         rank={3} 
@@ -318,7 +320,7 @@ export default function PartnerPage() {
               {markees.length > 3 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   {markees.slice(3, 26).map((markee, index) => (
-                    <Link key={markee.address} href={`/markee/${partner.leaderboardAddress}`} className="block">
+                    <Link key={markee.address} href={`/markee/${leaderboardAddress}`} className="block">
                       <MarkeeCard 
                         markee={markee} 
                         rank={index + 4} 
@@ -342,7 +344,7 @@ export default function PartnerPage() {
                   <h4 className="text-lg font-semibold text-[#EDEEFF] mb-4">More Messages</h4>
                   <div className="space-y-2">
                     {markees.slice(26).map((markee, index) => (
-                      <Link key={markee.address} href={`/markee/${partner.leaderboardAddress}`} className="block">
+                      <Link key={markee.address} href={`/markee/${leaderboardAddress}`} className="block">
                         <MarkeeCard 
                           markee={markee} 
                           rank={index + 27} 
@@ -367,12 +369,12 @@ export default function PartnerPage() {
 
       <Footer />
 
-      {partner.leaderboardAddress && (
+      {leaderboardAddress && (
         <MarkeeSignModal
           isOpen={isModalOpen}
           onClose={handleModalClose}
           onSuccess={handleTransactionSuccess}
-          leaderboardAddress={partner.leaderboardAddress}
+          leaderboardAddress={leaderboardAddress}
           initialView={modalMode === 'addFunds' ? 'addFunds' : modalMode === 'updateMessage' ? 'edit' : undefined}
           initialTargetAddress={selectedMarkee?.address}
         />
