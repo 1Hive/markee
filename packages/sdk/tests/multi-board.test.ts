@@ -31,3 +31,16 @@ test('inactive and pending community signs never show a previous board message',
   assert.doesNotMatch(signHtml(snapshot('disabled'), true), /data-markee-open/);
   assert.match(signHtml(null, true, true), /temporarily unavailable/);
 });
+
+test('an active multi-board sign follows moderation flags', () => {
+  const active = { ...snapshot('pending_admin'), community: { ...snapshot('pending_admin').community!,
+    integration: { status: 'active' as const, leaderboardAddress: board, vaultAddress: null } },
+  strategy: 'sale', minimum: '1000000000000000', top: board, entries: [{ address: board, owner: board, message: 'Private text', name: '', score: '1',
+    totalFunds: '1', aggregateRate: '0', legacyFloor: '0', moderated: true, views: 1 }] } as Snapshot;
+  const flagged = signHtml(active, true);
+  assert.match(flagged, /This message has been flagged/);
+  assert.match(flagged, /aria-hidden="true"/);
+  assert.doesNotMatch(flagged, /Explore Markee for this community/);
+  const unknown = signHtml({ ...active, entries: [{ ...active.entries[0], moderated: null }] }, true);
+  assert.doesNotMatch(unknown, /Private text/);
+});
