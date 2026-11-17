@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
-import { useAccount, useReadContracts } from 'wagmi'
+import { useAccount } from 'wagmi'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { MarkeeCard } from '@/components/leaderboard/MarkeeCard'
@@ -12,9 +13,8 @@ import { LeaderboardSkeleton } from '@/components/leaderboard/MarkeeCardSkeleton
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useReactions } from '@/hooks/useReactions'
 import { useViews } from '@/hooks/useViews'
-import { PARTNERS, useCurrentLeaderboard } from '@/lib/contracts/usePartnerMarkees'
+import { PARTNERS, type PartnerBoardSnapshot } from '@/lib/contracts/partners'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { formatDistanceToNow } from 'date-fns'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import type { Markee } from '@/types'
@@ -37,66 +37,44 @@ export default function PartnerPage() {
   const [modalMode, setModalMode] = useState<'create' | 'addFunds' | 'updateMessage'>('create')
 
   const partner = PARTNERS.find(p => p.slug === params.partner)
-  const { leaderboardAddress, isResolving: isResolvingBoard } = useCurrentLeaderboard(partner?.leaderboardAddress ?? null)
 
-  // Step 1: fetch sorted markee addresses from the partner's v1.1 leaderboard
+  // The partner board is read on the server (/api/partner/board) and shared by every viewer, so
+  // the 30 s poll costs one cached request instead of RPC calls from each visitor's browser.
+  const queryClient = useQueryClient()
+  const boardKey = ['partner-board', partner?.slug]
+  const fetchBoard = async (fresh: boolean): Promise<PartnerBoardSnapshot> => {
+    const params = new URLSearchParams({ slug: partner!.slug, ...(fresh ? { fresh: '1' } : {}) })
+    const response = await fetch(`/api/partner/board?${params}`, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Failed to load leaderboard')
+    return (await response.json() as { data: PartnerBoardSnapshot }).data
+  }
   const {
-    data: topData,
-    isLoading: isLoadingTop,
-    refetch: refetchTop,
-  } = useReadContracts({
-    contracts: leaderboardAddress ? [{
-      address: leaderboardAddress,
-      abi: LeaderboardV11ABI,
-      functionName: 'getTopMarkees' as const,
-      args: [100n] as const,
-      chainId: CANONICAL_CHAIN_ID,
-    }] : [],
-    query: { refetchInterval: 30_000 },
+    data: board,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: boardKey,
+    queryFn: () => fetchBoard(false),
+    enabled: !!partner?.leaderboardAddress,
+    refetchInterval: 30_000,
   })
 
-  const topAddresses: string[] = (topData?.[0]?.result?.[0] as string[]) ?? []
-  const topFunds: bigint[] = (topData?.[0]?.result?.[1] as bigint[]) ?? []
-
-  // Step 2: fetch per-markee data
-  const markeeContracts = topAddresses.flatMap(addr => [
-    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: addr as `0x${string}`, abi: MarkeeABI, functionName: 'pricingStrategy' as const, chainId: CANONICAL_CHAIN_ID },
-  ])
-
-  const {
-    data: markeeData,
-    isLoading: isLoadingMarkees,
-    refetch: refetchMarkees,
-  } = useReadContracts({
-    contracts: markeeContracts,
-    query: { enabled: topAddresses.length > 0, refetchInterval: 30_000 },
-  })
-
-  const isLoading = isResolvingBoard || isLoadingTop || isLoadingMarkees
-  const error = !isLoading && topData?.[0]?.error ? new Error('Failed to load leaderboard') : null
-
-  const markees: Markee[] = (() => {
-    if (!topAddresses.length) return []
-    return topAddresses.map((addr, i) => {
-      const b = i * 4
-      return {
-        address: addr,
-        message: (markeeData?.[b]?.result as string) ?? '',
-        name: (markeeData?.[b + 1]?.result as string) ?? '',
-        owner: (markeeData?.[b + 2]?.result as string) ?? '',
-        pricingStrategy: (markeeData?.[b + 3]?.result as string) ?? addr,
-        totalFundsAdded: topFunds[i] ?? 0n,
-        chainId: CANONICAL_CHAIN_ID,
-      }
-    })
-  })()
+  const markees: Markee[] = (board?.markees ?? []).map(m => ({
+    address: m.address,
+    message: m.message,
+    name: m.name,
+    owner: m.owner,
+    pricingStrategy: m.pricingStrategy,
+    totalFundsAdded: BigInt(m.totalFundsAdded),
+    chainId: CANONICAL_CHAIN_ID,
+  }))
+  // The board to read and buy on: the server follows a finished migration to the successor.
+  const leaderboardAddress = board?.leaderboardAddress ?? null
 
   useEffect(() => {
     if (markees.length > 0) setLastUpdated(new Date())
-  }, [markeeData])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board])
 
   // ── View tracking ──────────────────────────────────────────────────
   const { views, trackView } = useViews(markees)
@@ -165,8 +143,9 @@ export default function PartnerPage() {
 
   const handleTransactionSuccess = () => {
     setTimeout(() => {
-      refetchTop()
-      refetchMarkees()
+      fetchBoard(true)
+        .then(next => queryClient.setQueryData(boardKey, next))
+        .catch(() => queryClient.invalidateQueries({ queryKey: boardKey }))
     }, 3000)
   }
 

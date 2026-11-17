@@ -70,6 +70,15 @@ export function legacyAddressesFor(newAddress: string): string[] {
   return GITHUB_NEW_TO_OLD[newAddress.toLowerCase()] ?? []
 }
 
+// The boards that list `address` as a legacy alias. Several "v1.1" keys above are really the
+// boards' beneficiary wallets (see migrations/markee-migrations.csv), so an address listed here is
+// not necessarily a contract: callers must not read it as a board. Its delimiters are still matched
+// when the current board syncs.
+export function currentBoardsForLegacy(address: string): string[] {
+  const lower = address.toLowerCase()
+  return Object.entries(GITHUB_NEW_TO_OLD).filter(([, olds]) => olds.includes(lower)).map(([current]) => current)
+}
+
 // A migrated successor board answers to its on-chain predecessor's delimiters (and that board's
 // own grandfathered aliases), since READMEs keep the legacy address until the first sync rewrites them.
 export function delimiterAliases(board: string, predecessor: string | null): string[] {

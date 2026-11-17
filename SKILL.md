@@ -67,7 +67,7 @@ A single message slot on a leaderboard. Each Markee has:
 Every ETH payment to a strategy mints MARKEE tokens to the payer. Issuance rate decreases over time across phases (100,000 → 6,250 MARKEE per ETH through 2027). The cooperative is governed by MARKEE token holders.
 
 ### Partners
-Partners are external communities (DAOs, protocols, apps) that host their own Markee leaderboard. Defined in `lib/contracts/usePartnerMarkees.ts`. Each partner has:
+Partners are external communities (DAOs, protocols, apps) that host their own Markee leaderboard. Defined in `lib/contracts/partners.ts`. Each partner has:
 - `slug` — URL identifier
 - `strategyAddress` — their TopDawgPartnerStrategy contract
 - `percentToBeneficiary` — their revenue share (in basis points)
@@ -145,7 +145,7 @@ frontend/
   lib/
     contracts/
       addresses.ts                    # chain IDs, subgraph URLs, contract addresses
-      usePartnerMarkees.ts            # PARTNERS registry + data hook
+      partners.ts                     # PARTNERS registry
     hooks/
       useViews.ts
       useReactions.ts
@@ -156,7 +156,7 @@ frontend/
 ## Common Tasks for Agents
 
 **Add a new partner:**
-Edit `lib/contracts/usePartnerMarkees.ts` — add an entry to the `PARTNERS` array with `slug`, `name`, `strategyAddress`, `percentToBeneficiary`, `logo`, `description`, and optionally `liveUrl`.
+Edit `lib/contracts/partners.ts` — add an entry to the `PARTNERS` array with `slug`, `name`, `strategyAddress`, `percentToBeneficiary`, `logo`, `description`, and optionally `liveUrl`.
 
 **Fetch current #1 message for a partner:**
 Query the subgraph with `topDawgPartnerStrategy(id: $strategyId)`, take `markees[0].message` (already ordered by `totalFundsAdded` desc).
