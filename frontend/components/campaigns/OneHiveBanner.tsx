@@ -4,12 +4,12 @@ import { LiveDot } from '@/components/ui/LiveDot'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
 import { ONE_HIVE_MIN_VIEWS, oneHiveMonthlyBonusUsd } from '@/lib/campaigns/oneHive'
 
-// Home-page promo for the 1Hive incentives campaign, shown under the "Pay to be seen" metrics. Remove along with the header pill when the
-// campaign ends.
+// Home-page promo for the 1Hive incentives campaign, in the "Create a Markee and start earning" section. Remove along with the header
+// pill when the campaign ends.
 export function OneHiveBanner() {
   return (
     <div
-      className="mx-auto mt-12 flex max-w-[780px] flex-col gap-4 rounded-2xl border px-5 py-5 text-left sm:px-7 sm:py-6 md:flex-row md:items-center md:gap-7"
+      className="flex flex-col gap-4 rounded-2xl border px-5 py-5 text-left sm:px-7 sm:py-6 md:flex-row md:items-center md:gap-7"
       style={{
         borderColor: 'rgba(248,151,254,0.55)',
         background: 'linear-gradient(100deg, rgba(248,151,254,0.12) 0%, rgba(123,106,244,0.14) 45%, rgba(124,156,255,0.12) 100%)',

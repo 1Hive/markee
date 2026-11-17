@@ -213,84 +213,6 @@ function SectionHead({ kicker, title, sub, action }: {
   )
 }
 
-// ── Platform glyphs ───────────────────────────────────────────────────────────
-function PlatformGlyph({ icon, size = 26, color }: { icon: string; size?: number; color: string }) {
-  const common = { width: size, height: size, viewBox: '0 0 24 24' as const, fill: 'none', stroke: color, strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-  if (icon === 'globe') return (
-    <svg {...common}>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M2 12h20" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  )
-  if (icon === 'github') return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z" />
-    </svg>
-  )
-  if (icon === 'zap') return (
-    <svg {...common}>
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  )
-  return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>
-}
-
-const PLATFORMS = [
-  { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE', href: '/marketplace' },
-  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/marketplace' },
-  { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/ecosystem/platforms/superfluid' },
-] as const
-
-function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
-  const [hover, setHover] = useState(false)
-  return (
-    <Link
-      href={p.href}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: 18, textDecoration: 'none',
-        background: 'rgba(6,10,42,0.5)',
-        border: `1px solid ${hover ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)'}`,
-        borderRadius: 14, padding: 22, cursor: 'pointer',
-        transform: hover ? 'translateY(-2px)' : 'none',
-        transition: 'border-color 160ms, transform 160ms',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <span style={{
-          width: 48, height: 48, borderRadius: 12,
-          background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
-          <PlatformGlyph icon={p.icon} color={p.color} />
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: '#EDEEFF', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>{p.name}</div>
-          <div style={{ color: '#8A8FBF', fontSize: 12.5, marginTop: 3 }}>{p.blurb}</div>
-        </div>
-      </div>
-      <div style={{ borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 16 }}>
-        {stats && (stats.markees > 0 || stats.usd > 0) ? (
-          <div style={{ display: 'flex', gap: 28 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: '#EDEEFF', lineHeight: 1, letterSpacing: -0.5 }}>{stats.markees.toLocaleString()}</div>
-              <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 4 }}>Markees</div>
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: '#7C9CFF', lineHeight: 1, letterSpacing: -0.5 }}>${stats.usd.toLocaleString()}</div>
-              <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 4 }}>raised</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
-        )}
-      </div>
-    </Link>
-  )
-}
-
 // ── Buttons ───────────────────────────────────────────────────────────────────
 function PrimaryButton({ href, children }: { href: string; children: React.ReactNode }) {
   const [hover, setHover] = useState(false)
@@ -343,14 +265,13 @@ export default function Home() {
   const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}` } | null>(null)
   const clientEthPrice = useEthPrice()
 
-  // Ecosystem stats for the metrics row + per-platform stats for platform cards.
+  // Ecosystem stats for the metrics row.
   // The listing and network views load in parallel, and the listing API prices the totals
   // server-side, so all four metrics appear together (no $0 while the price loads).
   const [listingEthPrice, setListingEthPrice] = useState<number | null>(null)
   const ethPrice = listingEthPrice ?? clientEthPrice
   const [ecoTotals, setEcoTotals] = useState({ domains: 0, markees: 0, messages: 0, totalEth: 0, serverUsd: null as number | null, views: 0 })
   const [ecoStatsLoaded, setEcoStatsLoaded] = useState(false)
-  const [platformEth, setPlatformEth] = useState<Record<string, { markees: number; eth: number }>>({})
   const [top5Eco, setTop5Eco] = useState<any[]>([])
   const [top5EcoLoading, setTop5EcoLoading] = useState(true)
   useEffect(() => {
@@ -373,21 +294,6 @@ export default function Home() {
           0
         )
 
-        // Per-platform stats for the Raise Funding section cards
-        const pAcc: Record<string, { markees: number; eth: number }> = {
-          website: { markees: 0, eth: 0 },
-          github: { markees: 0, eth: 0 },
-          superfluid: { markees: 0, eth: 0 },
-        }
-        for (const lb of leaderboards) {
-          const p = lb.platform
-          if (pAcc[p]) {
-            pAcc[p].markees += lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
-            pAcc[p].eth += parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
-          }
-        }
-        setPlatformEth(pAcc)
-
         // Network-wide total views (all markees, not just top per leaderboard)
         const totalViews = await viewsPromise
 
@@ -407,9 +313,6 @@ export default function Home() {
     ...ecoTotals,
     usd: ecoTotals.serverUsd ?? (ethPrice ? Math.round(ecoTotals.totalEth * ethPrice) : null),
   }
-  const platformStats: Record<string, { markees: number; usd: number }> = Object.fromEntries(
-    Object.entries(platformEth).map(([k, v]) => [k, { markees: v.markees, usd: ethPrice ? Math.round(v.eth * ethPrice) : 0 }]),
-  )
 
   // Track views for hero reader signs
   useEffect(() => {
@@ -484,8 +387,6 @@ export default function Home() {
             Pay to be <span style={{ color: '#F897FE' }}>seen</span>
           </h1>
           <MetricsRow stats={ecoStats} loaded={ecoStatsLoaded} />
-          {/* 1Hive campaign promo */}
-          <OneHiveBanner />
         </div>
       </section>
 
@@ -685,9 +586,8 @@ export default function Home() {
             title="Create a Markee and start earning"
             sub="Add a Markee to your website or open source repo in just a few clicks."
           />
-          <div className="plat-grid-home">
-            {PLATFORMS.map(p => <PlatformCard key={p.key} p={p} stats={platformStats[p.key]} />)}
-          </div>
+          {/* 1Hive campaign promo */}
+          <OneHiveBanner />
           <div style={{ textAlign: 'center', marginTop: 28 }}>
             <PrimaryButton href="/raise-funding">Create a Markee →</PrimaryButton>
           </div>
