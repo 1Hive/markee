@@ -31,12 +31,12 @@ export function BonusSlider() {
         <h2 className="text-[28px] sm:text-[40px] font-extrabold leading-[1.05] tracking-[-1.5px]" style={{ color: TEXT }}>
           More views,<br className="hidden lg:block" /> <span style={{ color: PINK }}>bigger bonus.</span>
         </h2>
-        {/* Each number reserves the width of its largest value (1,000,000+ / $1,000) so dragging never
+        {/* Each number reserves the width of its largest value (990,000 / $1,000) so dragging never
             reflows the layout. */}
         <div className="flex items-start gap-3 sm:gap-6" aria-live="polite">
           <div className="text-right">
-            <div className="min-w-[8.8ch] text-[28px] sm:text-[56px] font-extrabold leading-none tracking-[-2px] tabular-nums" style={{ color: PURPLE }}>
-              {views.toLocaleString('en-US')}{views >= ONE_HIVE_MAX_VIEWS ? '+' : ''}
+            <div className="min-w-[6.6ch] text-[28px] sm:text-[56px] font-extrabold leading-none tracking-[-2px] tabular-nums" style={{ color: PURPLE }}>
+              {views >= ONE_HIVE_MAX_VIEWS ? '1M+' : views.toLocaleString('en-US')}
             </div>
             <div className="mt-2 text-sm" style={{ color: TEXT2 }}>views</div>
           </div>
@@ -61,7 +61,7 @@ export function BonusSlider() {
         step={1}
         value={pos}
         onChange={(e) => setPos(Number(e.target.value))}
-        aria-valuetext={`${views.toLocaleString('en-US')} views, $${bonus} per month`}
+        aria-valuetext={`${views >= ONE_HIVE_MAX_VIEWS ? '1 million or more' : views.toLocaleString('en-US')} views, $${bonus} per month`}
         className="onehive-range w-full"
         style={{ ['--pct' as string]: `${pct}%` }}
       />

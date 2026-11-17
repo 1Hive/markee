@@ -2,10 +2,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Eye, MonitorSmartphone, Plus, Zap } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 import { LiveDot } from '@/components/ui/LiveDot'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
 import { ONE_HIVE_BONUS_SIGNS, ONE_HIVE_SPONSOR_URL, ONE_HIVE_TERMS } from '@/lib/campaigns/oneHive'
 import { BonusSlider } from './BonusSlider'
+import { HeroSignCard } from './HeroSignCard'
 
 export const metadata: Metadata = {
   title: 'Earn up to $1k/mo · Markee × 1Hive',
@@ -47,7 +49,8 @@ export default function OneHiveCampaignPage() {
               className="inline-flex items-center gap-2 rounded-full border border-[#8A8FBF]/25 bg-[#0A0F3D]/80 px-3 py-1.5 text-xs"
               style={{ fontFamily: MONO, color: TEXT2 }}
             >
-              <LiveDot color={GREEN} /> limited time · sponsored by 1Hive
+              <LiveDot color={GREEN} /> limited time · sponsored by{' '}
+              <a href={ONE_HIVE_SPONSOR_URL} target="_blank" rel="noopener noreferrer" className="-ml-1 hover:text-[#F897FE]">1Hive</a>
             </span>
             <h1 className="mt-6 text-[44px] font-extrabold leading-[1.02] tracking-[-2px] sm:text-[64px] sm:tracking-[-3px]" style={{ color: TEXT }}>
               Earn up to <span style={{ color: PINK }}>$1k/mo</span> when you add a Markee to your site.
@@ -64,26 +67,7 @@ export default function OneHiveCampaignPage() {
           </div>
 
           {/* Illustrative sign */}
-          <div
-            className="rounded-2xl border border-[#8A8FBF]/25 p-6 sm:p-7"
-            style={{ background: 'linear-gradient(160deg, rgba(123,106,244,0.22), rgba(10,15,61,0.85))' }}
-            aria-label="Example Markee sign"
-          >
-            <div className="flex justify-end">
-              <span className="inline-flex items-center gap-1.5 text-xs" style={{ fontFamily: MONO, color: MUTED }}>
-                <Eye size={14} aria-hidden /> 10.0k
-              </span>
-            </div>
-            <p className="mt-4 text-[22px] font-bold leading-snug sm:text-[26px]" style={{ fontFamily: MONO, color: PINK }}>
-              This is your sign...<br />to join the Markee network 🪧
-            </p>
-            <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#8A8FBF]/20 pt-4 text-xs">
-              <span style={{ fontFamily: MONO, color: MUTED }}>yoursite.com</span>
-              <span className="inline-flex items-center gap-1.5 font-bold" style={{ fontFamily: MONO, color: PINK }}>
-                <Zap size={14} aria-hidden /> Earning $100/mo
-              </span>
-            </div>
-          </div>
+          <HeroSignCard href={CREATE_HREF} />
         </div>
       </section>
 
@@ -190,17 +174,7 @@ export default function OneHiveCampaignPage() {
         </div>
       </section>
 
-      <footer className="border-t border-[#8A8FBF]/15">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-8 text-xs sm:px-6 lg:px-8" style={{ fontFamily: MONO, color: MUTED }}>
-          <Link href="/" className="hover:text-[#EDEEFF]">markee.xyz</Link>
-          <span>
-            sponsored by{' '}
-            <a href={ONE_HIVE_SPONSOR_URL} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted underline-offset-4" style={{ color: PINK }}>
-              1Hive
-            </a>
-          </span>
-        </div>
-      </footer>
+      <Footer />
     </div>
   )
 }
