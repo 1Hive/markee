@@ -1,9 +1,10 @@
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther, isAddress, parseAbi } from 'viem'
-import { BASE_STREAMING_FACTORY, FACTORIES } from '@/lib/contracts/addresses'
+import { BASE_STREAMING_FACTORY, BOARD_MIGRATORS, FACTORIES, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { base } from 'viem/chains'
 import { billboardLine } from '@/lib/github/billboardText'
-import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, encodedFilePath, encodedRepoPath } from '@/lib/github/linkedFiles'
+import { MIGRATION_FINISHED } from '@/lib/contracts/migration'
+import { getLinkedFiles, startDelimiter, endDelimiter, delimiterAliasesFor, encodedFilePath, encodedRepoPath } from '@/lib/github/linkedFiles'
 
 // ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
 // Emoji and CJK characters occupy 2 columns; everything else occupies 1.
@@ -188,16 +189,26 @@ ${endDelimiter(leaderboardAddress)}`
 
 const FACTORY_ABI = parseAbi(['function isFactoryLeaderboard(address) view returns (bool)'])
 const BOARD_FACTORIES = [...new Set(
-  [...Object.values(FACTORIES), BASE_STREAMING_FACTORY, process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '']
+  [...Object.values(FACTORIES), ...Object.values(V14_FACTORIES), BASE_STREAMING_FACTORY, process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '']
     .filter(a => isAddress(a)).map(a => a.toLowerCase()),
 )] as `0x${string}`[]
 
+const MIGRATOR_STATUS_ABI = parseAbi(['function status(address) view returns (uint8)'])
+
 export async function isLiveBoard(address: string): Promise<boolean | null> {
-  const reads = await client.multicall({
-    contracts: BOARD_FACTORIES.map(factory => ({ address: factory, abi: FACTORY_ABI, functionName: 'isFactoryLeaderboard' as const, args: [address as `0x${string}`] })),
-  })
-  if (reads.some(r => r.status === 'success' && r.result === true)) return true
-  return reads.every(r => r.status === 'success') ? false : null
+  const board = address as `0x${string}`
+  const [factoryReads, migrationReads] = await Promise.all([
+    client.multicall({
+      contracts: BOARD_FACTORIES.map(factory => ({ address: factory, abi: FACTORY_ABI, functionName: 'isFactoryLeaderboard' as const, args: [board] })),
+    }),
+    client.multicall({
+      contracts: Object.values(BOARD_MIGRATORS).map(migrator => ({ address: migrator, abi: MIGRATOR_STATUS_ABI, functionName: 'status' as const, args: [board] })),
+    }),
+  ])
+  if (migrationReads.some(r => r.status === 'success' && r.result === MIGRATION_FINISHED)) return false
+  if (!migrationReads.every(r => r.status === 'success')) return null
+  if (factoryReads.some(r => r.status === 'success' && r.result === true)) return true
+  return factoryReads.every(r => r.status === 'success') ? false : null
 }
 
 export interface BillboardState { message: string; footer: string }
@@ -304,7 +315,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
 
       if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
         // Fall back to known legacy addresses from the migration map
-        for (const oldAddr of legacyAddressesFor(normalizedAddress)) {
+        for (const oldAddr of await delimiterAliasesFor(normalizedAddress)) {
           const legacyStart = startDelimiter(oldAddr)
           const legacyEnd   = endDelimiter(oldAddr)
           const si = currentContent.indexOf(legacyStart)

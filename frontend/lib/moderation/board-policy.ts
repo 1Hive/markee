@@ -1,6 +1,7 @@
 import 'server-only'
 import { kv } from '@vercel/kv'
 import { versionedModerationPolicy, type ModerationSeverity } from './severity'
+import { currentSdkBoard, MIGRATION_CHAIN_ID } from '@/lib/sdk/migration'
 
 export const boardPolicyKey = (board: string) => `moderation:board-policy:8453:${board.toLowerCase()}`
 
@@ -13,6 +14,7 @@ export const boardPolicyDeps = {
 export async function boardModerationPolicy(board: string | null | undefined, policy?: unknown, severity?: unknown, rules?: unknown): Promise<ModerationSeverity> {
   const requested = versionedModerationPolicy(policy, severity, rules)
   if (!board) return requested
-  const saved = await boardPolicyDeps.get(boardPolicyKey(board))
+  const current = await currentSdkBoard(MIGRATION_CHAIN_ID, board as `0x${string}`).catch(() => board)
+  const saved = await boardPolicyDeps.get(boardPolicyKey(current)) ?? (current === board ? null : await boardPolicyDeps.get(boardPolicyKey(board)))
   return saved ? versionedModerationPolicy(saved.policy) : requested
 }

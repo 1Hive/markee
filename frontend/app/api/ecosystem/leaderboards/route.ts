@@ -16,6 +16,7 @@ import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { cachedListing } from '@/lib/leaderboards/cached'
 import { getEthPriceUsdWithin } from '@/lib/server/ethPrice'
+import { originalAddress } from '@/lib/contracts/successorAliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,7 +97,7 @@ async function loadListing(request: Request) {
     // the Verified section alongside Cooperative, Gardens, and Clawchemy.
     const SF_MIGRATION = '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79'
     const sfLeaderboards = (sfData.leaderboards ?? []).map((l: any) => {
-      if (l.address.toLowerCase() === SF_MIGRATION) {
+      if (originalAddress(l) === SF_MIGRATION) {
         return {
           ...l,
           platform: 'website',
@@ -129,7 +130,7 @@ async function loadListing(request: Request) {
         const effectiveRateRaw = strategy === 'streaming'
           ? (l.effectiveRateRaw ?? '0')
           : imputeEffectiveRate(BigInt(l.totalFundsRaw ?? '0')).toString()
-        return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }
+        return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(originalAddress(l)) }
       })
 
     // A board that needs a verified integration (see needsVerificationGate -- every streaming board,
@@ -159,7 +160,7 @@ async function loadListing(request: Request) {
     // Compute aggregate total across all platforms, excluding gamed leaderboards
     const totalFundsWei = leaderboards.reduce(
       (sum: bigint, l: any) =>
-        GAMED_ADDRESSES.has(l.address?.toLowerCase()) ? sum : sum + BigInt(l.totalFundsRaw ?? '0'),
+        l.gamed ? sum : sum + BigInt(l.totalFundsRaw ?? '0'),
       0n,
     )
 

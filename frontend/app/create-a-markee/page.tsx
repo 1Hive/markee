@@ -16,7 +16,7 @@ import { Check } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { BuyMessageModal } from '@/components/modals/BuyMessageModal'
 import { StreamActivateModal } from '@/components/modals/StreamActivateModal'
-import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN, FACTORIES as V13_FACTORIES } from '@/lib/contracts/addresses'
+import { STREAMING_FACTORY, STREAMING_ENABLED, CANONICAL_CHAIN, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { STRATEGIES, toPlatformTag, type Strategy, type Vertical } from '@/lib/strategy'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { StrategyPreviewCard } from '@/components/StrategyPreviewCard'
@@ -37,13 +37,13 @@ const DEPLOYED_STORAGE_KEY = 'markee:create:deployed'
 // serving every vertical (the placement is a per-board platform tag), so all verticals map to it.
 const STREAMING_FACTORY_ADDR = (STREAMING_FACTORY || ZERO_ADDRESS) as `0x${string}`
 // Fixed price ("For Sale") now shares one vertical-agnostic factory too, same as streaming --
-// FACTORIES.FOR_SALE in lib/contracts/addresses.ts, not the old per-vertical factories below (those
+// V14_FACTORIES.FOR_SALE in lib/contracts/addresses.ts, not the old per-vertical factories below (those
 // stay defined only so existing boards created through them keep reading correctly elsewhere).
 const FACTORIES: Record<Strategy, Record<Vertical, `0x${string}`>> = {
   fixed: {
-    openinternet: V13_FACTORIES.FOR_SALE,
-    github:       V13_FACTORIES.FOR_SALE,
-    superfluid:   V13_FACTORIES.FOR_SALE,
+    openinternet: V14_FACTORIES.FOR_SALE,
+    github:       V14_FACTORIES.FOR_SALE,
+    superfluid:   V14_FACTORIES.FOR_SALE,
   },
   streaming: {
     openinternet: STREAMING_FACTORY_ADDR,

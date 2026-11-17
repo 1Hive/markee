@@ -10,7 +10,7 @@ import { kv } from '@vercel/kv'
 import { base } from 'viem/chains'
 import { boardAdminDenial } from '@/lib/boards/admin-auth'
 import { registerFileMessage } from '@/lib/github/unlink'
-import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasBoardDelimiters, fetchGithubFileContent, type LinkedFile } from '@/lib/github/linkedFiles'
 import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 // @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
@@ -27,8 +27,7 @@ async function checkDelimiters(
 ): Promise<boolean> {
   const result = await fetchGithubFileContent(repoFullName, filePath, token)
   if (!result.ok) return false
-  const legacyAddrs = legacyAddressesFor(leaderboardAddress)
-  return hasDelimiterPair(result.content, leaderboardAddress) || legacyAddrs.some(old => hasDelimiterPair(result.content, old))
+  return hasBoardDelimiters(result.content, leaderboardAddress)
 }
 
 export async function POST(request: NextRequest) {

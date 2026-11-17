@@ -1,9 +1,11 @@
 // GET /api/embed/[address]/script
 // Serves a self-contained JS snippet that inserts the current top message into
 // any element with data-markee="[address]" and polls for updates every 60 s.
-// Publishers include it as:
+// A migrated legacy board keeps its data-markee selector but reads and links to
+// the successor board. Publishers include it as:
 //   <script src="https://markee.xyz/api/embed/0x.../script" defer></script>
 import { NextRequest, NextResponse } from 'next/server'
+import { currentBoardOrSelf } from '@/lib/contracts/currentAddressCache'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,9 +21,10 @@ export async function GET(
     })
   }
 
+  const board      = (await currentBoardOrSelf(address as `0x${string}`)).toLowerCase()
   const siteOrigin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin
-  const apiUrl     = `${siteOrigin}/api/embed/${address}`
-  const pageUrl    = `${siteOrigin}/markee/${address}`
+  const apiUrl     = `${siteOrigin}/api/embed/${board}`
+  const pageUrl    = `${siteOrigin}/markee/${board}`
 
   // The injected script never transmits anything about the visitor's page or
   // behaviour — it only fetches the public embed API to get the current message.
