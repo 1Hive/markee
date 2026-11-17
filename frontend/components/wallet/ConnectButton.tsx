@@ -76,7 +76,7 @@ export function AccountButton() {
   )
 }
 
-export function ConnectButton() {
+export function ConnectButton({ compactOnPhone = false }: { compactOnPhone?: boolean } = {}) {
   const { authenticated, ready, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
   const { connectWallet } = useConnectWallet()
@@ -151,6 +151,7 @@ export function ConnectButton() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
+        aria-label={displayName}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: 'transparent', color: '#B8B6D9',
@@ -171,7 +172,7 @@ export function ConnectButton() {
         }}
       >
         <GlowDot />
-        {displayName}
+        <span className={compactOnPhone ? 'hidden sm:inline' : undefined}>{displayName}</span>
         <ChevronDown size={14} style={{ transform: menuOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 160ms' }} />
       </button>
 

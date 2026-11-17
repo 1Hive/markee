@@ -167,7 +167,7 @@ export function Row({ label, value, bold, info }: { label: string; value: string
 // its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
 export function PaymentReviewCard({
   kind, message, amountLabel, amountUsd, depositLabel, runwayLabel, markeeEarnedLabel, willWin, minToWinLabel,
-  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin, boardCreator,
+  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin,
 }: {
   kind: 'fixed' | 'rent'
   // The board's first message: there's nothing to beat yet, so the banner says what activation does.
@@ -192,7 +192,6 @@ export function PaymentReviewCard({
   chainId?: number | string
   markeeId?: string
   boardAdmin?: string | null
-  boardCreator?: string | null
 }) {
   const messageBox = (
     <div style={{
@@ -205,7 +204,7 @@ export function PaymentReviewCard({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 6 }}>
       {chainId !== undefined && markeeId ? (
-        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin} boardCreator={boardCreator}>
+        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin}>
           {messageBox}
         </ModeratedContent>
       ) : messageBox}

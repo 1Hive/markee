@@ -9,7 +9,7 @@ const FAILED = 'Transaction failed on-chain. Please try again.'
 
 test('a reverted For Sale purchase shows an error', async ({ page }) => {
   await openBuyModal(page, BOARDS.sale)
-  await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ max\)$/).fill('e2e reverted buy')
+  await page.getByPlaceholder(/^Your message here\.\.\. \(\d+ bytes max\)$/).fill('e2e reverted buy')
   await page.getByRole('button', { name: 'Review Payment Info' }).click()
   await revertNextTx(() => page.getByRole('button', { name: 'Confirm Payment' }).click())
   await expect(page.getByText(FAILED)).toBeVisible({ timeout: TX_TIMEOUT })

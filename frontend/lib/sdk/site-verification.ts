@@ -7,6 +7,9 @@ import { kv } from '@vercel/kv';
 import type { Placement } from '../../../packages/sdk/src/types';
 import { SDKError } from './validation';
 import { boardContext } from './snapshot';
+import { publicIPv4 } from '../net/public-address';
+
+export { publicIPv4 };
 
 export function siteUrl(value: unknown): URL {
   if (typeof value !== 'string' || value.length > 2048) throw new SDKError('INVALID_SITE', 'Provide a public HTTPS site URL.');
@@ -15,11 +18,6 @@ export function siteUrl(value: unknown): URL {
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') || isIP(url.hostname) || url.hostname.startsWith('[') || !url.hostname.includes('.')) throw new SDKError('INVALID_SITE', 'Provide a public HTTPS hostname using the default port.');
   url.hash = ''; url.search = '';
   return url;
-}
-export function publicIPv4(ip: string): boolean {
-  if (isIP(ip) !== 4) return false;
-  const [a,b,c] = ip.split('.').map(Number);
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0 || (b === 2) || (b === 88 && c === 99))) || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) || (a === 203 && b === 0 && c === 113));
 }
 export function hasSiteMarker(html: string, board: string): boolean {
   const visit = (node: DefaultTreeAdapterMap['node']): boolean => {

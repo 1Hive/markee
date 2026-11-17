@@ -20,6 +20,7 @@ import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
 import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
+import { useSiteVerify } from '@/hooks/useSiteVerify'
 import { alreadyVerifiedNote, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
 import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
@@ -68,7 +69,6 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
   const walletFetch = useWalletAuthFetch()
   const { address = '' } = useAccount()
   const toast = useToast()
-  const verifiedFile = !!it.file?.verified
   const unverifiedFile = !!it.file && !it.file.verified
 
   const remove = async () => {
@@ -178,10 +178,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
               {unverifiedFile && <button onClick={verify} style={textBtn(PINK)}>Verify</button>}
               {!featured && !unverifiedFile && <button onClick={() => setFeatured(it.key)} style={textBtn(PINK)}>Feature</button>}
               {featured && chosen && <button onClick={() => setFeatured(null)} title="Feature whichever site gets the most views" style={textBtn(TEXT2)}>Use most viewed</button>}
-              <button
-                onClick={() => verifiedFile ? setError('Remove the Markee markers from this file first, then it can be unlinked.') : setState('confirm')}
-                style={textBtn(verifiedFile ? MUTED : DANGER)}
-              >
+              <button onClick={() => setState('confirm')} style={textBtn(DANGER)}>
                 Remove
               </button>
             </>
@@ -193,7 +190,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
           {reportingTip}. Check the site sends the view call from the embed prompt&apos;s View tracking step.
         </div>
       )}
-      {error && <div style={{ fontSize: 12, color: verifiedFile ? MUTED : DANGER, padding: '0 0 10px' }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, color: DANGER, padding: '0 0 10px' }}>{error}</div>}
     </div>
   )
 }
@@ -204,6 +201,7 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
+  const verifySite = useSiteVerify()
   const normalized = url.trim() && !/^https?:\/\//i.test(url.trim()) ? `https://${url.trim()}` : url.trim()
   // Another page on an already-verified domain would add nothing: sites are one per domain.
   const alreadyVerified = verifiedOnSameDomain(url, verifiedUrls) !== null
@@ -214,13 +212,8 @@ function VerifyUrl({ board, verifiedUrls, onVerified, onCancel }: { board: strin
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/openinternet/verify-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: board, url: normalized }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.verified) throw new Error(body?.error ?? 'Could not verify this site.')
+      const result = await verifySite(board, normalized)
+      if (!result.verified) throw new Error(result.error ?? 'Could not verify this site.')
       toast('Site verified and added')
       onVerified()
     } catch (e) {
@@ -266,14 +259,18 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
 }) {
   const toast = useToast()
   const me = activeAddress?.toLowerCase()
-  const isAdmin = !!me && !!lb.admin && lb.admin.toLowerCase() === me
-  const isOwner = isAdmin || (!!me && (lb.creator ?? '').toLowerCase() === me)
   const isStreaming = lb.strategy === 'streaming'
   // Legacy is a website-only historical concept (pre-migration TopDawg boards) -- github/superfluid/
   // streaming-platform listing routes never set it, so every board on those platforms already uses
   // the modern ABI with the setters below. Only a website-platform board can genuinely be legacy.
   const isLegacyFixed = !isStreaming && lb.platform === 'website' && (lb as WebsiteLeaderboard).isLegacy === true
   const contractAddress = lb.address as `0x${string}`
+  const { data: liveAdmin, refetch: refetchAdmin } = useReadContract({
+    address: contractAddress, abi: LeaderboardV11ABI, functionName: 'admin', chainId: CANONICAL_CHAIN_ID,
+    query: { enabled: !isLegacyFixed },
+  })
+  const admin = (liveAdmin as string | undefined) ?? lb.admin
+  const isAdmin = !!me && !!admin && admin.toLowerCase() === me
   const { data: boardVersion, isPending: versionLoading } = useReadContract({
     address: contractAddress, abi: LeaderboardV14AdminABI, functionName: 'VERSION', chainId: CANONICAL_CHAIN_ID,
     query: { enabled: !isStreaming && !isLegacyFixed },
@@ -302,7 +299,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
       : { abi: LeaderboardV11ABI, minPrice: null, setMinPrice: null, unit: 'eth' as const, setAdmin: 'setAdmin', limits: false }
   const abi = settings.abi as unknown as Abi
   const adminAbi = ('adminAbi' in settings ? settings.adminAbi : settings.abi) as unknown as Abi
-  const saved = (message: string) => () => { toast(message); onSuccess() }
+  const saved = (message: string) => () => { toast(message); refetchAdmin(); onSuccess() }
 
   // A Rent minimum far above what the current renter streams is almost always a units mistake.
   const currentMonthly = isStreaming && lb.topRateRaw ? BigInt(lb.topRateRaw) * SECONDS_PER_MONTH : 0n
@@ -348,7 +345,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 chosen={!!info?.chosen}
                 views={info ? info.views[it.key] ?? null : null}
                 reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
-                canEdit={isOwner}
+                canEdit={isAdmin}
                 onChanged={() => { reloadIntegrations(); onSuccess() }}
                 onFeaturedChanged={reloadIntegrations}
               />
@@ -356,11 +353,11 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
             {verifying && <VerifyUrl board={lb.address} verifiedUrls={lb.verifiedUrls?.length ? lb.verifiedUrls : (lb as WebsiteLeaderboard).verifiedUrl ? [(lb as WebsiteLeaderboard).verifiedUrl!] : []} onCancel={() => setVerifying(false)} onVerified={() => { setVerifying(false); onSuccess() }} />}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button onClick={onAddToSite} style={pinkOutline}>Add to Your Site</button>
-              {isOwner && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
+              {isAdmin && !verifying && <button onClick={() => setVerifying(true)} style={ghostBtn}>Verify New Integration</button>}
             </div>
           </DrawerSection>
 
-          {/* Per-board moderators, managed by the board's owners (admin or creator) -- kept separate from
+          {/* Per-board moderators, managed by the board admin, kept separate from
               lib/moderation/config.ts's global admins, whose flags only apply on markee.xyz. Legacy
               boards aren't scanned for the queue, so there is nothing for moderators to review there. */}
           {!isLegacyFixed && (

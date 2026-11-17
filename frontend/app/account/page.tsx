@@ -37,6 +37,7 @@ import { formatUsd } from '@/lib/utils'
 import { ModerationQueue, ModerationToast, useModeration } from '@/components/moderation'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { buyerBoards, walletSpend } from '@/lib/account/spend'
 import { boardLabel } from '@/lib/leaderboards/label'
 
 
@@ -301,8 +302,8 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
   const { user } = usePrivy()
   const privyEmail = user?.email?.address ?? user?.linkedAccounts.find(a => a.type === 'email')?.address ?? null
   const [notifyState, setNotifyState] = useState<NotifyState | null>(null)
-  const [freqDraft, setFreqDraft]     = useState<EmailFrequency>('daily')
-  const [eventsDraft, setEventsDraft] = useState<NotifyEvents>(() => notifyEventsOf(null))
+  const [freqEdit, setFreqEdit]      = useState<EmailFrequency | null>(null)
+  const [eventsEdit, setEventsEdit]  = useState<NotifyEvents | null>(null)
   const [editEmail, setEditEmail]     = useState(false)
   const [emailInput, setEmailInput]   = useState('')
   const [saving, setSaving]           = useState(false)
@@ -321,16 +322,16 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
 
   useEffect(() => {
     if (!address) return
+    let cancelled = false
     fetch(`${MODERATION_API}/notify?wallet=${address}`)
       .then(r => r.ok ? r.json() : null)
       .then((data: NotifyState | null) => {
-        if (!data) return
+        if (cancelled || !data) return
         setNotifyState(data)
-        setFreqDraft((data.frequency ?? 'daily') as EmailFrequency)
-        setEventsDraft(notifyEventsOf(data))
         setEditEmail(!data.email)
       })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [address])
 
   useEffect(() => {
@@ -342,15 +343,17 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
   const savedEmail   = notifyState?.email ?? null
   const savedFreq    = (notifyState?.frequency ?? 'daily') as EmailFrequency
   const emailChanged = editEmail && emailInput.trim().toLowerCase() !== (savedEmail ?? '')
-  const freqChanged  = freqDraft !== savedFreq
   const savedEvents  = notifyEventsOf(notifyState)
+  const freqDraft    = freqEdit ?? savedFreq
+  const eventsDraft  = eventsEdit ?? savedEvents
+  const freqChanged  = freqDraft !== savedFreq
   const eventsChanged = (Object.keys(savedEvents) as (keyof NotifyEvents)[]).some(k => savedEvents[k] !== eventsDraft[k])
   const isDirty      = emailChanged || freqChanged || eventsChanged
   const badEmail     = emailInput.trim() && !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(emailInput.trim())
 
   const discard = () => {
-    setFreqDraft(savedFreq)
-    setEventsDraft(savedEvents)
+    setFreqEdit(null)
+    setEventsEdit(null)
     setEmailInput('')
     setEditEmail(!savedEmail)
     setSaveError(null)
@@ -391,7 +394,9 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
         })
         const body2 = await res2.json().catch(() => null)
         if (!res2.ok) throw new Error(body2?.error ?? `HTTP ${res2.status}`)
-        setNotifyState(prev => prev ? { ...prev, frequency: freqDraft, events: eventsDraft } : prev)
+        setNotifyState(prev => ({ ...prev ?? { email: null, verified: false }, frequency: freqDraft, events: eventsDraft }))
+        setFreqEdit(null)
+        setEventsEdit(null)
       }
       toast(emailChanged ? 'Saved · verification email sent' : 'Notification settings saved')
     } catch (err) {
@@ -413,7 +418,8 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
         body: { wallet: address, resend: true, timestamp },
         message: () => notifyResendMessage(CANONICAL_CHAIN_ID, address, timestamp),
       })
-      if (res.ok) toast('Verification email re-sent')
+      const body = await res.json().catch(() => null)
+      toast(res.ok ? 'Verification email re-sent' : body?.error ?? 'Could not resend the verification email')
     } catch {
       // best effort: a rejected or failed resend leaves the Resend link to try again
     }
@@ -494,7 +500,7 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: TEXT2 }}>{ev.label}</div>
                   <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>{ev.sub}</div>
                 </div>
-                <SettingsSwitch on={eventsDraft[ev.k]} onChange={on => setEventsDraft(d => ({ ...d, [ev.k]: on }))} label={ev.label} />
+                <SettingsSwitch on={eventsDraft[ev.k]} onChange={on => setEventsEdit({ ...eventsDraft, [ev.k]: on })} label={ev.label} />
               </div>
             ))}
           </div>
@@ -512,7 +518,7 @@ function SettingsSection({ address, verifyOk, verifyError }: { address: string; 
             {(['every', 'daily', 'off'] as const).map(f => (
               <button
                 key={f}
-                onClick={() => setFreqDraft(f)}
+                onClick={() => setFreqEdit(f)}
                 style={{ background: freqDraft === f ? 'rgba(123,106,244,0.55)' : 'transparent', color: freqDraft === f ? TEXT : MUTED, border: freqDraft === f ? `1px solid rgba(123,106,244,0.5)` : '1px solid transparent', borderRadius: 6, padding: '6px 12px', fontFamily: SANS, fontSize: 13, fontWeight: freqDraft === f ? 700 : 500, cursor: 'pointer', transition: 'all 150ms', whiteSpace: 'nowrap' as const }}
               >
                 {f === 'every' ? 'Every Time' : f === 'daily' ? 'Daily Round-up' : 'Off'}
@@ -660,10 +666,8 @@ function Empty({ icon, title, body, ctaLabel, ctaHref }: { icon: string; title: 
   )
 }
 
-type Owned = { admin?: string | null; creator?: string | null; initialAdmin?: string | null }
-const adminTransferred = (lb: Owned) => !!lb.initialAdmin && !!lb.admin && lb.admin.toLowerCase() !== lb.initialAdmin.toLowerCase()
-const ownedByCreator = (lb: Owned, addr: string) =>
-  (adminTransferred(lb) ? lb.admin ?? '' : lb.creator ?? lb.admin ?? '').toLowerCase() === addr.toLowerCase()
+// A board belongs to its current on-chain admin only.
+type Owned = { admin?: string | null }
 const ownedByAdmin = (lb: Owned, addr: string) => !!lb.admin && lb.admin.toLowerCase() === addr.toLowerCase()
 
 // Cheap FNV-1a fingerprint of a board-address list, used only as a useEffect dependency -- avoids
@@ -1083,7 +1087,7 @@ function AccountDashboard() {
         setSuperfluidBoards(
           (data.leaderboards ?? [])
             .map(withConfirmedAdmin)
-            .filter((lb: BaseLeaderboard) => ownedByCreator(lb, addr))
+            .filter((lb: BaseLeaderboard) => ownedByAdmin(lb, addr))
             .map((lb: BaseLeaderboard) => ({ ...lb, platform: 'superfluid' as const }))
         )
       }
@@ -1092,17 +1096,17 @@ function AccountDashboard() {
         setGithubBoards(
           (data.leaderboards ?? [])
             .map(withConfirmedAdmin)
-            .filter((lb: any) => ownedByCreator(lb, addr))
+            .filter((lb: any) => ownedByAdmin(lb, addr))
             .map((lb: any) => ({ ...lb, platform: 'github' as const, linkedFiles: lb.linkedFiles ?? [] }))
         )
       }
       if (oiRes.ok || fsRes.ok) {
         const oiData = oiRes.ok ? await oiRes.json() : { leaderboards: [] }
         const fsData = fsRes.ok ? await fsRes.json() : { leaderboards: [] }
-        const byCreator = (lb: any) => !lb.isLegacy && ownedByCreator(lb, addr)
+        const byAdmin = (lb: any) => !lb.isLegacy && ownedByAdmin(lb, addr)
         setWebsiteBoards([
-          ...(oiData.leaderboards ?? []).map(withConfirmedAdmin).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
-          ...(fsData.leaderboards ?? []).map(withConfirmedAdmin).filter(byCreator).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(oiData.leaderboards ?? []).map(withConfirmedAdmin).filter(byAdmin).map((lb: any) => ({ ...lb, platform: 'website' as const })),
+          ...(fsData.leaderboards ?? []).map(withConfirmedAdmin).filter(byAdmin).map((lb: any) => ({ ...lb, platform: 'website' as const })),
         ])
       }
       if (strRes.ok) {
@@ -1155,6 +1159,7 @@ function AccountDashboard() {
           winningSince: m.winningSince ?? null,
           wonSeconds: m.wonSeconds ?? null,
           topRateRaw: m.topRateRaw ?? '0',
+          rentSpent: typeof m.rentSpentRaw === 'string' ? BigInt(m.rentSpentRaw) : null,
           isLegacy: false,
           platform: m.platform ?? null,
           admin: m.admin ?? null,
@@ -1241,12 +1246,12 @@ function AccountDashboard() {
   const handleAdminTransferred = useCallback((board: string, newAdmin: string) => {
     if (!activeAddress) return
     confirmedAdminsRef.current.set(board.toLowerCase(), newAdmin.toLowerCase())
-    const keepIf = (owns: (lb: Owned, addr: string) => boolean) => <T extends AnyLeaderboard>(prev: T[]) =>
-      prev.map(withConfirmedAdmin).filter(lb => owns(lb, activeAddress))
-    setSuperfluidBoards(keepIf(ownedByCreator))
-    setGithubBoards(keepIf(ownedByCreator))
-    setWebsiteBoards(keepIf(ownedByCreator))
-    setStreamingBoards(keepIf(ownedByAdmin))
+    const keep = <T extends AnyLeaderboard>(prev: T[]) =>
+      prev.map(withConfirmedAdmin).filter(lb => ownedByAdmin(lb, activeAddress))
+    setSuperfluidBoards(keep)
+    setGithubBoards(keep)
+    setWebsiteBoards(keep)
+    setStreamingBoards(keep)
   }, [activeAddress, withConfirmedAdmin])
 
   // Derived board lists
@@ -1365,11 +1370,8 @@ function AccountDashboard() {
   }, [])
 
   const totalRaisedWei = useMemo(() => allBoards.reduce((s, lb) => s + BigInt(lb.totalFundsRaw), 0n), [allBoards])
-  const totalContribWei = useMemo(() => {
-    const bought = myMessages.reduce((s, m) => s + m.totalFundsAdded, 0n)
-    const funded = fundedMessages.reduce((s, m) => s + BigInt(m.totalContributed), 0n)
-    return bought + funded
-  }, [myMessages, fundedMessages])
+  const totalContribWei = useMemo(() => walletSpend(myMessages, fundedMessages), [myMessages, fundedMessages])
+  const buyerBoardAddrs = useMemo(() => buyerBoards(myMessages, fundedMessages), [myMessages, fundedMessages])
 
   // Fetch markee.xyz view counts for CPM calculations, per board by the shared rule (lib/views/boards.ts:
   // board key + its top message's key). Includes the boards the wallet's messages sit on, not just its
@@ -1398,24 +1400,21 @@ function AccountDashboard() {
     return (raisedUsd / totalViews) * 1000
   }, [ethPrice, totalRaisedWei, activeBoards, boardViews])
 
-  const buyerViews = useMemo(() => {
-    const addrs = new Set(myMessages.map(m => m.strategyId.toLowerCase()))
-    return [...addrs].reduce((s, a) => s + (boardViews[a] ?? 0), 0)
-  }, [myMessages, boardViews])
+  const buyerViews = useMemo(() => buyerBoardAddrs.reduce((s, a) => s + (boardViews[a] ?? 0), 0), [buyerBoardAddrs, boardViews])
 
   const buyerCpm = useMemo(() => {
-    if (!ethPrice) return null
+    if (!ethPrice || totalContribWei === null) return null
     const contribUsd = Number(totalContribWei) / 1e18 * ethPrice
     if (!contribUsd || !buyerViews) return null
     return (contribUsd / buyerViews) * 1000
   }, [ethPrice, totalContribWei, buyerViews])
 
   // Day-by-day history for the hub charts. Creator: the wallet's live boards. Buyer: the boards its
-  // own messages are on (the same sets the headline Views figures use).
+  // own and funded messages are on (the same sets the headline Views figures use).
   const [stats, setStats] = useState<AccountStats | null>(null)
   const [statsFailed, setStatsFailed] = useState(false)
   const statsCreator = useMemo(() => activeBoards.map(b => b.address.toLowerCase()).slice(0, 100), [activeBoards])
-  const statsBuyer = useMemo(() => [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].slice(0, 100), [myMessages])
+  const statsBuyer = useMemo(() => buyerBoardAddrs.slice(0, 100), [buyerBoardAddrs])
   const statsKey = `${activeAddress ?? ''}|${fingerprintAddresses(statsCreator)}|${fingerprintAddresses(statsBuyer)}`
   useEffect(() => {
     if (!activeAddress || isLoading || isLoadingMessages) return
@@ -1630,7 +1629,7 @@ function AccountDashboard() {
                     loading={!stats}
                     failed={statsFailed}
                     metrics={[
-                      { label: 'Spent', value: ethPrice && !isLoadingMessages ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, awaitingPrice: !ethPrice, format: formatUsd },
+                      { label: 'Spent', value: ethPrice && !isLoadingMessages && totalContribWei !== null ? formatUsd(Number(totalContribWei) / 1e18 * ethPrice) : '-', daily: stats?.buyer.spent.map(weiToChart), since: stats?.buyer.spentSince ?? null, awaitingPrice: !ethPrice, format: formatUsd },
                       { label: 'Views', value: !isLoadingMessages ? [...new Set(myMessages.map(m => m.strategyId.toLowerCase()))].reduce((s, addr) => s + (boardViews[addr] ?? 0), 0).toLocaleString() : '-', daily: stats?.buyer.views, since: stats?.buyer.viewsSince ?? null, format: v => Math.round(v).toLocaleString() },
                       { label: 'Cost per 1k Views', value: buyerCpm ? `$${buyerCpm.toFixed(2)}` : '-', ratio: stats ? { num: stats.buyer.spent.map(weiToChart), den: stats.buyer.views, per: 1000 } : undefined, since: laterDay(stats?.buyer.spentSince, stats?.buyer.viewsSince), awaitingPrice: !ethPrice, format: v => `$${v.toFixed(2)}` },
                     ]}
@@ -1645,7 +1644,6 @@ function AccountDashboard() {
 
                   {isLoadingMessages || isLoadingFunded || myMessages.length > 0 || fundedMessages.length > 0 ? (
                     <YourMessages
-                      owner={activeAddress}
                       bought={myMessages}
                       funded={fundedMessages}
                       loading={isLoadingMessages || isLoadingFunded}
@@ -1668,7 +1666,7 @@ function AccountDashboard() {
 
               {/* ── Settings ── */}
               {section === 'settings' && activeAddress && (
-                <SettingsSection address={activeAddress} verifyOk={verifyOk} verifyError={verifyError} />
+                <SettingsSection key={activeAddress} address={activeAddress} verifyOk={verifyOk} verifyError={verifyError} />
               )}
             </main>
           </div>

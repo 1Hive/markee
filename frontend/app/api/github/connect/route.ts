@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { kv } from '@vercel/kv'
+import { safeReturnPath } from '@/lib/github/return-path'
 
 // @vercel/kv leaves fetch caching to Next, which would otherwise store (and can replay) KV reads.
 export const dynamic = 'force-dynamic'
@@ -9,7 +10,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   // Caller passes ?returnTo=<path> to come back to that page after OAuth (no returnTo: the Creator Hub)
-  const returnTo = searchParams.get('returnTo') ?? ''
+  const origin = new URL(request.url).origin
+  const returnTo = safeReturnPath(searchParams.get('returnTo'), origin)
   // ?popup=1: opened via window.open() rather than a full-page nav (GitHubVerify's Connect/Change
   // account flow) -- the callback responds with a postMessage + window.close() page instead of a
   // redirect, so the host page/modal never navigates away.
@@ -17,10 +19,8 @@ export async function GET(request: NextRequest) {
 
   const state = crypto.randomBytes(16).toString('hex')
 
-  // Capture the origin so the callback can redirect back to whichever deployment
+  // The origin is stored so the callback can redirect back to whichever deployment
   // initiated the flow (staging, preview, or production).
-  const origin = new URL(request.url).origin
-
   // Store state with returnTo payload — 10-minute TTL
   await kv.set(
     `github:oauth:state:${state}`,

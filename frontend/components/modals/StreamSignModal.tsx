@@ -30,6 +30,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton'
 import { useEthPrice } from '@/hooks/useEthPrice'
 import { formatUsd, formatMarkeeAmount, VIEWS_ADDRESS_LIMIT } from '@/lib/utils'
 import { estimateLeaderboardPurchaseMarkeeTokens, estimateStreamingSettlementMarkeeTokens } from '@/lib/tokenPhases'
+import { DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_NAME_BYTES, textLimitError, truncateUtf8, utf8Length } from '@/lib/leaderboard/textBytes'
 import { formatTransactionError, formatReceiptError, logTransactionError } from '@/lib/transactionErrors'
 import { TxProgress, InfoTip, sanitizeDecimalInput, parseEthInput, retryUntilLoaded, PaymentReviewCard, PaymentReviewFooter, MessageLoading, FundingNeededNotice, formatFundingNeeded } from '@/components/modals/StreamUI'
 import { useStreamingMarkees, type StreamingMarkee } from '@/lib/contracts/useStreamingMarkees'
@@ -273,7 +274,7 @@ function ReceiveCard({ monthly, compact = true }: { monthly: string; compact?: b
     }}>
       <div style={{ overflowX: 'auto' }}>
         <span style={{ color: PINK, fontFamily: 'Manrope, system-ui, sans-serif', fontWeight: 800, fontSize: 22, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
-          {formatMarkeeAmount(markeeEarned)}
+          ≥ {formatMarkeeAmount(markeeEarned)}
         </span>
       </div>
       {compact ? (
@@ -434,8 +435,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     address: boardAddress, abi: StreamingLeaderboardABI, functionName: 'maxNameLength', chainId: CANONICAL_CHAIN.id,
     query: { enabled: isOpen },
   })
-  const maxLen = Number(maxMessageLength || 223)
-  const maxNameLen = Number(maxNameLength || 32)
+  const maxLen = Number(maxMessageLength || DEFAULT_MAX_MESSAGE_BYTES)
+  const maxNameLen = Number(maxNameLength || DEFAULT_MAX_NAME_BYTES)
 
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
@@ -753,7 +754,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
     : boardTrust === 'untrusted' ? 'This address is not a Markee board. No payment can be sent to it.'
     : boardTrust === 'unavailable' ? 'Could not confirm this Markee board. Check your connection and try again.'
     : 'Checking this Markee board…'
-  const handleBuyNew = async () => { if (boardBlockedReason || streamPendingRef.current) return; if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, belowMin, minMonthlyEth }, name.trim()) }
+  const handleBuyNew = async () => { if (boardBlockedReason || streamPendingRef.current) return; if (await messageModeration.guard(message)) await createFlow.activate(message, calc, { maxLen, maxNameLen, belowMin, minMonthlyEth }, name.trim()) }
   const handleFund = () => boardBlockedReason || streamPendingRef.current ? undefined : backsOther
     ? moveFlow.moveStream(calc, { belowMin, minMonthlyEth })
     : openFlow.openStream(calc, { belowMin, minMonthlyEth })
@@ -996,12 +997,12 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, letterSpacing: 1, textTransform: 'uppercase' }}>Set your message</span>
-                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{message.length}/{maxLen}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED }}>{utf8Length(message)}/{maxLen} bytes</span>
                       </div>
                       <textarea
                         value={message}
-                        onChange={e => { setHasUserEdited(true); setMessage(e.target.value.slice(0, maxLen)); if (error) setError(null) }}
-                        placeholder={`Your message here... (${maxLen} max)`}
+                        onChange={e => { setHasUserEdited(true); setMessage(truncateUtf8(e.target.value, maxLen)); if (error) setError(null) }}
+                        placeholder={`Your message here... (${maxLen} bytes max)`}
                         rows={2}
                         style={{ ...messageBoxStyle, resize: 'vertical' }}
                         disabled={busy}
@@ -1013,7 +1014,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       <input
                         type="text"
                         value={name}
-                        onChange={e => { setHasUserEdited(true); setName(e.target.value.slice(0, maxNameLen)) }}
+                        onChange={e => { setHasUserEdited(true); setName(truncateUtf8(e.target.value, maxNameLen)) }}
                         placeholder="tell the world who wrote this..."
                         style={inputStyle}
                         disabled={busy}
@@ -1082,7 +1083,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     amountUsd={ethPrice && parseFloat(monthly || '0') > 0 ? formatUsd(parseFloat(monthly) * ethPrice) : null}
                     depositLabel={fundTotalValue > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(fundTotalValue)).toFixed(4)} ETH` : null}
                     runwayLabel={formatRunwayShort(runway)}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
+                    markeeEarnedLabel={`at least ${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                     chainId={CANONICAL_CHAIN_ID}
@@ -1104,7 +1105,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                         <div>
                           <textarea
                             value={editMessageText}
-                            onChange={e => setEditMessageText(e.target.value.slice(0, maxLen))}
+                            onChange={e => setEditMessageText(truncateUtf8(e.target.value, maxLen))}
                             rows={2}
                             style={{ ...inputStyle, resize: 'vertical' as const }}
                             disabled={editMessageBusy}
@@ -1177,7 +1178,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     amountUsd={ethPrice && live.nextMonthlyWei > 0n ? formatUsd(Number(formatEther(live.nextMonthlyWei)) * ethPrice) : null}
                     depositLabel={live.depositTopUp > DISPLAY_DUST_WEI ? `${parseFloat(formatEther(live.depositTopUp)).toFixed(4)} ETH` : null}
                     runwayLabel={formatRunwayShort(runwaySeconds(ethxBalance ?? 0n, live.nextRate))}
-                    markeeEarnedLabel={`${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
+                    markeeEarnedLabel={`at least ${formatMarkeeAmount(reviewMarkeeEarned)} MARKEE/mo`}
                     willWin={reviewWillWin}
                     minToWinLabel={reviewMinToWinLabel}
                     chainId={CANONICAL_CHAIN_ID}
@@ -1205,7 +1206,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                       <div>
                         <textarea
                           value={editMessageText}
-                          onChange={e => setEditMessageText(e.target.value.slice(0, maxLen))}
+                          onChange={e => setEditMessageText(truncateUtf8(e.target.value, maxLen))}
                           rows={2}
                           style={{ ...inputStyle, resize: 'vertical' as const }}
                           disabled={editMessageBusy}
