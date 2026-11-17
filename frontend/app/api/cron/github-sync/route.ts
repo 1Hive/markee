@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
-import { getLinkedFiles } from '@/lib/github/linkedFiles'
+import { currentBoardsForLegacy, getLinkedFiles } from '@/lib/github/linkedFiles'
 import { mapSettled } from '@/lib/concurrency'
 import { billboardSignature, readBillboardState, syncMarkeeFile } from '@/lib/github/markeeSync'
 
@@ -47,6 +47,14 @@ async function linkedBoards(): Promise<string[]> {
 async function syncBoard(board: string): Promise<BoardOutcome> {
   const files = await getLinkedFiles(board)
   if (!files.some(f => f.verified)) return 'skipped'
+  // A legacy alias is not a live board (some are beneficiary wallets), so reading it as one only
+  // reverts. Its current board's sync already matches the alias's delimiters; surface links that
+  // were left under the alias instead of the current board.
+  const successors = currentBoardsForLegacy(board)
+  if (successors.length) {
+    console.warn(`[cron/github-sync] ${board} is a legacy alias of ${successors.join(', ')}; its verified links are not synced until moved to the current board`)
+    return 'skipped'
+  }
   try {
     const state = await readBillboardState(board as `0x${string}`)
     const signature = billboardSignature(state)

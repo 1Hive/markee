@@ -69,6 +69,15 @@ export function legacyAddressesFor(newAddress: string): string[] {
   return GITHUB_NEW_TO_OLD[newAddress.toLowerCase()] ?? []
 }
 
+// The boards that list `address` as a legacy alias. Several "v1.1" keys above are really the
+// boards' beneficiary wallets (see migrations/markee-migrations.csv), so an address listed here is
+// not necessarily a contract: callers must not read it as a board. Its delimiters are still matched
+// when the current board syncs.
+export function currentBoardsForLegacy(address: string): string[] {
+  const lower = address.toLowerCase()
+  return Object.entries(GITHUB_NEW_TO_OLD).filter(([, olds]) => olds.includes(lower)).map(([current]) => current)
+}
+
 // ── GitHub content fetch (with timeout) ─────────────────────────────────────
 // Both register-markee and verify-markee-file fetch the file's raw content to check for the
 // delimiter pair. Neither had a timeout, so a slow/hanging GitHub response surfaced only as a
