@@ -126,6 +126,7 @@ Before production: integrate the new quote/message schema and receipt monitoring
 ## Gardens pilot preflight (read-only, 2026-10-16)
 
 - Community, Gnosis: `0xE2396fe2169ca026962971d3B2E373Ba925B6257`
+- Registry factory, Gnosis: `0x08df82f74d1f56f650e98da2dd4240f1a31711bc` (`getCommunityValidity` returned true on 2026-11-16)
 - Current council Safe: `0xc6c2E9EFB898A42DB4137B07b727b45e0C353d81`
 - Current leaderboard, Base: `0x5B9eF23a155Fd97d29fa463af824cFA53C4FAA11`
 - Current beneficiary vault, Base: `0xb7Ea02d34772F9Eeb0A6e270b0D9eB6804b70eDC`
