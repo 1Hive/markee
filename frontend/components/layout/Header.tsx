@@ -17,6 +17,16 @@ const NAV = [
   { label: 'Own the Network', href: '/own-the-network', key: 'own' },
 ] as const
 
+// Promo pill for the 1Hive incentives campaign (/1hive). Remove when the campaign ends.
+const PROMO = { label: 'Earn up to $1k/mo', href: '/1hive', key: '1hive' } as const
+
+const PromoPill = ({ active, onClick, useRegularLinks }: { active: boolean; onClick?: () => void; useRegularLinks?: boolean }) => {
+  const className = `inline-flex items-center gap-2 self-start rounded-full border px-3 py-1 text-[13px] font-semibold text-[#EDEEFF] transition-colors duration-[140ms] ${active ? 'border-[#F897FE]/60 bg-[#F897FE]/10' : 'border-[#7B6AF4]/40 bg-[#7B6AF4]/15 hover:border-[#F897FE]/50'}`
+  const content = <><span className="w-2 h-2 rounded-full bg-[#1DB227] shadow-[0_0_8px_#1DB227]" aria-hidden />{PROMO.label}</>
+  if (useRegularLinks) return <a href={PROMO.href} className={className} onClick={onClick}>{content}</a>
+  return <Link href={PROMO.href} className={className} onClick={onClick}>{content}</Link>
+}
+
 const NavLink = ({ href, active, children, onClick, useRegularLinks }: {
   href: string
   active: boolean
@@ -45,12 +55,15 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
         <div className="flex items-center gap-7 py-[14px]">
           {LogoLink}
 
-          <nav className="hidden md:flex gap-[26px]">
+          <nav className="hidden md:flex items-center gap-[26px]">
             {NAV.map((n) => (
               <NavLink key={n.key} href={n.href} active={activePage === n.key} useRegularLinks={useRegularLinks}>
                 {n.label}
               </NavLink>
             ))}
+            <span className="hidden lg:inline-flex">
+              <PromoPill active={activePage === PROMO.key} useRegularLinks={useRegularLinks} />
+            </span>
           </nav>
 
           <div className="flex-1" />
@@ -79,6 +92,7 @@ export function Header({ activePage = 'home', useRegularLinks = false }: HeaderP
                   {n.label}
                 </NavLink>
               ))}
+              <PromoPill active={activePage === PROMO.key} onClick={() => setMobileMenuOpen(false)} useRegularLinks={useRegularLinks} />
             </nav>
             <div className="sm:hidden mt-4 flex">
               <MarkeeBalance />
