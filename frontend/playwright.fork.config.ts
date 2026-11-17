@@ -5,7 +5,7 @@ import { ANVIL, APP_PORT, E2E_ACCOUNT, E2E_KEEPER_KEY, E2E_MNEMONIC, FORK_BLOCK,
 // anyone to sign (Anvil signs for its unlocked test account), and local Redis in place of Vercel KV.
 // See tests/e2e/fork/README.md.
 
-if (!FORK_RPC) throw new Error('Set E2E_FORK_RPC_URL or ALCHEMY_BASE_URL in .env.local: Anvil needs a Base RPC to fork from.')
+if (!FORK_RPC) throw new Error('Set E2E_FORK_RPC_URL (or run through `npm run env:dev --` for ALCHEMY_BASE_URL): Anvil needs a Base RPC to fork from.')
 
 export default defineConfig({
   globalSetup: './tests/e2e/fork/global-setup.ts',
@@ -70,7 +70,7 @@ export default defineConfig({
         KV_REST_API_URL: KV,
         KV_REST_API_TOKEN: KV_TOKEN,
         NEXT_PUBLIC_SITE_URL: `http://localhost:${APP_PORT}`,
-        // Public factory address; locally it also comes from .env.local.
+        // Public factory address.
         NEXT_PUBLIC_STREAMING_FACTORY: process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '0x37f420fdE5c98e611EB7cb9b74ef579D84697039',
       },
     },

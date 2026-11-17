@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "env:dev": "npx --yes vercel@65.17.0 env run --",
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
