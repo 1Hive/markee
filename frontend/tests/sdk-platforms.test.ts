@@ -209,14 +209,17 @@ test('admin-acceptance status binds transaction sender, board and calldata befor
     const client = getEnvPublicClient(8453);
     let admin: string = registrar;
     let input = '0x0e18b681';
+    let sender: string = owner;
+    let recipient: string = board;
+    let receiptStatus: string = 'success';
     t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
       if (functionName === 'integrations') return [board, wallet, 1, owner, wallet];
       if (functionName === 'admin') return admin;
       if (functionName === 'beneficiaryAddress') return wallet;
       throw Error(`Unexpected read ${functionName}`);
     });
-    t.mock.method(client, 'getTransaction', async () => ({ from: owner, to: board, input }));
-    t.mock.method(client, 'getTransactionReceipt', async () => ({ status: 'success' }));
+    t.mock.method(client, 'getTransaction', async () => ({ from: sender, to: recipient, input }));
+    t.mock.method(client, 'getTransactionReceipt', async () => ({ status: receiptStatus }));
     const transactionHash = `0x${'a'.repeat(64)}`;
     const url = `http://localhost/api/sdk/v1/platform/admin-status?${new URLSearchParams({ placement: JSON.stringify(revnetPlacement), account: owner, transactionHash })}`;
     const call = () => GET(new NextRequest(url), { params: { path: ['platform', 'admin-status'] } });
@@ -227,6 +230,15 @@ test('admin-acceptance status binds transaction sender, board and calldata befor
     const mismatch = await call();
     assert.equal(mismatch.status, 409);
     assert.equal((await mismatch.json()).code, 'TRANSACTION_MISMATCH');
+    input = '0x0e18b681';
+    sender = nextOwner;
+    assert.equal((await call()).status, 409, 'a different signer cannot claim admin acceptance');
+    sender = owner;
+    recipient = wallet;
+    assert.equal((await call()).status, 409, 'a transaction to another contract cannot claim admin acceptance');
+    recipient = board;
+    receiptStatus = 'reverted';
+    assert.equal((await (await call()).json()).status, 'reverted');
   });
 });
 

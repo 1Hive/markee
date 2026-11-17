@@ -54,6 +54,21 @@ contract WrongBeneficiaryFactoryMock {
     }
 }
 
+contract InvalidSaleFactoryMock {
+    enum Failure { NoBoard, NoSeed, WrongAdmin }
+    Failure public immutable failure;
+
+    constructor(Failure failure_) { failure = failure_; }
+
+    function createLeaderboard(address beneficiary, string calldata) external returns (address board, address seedMarkee) {
+        if (failure != Failure.NoBoard) {
+            board = address(new DirectBoardMock(
+                failure == Failure.WrongAdmin ? address(this) : msg.sender, beneficiary, true));
+        }
+        if (failure != Failure.NoSeed) seedMarkee = address(0xA11);
+    }
+}
+
 contract PlatformBoardRegistrarTest is Test {
     bytes32 constant REVNET = keccak256("revnet");
     bytes32 constant PROJECT = bytes32(uint256(42));
@@ -109,5 +124,57 @@ contract PlatformBoardRegistrarTest is Test {
             ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
         (address stored,,,,) = registrar.integrations(RevenueIdentity.key(REVNET, 8453, PROJECT));
         assertEq(stored, address(0));
+    }
+
+    function testInvalidFactoryResultsDoNotRegisterBoard() public {
+        for (uint256 i; i < 3; i++) {
+            registrar.setFactories(address(new InvalidSaleFactoryMock(InvalidSaleFactoryMock.Failure(i))),
+                address(new DirectRentFactoryMock()));
+            vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+            registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+                ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+            (address stored,,,,) = registrar.integrations(RevenueIdentity.key(REVNET, 8453, PROJECT));
+            assertEq(stored, address(0));
+        }
+    }
+
+    function testRejectsInvalidIdentityStrategyAndActivator() public {
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.createBoard(bytes32(0), 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.createBoard(REVNET, 0, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.createBoard(REVNET, 8453, bytes32(0), PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.None,
+            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+            address(0), BENEFICIARY, "Project", "Revnet", "42");
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR, BENEFICIARY, "", "Revnet", "42");
+    }
+
+    function testOwnerControlsOperatorsAndFactories() public {
+        address sale = address(new DirectSaleFactoryMock());
+        address rent = address(new DirectRentFactoryMock());
+        vm.prank(ACTIVATOR);
+        vm.expectRevert();
+        registrar.setOperator(ACTIVATOR, true);
+        vm.prank(ACTIVATOR);
+        vm.expectRevert();
+        registrar.setFactories(sale, rent);
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.setOperator(address(0), true);
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.setFactories(address(0), rent);
+        registrar.setOperator(address(this), false);
+        vm.expectRevert(RevenueUpgradeable.Unauthorized.selector);
+        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
     }
 }
