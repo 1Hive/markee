@@ -302,7 +302,8 @@ function CreateWizardInner() {
   const { isConnected, chain, address } = useAccount()
   const { switchChain } = useSwitchChain()
 
-  const [strategy, setStrategy] = useState<Strategy | null>(null)
+  // For Rent is pre-selected (when streaming is live); ?strategy= and deploy recovery below override it.
+  const [strategy, setStrategy] = useState<Strategy | null>(STREAMING_ENABLED ? 'streaming' : null)
   const [step, setStep] = useState(0)
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [streamActivateOpen, setStreamActivateOpen] = useState(false)

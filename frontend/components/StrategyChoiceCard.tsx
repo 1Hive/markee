@@ -13,12 +13,12 @@ import { MONO, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, LAVENDER } from '@/lib/des
 
 const COPY: Record<Strategy, { description: string; bestFor: string[] }> = {
   streaming: {
-    description: 'Buyers stream a payment to hold the message.',
-    bestFor: ['Most websites and platforms', 'Efficient market dynamics for buyers and sellers'],
+    description: 'Stream payment only when winning',
+    bestFor: ['Most websites and platforms', 'Market dynamics for buyers and sellers'],
   },
   fixed: {
-    description: 'Buyers pay a lump sum to change the message.',
-    bestFor: ['Sites with philanthropic sponsors', 'Buyers happy to pay a premium to own a space'],
+    description: 'Pay lump sum to change a message',
+    bestFor: ['Sites with philanthropic sponsors', 'Buyers happy to pay a premium'],
   },
 }
 
