@@ -154,6 +154,7 @@ export class MarkeeModal {
       const data = await this.client.snapshot(this.options.placement, account, offset, this.abort.signal);
       if (this.closed || epoch !== this.epoch) return;
       this.account = account; this.snapshot = data; this.error = '';
+      if (this.tab === 'activation' && data.community?.integration.status !== 'not_integrated') this.tab = 'community';
       if (this.options.placement.kind === 'platform-community' && data.board && data.chainId === 8453) {
         this.client.registerSite({ kind: 'board', chainId: 8453, address: data.board });
       }
@@ -274,6 +275,7 @@ export class MarkeeModal {
   }
   private async applyAdmin(op: AdminOperation) {
     this.authorization = undefined;
+    if (this.options.placement.kind === 'platform-community') this.tab = 'community';
     this.adminProcessing = op.status === 'working' || op.status === 'submitted';
     if (op.status === 'complete') { this.adminResult = op.result; await this.reload(); }
     if (op.status === 'failed') throw new Error(op.error || 'Community action failed.');

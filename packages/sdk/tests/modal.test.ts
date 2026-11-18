@@ -98,6 +98,15 @@ test('platform activation asks for an explicit Base beneficiary and explains the
   }
 });
 
+test('submitted platform activation returns to community status instead of offering another review', async () => {
+  const modal = Object.create(MarkeeModal.prototype) as { applyAdmin(op: { status: 'working' }): Promise<void>; tab: string; adminProcessing: boolean; authorization: unknown };
+  Object.assign(modal, { options: { placement: { kind: 'platform-community' } }, tab: 'activation', authorization: { kind: 'platform-activate' } });
+  await modal.applyAdmin({ status: 'working' });
+  assert.equal(modal.tab, 'community');
+  assert.equal(modal.adminProcessing, true);
+  assert.equal(modal.authorization, undefined);
+});
+
 function rentView(account: string | null) {
   const modal = view(account) as unknown as { snapshot: Record<string, unknown>; footerHtml(): string; fundingHtml(): string; reviewHtml(): string; review: unknown };
   // The minimum from the screenshot: 0.000999999997884 ETH/mo (a per-second rate times a month).
