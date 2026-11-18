@@ -17,7 +17,10 @@
 //
 // Served through the shared listing snapshot cache (60 s fresh), so viewers never fan out to KV/RPC.
 // Public and read-only: there is no ?bust=1 here (nothing on this page needs a post-transaction
-// refresh), so callers can't force fresh chain reads across every listing.
+// refresh), so callers can't force fresh chain reads across every listing. Taking a sign off is a
+// deploy (CAMPAIGN_1HIVE_EXCLUDED_BOARDS or lib/leaderboards/disqualified.ts), and the cache key
+// changes with those lists, so the deploy serves a fresh snapshot instead of the cached one. The
+// lists are also checked here directly, not only through the upstream listing's own cache.
 
 import { NextResponse } from 'next/server'
 import { kv } from '@vercel/kv'
@@ -25,18 +28,27 @@ import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { cachedListing } from '@/lib/leaderboards/cached'
 import { readTopHistories } from '@/lib/leaderboard/topHistory'
 import { verificationStatusFor } from '@/lib/leaderboards/verificationStatus'
+import { DISQUALIFIED_BOARDS, isDisqualifiedBoard } from '@/lib/leaderboards/disqualified'
 import { viewsKey } from '@/lib/views/boards'
 import { createStreamingClient } from '@/lib/streaming/client'
 import { BASE_STREAMING_FACTORY } from '@/lib/contracts/addresses'
 import { LeaderboardFactoryABI } from '@/lib/contracts/abis'
 import {
-  FOR_RENT_BOARDS_BEFORE_V14, isCampaignBoard, isEligibleBoard, siteLabel, viewAddresses,
+  CAMPAIGN_1HIVE_EXCLUDED_BOARDS, FOR_RENT_BOARDS_BEFORE_V14, isCampaignBoard, isEligibleBoard, siteLabel, viewAddresses,
   type CampaignListingRow, type Campaign1HiveSign,
 } from '@/lib/campaigns/1hive'
 
 export const dynamic = 'force-dynamic'
 
-const CACHE_KEY = 'cache:campaign:1hive'
+/** Short, stable fingerprint of the exclusion and disqualification lists (FNV-1a). */
+function listsVersion(): string {
+  const text = [...Object.keys(CAMPAIGN_1HIVE_EXCLUDED_BOARDS), ...DISQUALIFIED_BOARDS.keys()].map(a => a.toLowerCase()).sort().join(',')
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  return (h >>> 0).toString(36)
+}
+
+const CACHE_KEY = `cache:campaign:1hive:${listsVersion()}`
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
 type ListingRow = CampaignListingRow & {
@@ -47,6 +59,8 @@ type ListingRow = CampaignListingRow & {
 }
 
 async function load() {
+  // Which step failed, for the error log.
+  let stage = 'marketplace listing'
   try {
     const res = await fetch(`${internalOrigin()}/api/ecosystem/leaderboards`, { cache: 'no-store', headers: internalHeaders() })
     if (!res.ok) throw new Error(`ecosystem listing ${res.status}`)
@@ -56,6 +70,7 @@ async function load() {
 
     // For Rent boards created since the v1.4 launch: the factory only appends, so it's everything
     // past the boards it had then.
+    stage = 'For Rent factory read'
     const newForRentList = await createStreamingClient().readContract({
       address: BASE_STREAMING_FACTORY, abi: LeaderboardFactoryABI, functionName: 'getLeaderboards',
       args: [BigInt(FOR_RENT_BOARDS_BEFORE_V14), 10_000n],
@@ -66,17 +81,19 @@ async function load() {
     const addrs = rows.map(r => r.address.toLowerCase())
     // Verification is looked up by address (the same KV records /account and the marketplace use):
     // a listing row from one platform route can miss an embed added through another.
+    stage = 'top histories and verification'
     const [histories, verification] = await Promise.all([readTopHistories(addrs), verificationStatusFor(addrs)])
 
     const eligible = rows.flatMap((listed, i) => {
       const v = verification[addrs[i]]
       const row = v ? { ...listed, verifiedUrls: v.verifiedUrls, linkedFiles: v.linkedFiles } : listed
       const spans = histories.get(addrs[i])
-      return isEligibleBoard(row, spans, newForRent) ? [{ row, spans }] : []
+      return isEligibleBoard({ ...row, disqualified: row.disqualified || isDisqualifiedBoard(row.address) }, spans, newForRent) ? [{ row, spans }] : []
     })
 
     // All-time views for every address the eligible signs were counted under, in one read.
     const addressesPer = eligible.map(e => viewAddresses(e.row, e.spans))
+    stage = 'view counts'
     const keys = [...new Set(addressesPer.flat().map(viewsKey))]
     const counts = keys.length ? await kv.mget<(number | string | null)[]>(...keys) : []
     const viewsByKey = new Map(keys.map((k, i) => [k, Number(counts[i] ?? 0) || 0]))
@@ -106,7 +123,7 @@ async function load() {
 
     return NextResponse.json({ leaderboards: signs, ethPriceUsd: listing.ethPriceUsd ?? null }, { headers: NO_CACHE })
   } catch (err) {
-    console.error('[campaigns/1hive] error:', err)
+    console.error(`[campaigns/1hive] ${stage} failed:`, err)
     return NextResponse.json({ error: 'Campaign leaderboard unavailable' }, { status: 503, headers: NO_CACHE })
   }
 }

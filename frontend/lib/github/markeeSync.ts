@@ -1,6 +1,6 @@
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther, isAddress, parseAbi } from 'viem'
-import { fileSyncKey, fileSyncStatus, isMissingFunction, isPermanentGitHubStatus, syncFailedKey, type SyncFileResult } from './syncSchedule'
+import { fileSyncKey, fileSyncStatus, isGitHubRateLimited, isMissingFunction, isPermanentGitHubFailure, syncFailedKey, type SyncFileResult } from './syncSchedule'
 import { fileIntegrationKey } from '@/lib/integrations/featured'
 import { BASE_STREAMING_FACTORY, BOARD_MIGRATORS, FACTORIES, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { base } from 'viem/chains'
@@ -253,11 +253,23 @@ export function billboardSignature(state: BillboardState): string {
 export interface SyncOutcome { status: number; body: Record<string, unknown> }
 
 /** A failed GitHub read or write, worded for the board owner (shown per embed in the Manage drawer). */
-function githubFailure(action: 'Read' | 'Write', status: number): string {
+function githubFailure(action: 'Read' | 'Write', status: number, rateLimited: boolean): string {
   if (status === 401) return 'GitHub access expired or was revoked (401). Reconnect GitHub'
   if (status === 404) return 'File not found, or this GitHub account can no longer access it (404)'
-  if (status === 403 || status === 429) return `GitHub rate limited or refused the ${action.toLowerCase()} (${status})`
+  if (rateLimited) return `GitHub rate limited the ${action.toLowerCase()} (${status}). It will retry automatically`
+  if (status === 403) return action === 'Write'
+    ? 'GitHub refused the write (403). This GitHub account needs write access to the repo'
+    : 'GitHub refused access to this file (403). Check this GitHub account can still read the repo'
   return `${action} failed (GitHub ${status})`
+}
+
+/** A failed GitHub response as a sync result: whether it's lasting, and the owner-facing reason. */
+function githubFailureResult(file: { repoFullName: string; filePath: string }, action: 'Read' | 'Write', res: Response, body: string): SyncFileResult {
+  return {
+    repoFullName: file.repoFullName, filePath: file.filePath, success: false,
+    permanent: isPermanentGitHubFailure(res.status, res.headers, body),
+    error: githubFailure(action, res.status, isGitHubRateLimited(res.status, res.headers, body)),
+  }
 }
 
 export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownState?: BillboardState): Promise<SyncOutcome> {
@@ -317,7 +329,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
         { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' } }
       )
       if (!fileRes.ok) {
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: isPermanentGitHubStatus(fileRes.status), error: githubFailure('Read', fileRes.status) })
+        results.push(githubFailureResult(file, 'Read', fileRes, await fileRes.text().catch(() => '')))
         continue
       }
 
@@ -383,8 +395,9 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
       )
 
       if (!putRes.ok) {
-        console.error(`[update-markee-file] write failed for ${file.repoFullName}/${file.filePath}:`, putRes.status, (await putRes.text().catch(() => '')).slice(0, 500))
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: isPermanentGitHubStatus(putRes.status), error: githubFailure('Write', putRes.status) })
+        const body = await putRes.text().catch(() => '')
+        console.error(`[update-markee-file] write failed for ${file.repoFullName}/${file.filePath}:`, putRes.status, body.slice(0, 500))
+        results.push(githubFailureResult(file, 'Write', putRes, body))
       } else {
         results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: true })
       }

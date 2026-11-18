@@ -15,6 +15,8 @@ import { CAMPAIGN_1HIVE_MIN_VIEWS, type Campaign1HiveSign } from '@/lib/campaign
 import { CAMPAIGN_CARD } from './styles'
 
 const COLS = 6
+/** Waits before each automatic retry of a failed load (ms); after these, a Try again button shows. */
+const RETRY_DELAYS = [2_000, 5_000]
 
 function SignRow({ sign, rank, ethPrice }: { sign: Campaign1HiveSign; rank: number; ethPrice: number | null }) {
   const streaming = sign.strategy === 'streaming'
@@ -88,19 +90,31 @@ export function SignsLeaderboard({ createHref }: { createHref: string }) {
   const [signs, setSigns] = useState<Campaign1HiveSign[] | null>(null)
   const [ethPrice, setEthPrice] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
+  // Bumped by Try again to start a fresh round of attempts.
+  const [round, setRound] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/campaigns/1hive')
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
-      .then((d: { leaderboards?: Campaign1HiveSign[]; ethPriceUsd?: number | null }) => {
-        if (cancelled) return
-        setSigns(d.leaderboards ?? [])
-        setEthPrice(d.ethPriceUsd ?? null)
-      })
-      .catch(() => { if (!cancelled) setFailed(true) })
-    return () => { cancelled = true }
-  }, [])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const attempt = (n: number) => {
+      fetch('/api/campaigns/1hive')
+        .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+        .then((d: { leaderboards?: Campaign1HiveSign[]; ethPriceUsd?: number | null }) => {
+          if (cancelled) return
+          setSigns(d.leaderboards ?? [])
+          setEthPrice(d.ethPriceUsd ?? null)
+        })
+        .catch(() => {
+          if (cancelled) return
+          if (n < RETRY_DELAYS.length) timer = setTimeout(() => attempt(n + 1), RETRY_DELAYS[n])
+          else setFailed(true)
+        })
+    }
+    attempt(0)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [round])
+
+  const retry = () => { setFailed(false); setRound(r => r + 1) }
 
   const empty = signs !== null && signs.length === 0
 
@@ -124,9 +138,22 @@ export function SignsLeaderboard({ createHref }: { createHref: string }) {
           </tbody>
         </table>
       </div>
-      {(empty || failed) && (
+      {failed && (
+        <div className="px-6 py-10 text-center text-sm" style={{ fontFamily: MONO, color: TEXT2 }} role="alert">
+          <p>Couldn&apos;t load the leaderboard.</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="mt-4 rounded-full border border-[#F897FE]/40 px-4 py-2 text-xs font-bold uppercase tracking-[1px] transition-colors hover:bg-[#F897FE]/10"
+            style={{ color: PINK }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+      {empty && !failed && (
         <p className="px-6 py-10 text-center text-sm" style={{ fontFamily: MONO, color: TEXT2 }}>
-          {failed ? "Couldn't load the leaderboard. Refresh to try again." : 'No signs earning yet. Yours could be first.'}
+          No signs earning yet. Yours could be first.
         </p>
       )}
       <Link

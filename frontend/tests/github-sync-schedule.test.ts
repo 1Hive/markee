@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createPublicClient, custom, encodeFunctionResult, multicall3Abi, parseAbi } from 'viem'
 import { base } from 'viem/chains'
-import { FAILED_RETRY_MS, RESYNC_AFTER_MS, isMissingFunction, isPermanentGitHubStatus, boardSyncResult, fileSyncStatus, inBackoff, syncDecision, syncFailedKey, type SyncFileResult } from '../lib/github/syncSchedule'
+import { FAILED_RETRY_MS, RESYNC_AFTER_MS, isGitHubRateLimited, isMissingFunction, isPermanentGitHubFailure, boardSyncResult, fileSyncStatus, inBackoff, syncDecision, syncFailedKey, type SyncFileResult } from '../lib/github/syncSchedule'
 
 const now = 1_800_000_000_000
 
@@ -57,9 +57,19 @@ test('each file keeps its own sync status', () => {
   assert.deepEqual(fileSyncStatus(file({}), 5), { ok: false, at: 5, error: 'Sync failed', permanent: false })
 })
 
-test('treats 401 and 404 as lasting GitHub failures and everything else as temporary', () => {
-  for (const status of [401, 404]) assert.equal(isPermanentGitHubStatus(status), true)
-  for (const status of [403, 409, 422, 429, 500, 502, 503]) assert.equal(isPermanentGitHubStatus(status), false)
+test('treats 401 and 404 as lasting GitHub failures, and 409, 422, 429 and 5xx as temporary', () => {
+  const none = new Headers()
+  for (const status of [401, 404]) assert.equal(isPermanentGitHubFailure(status, none), true)
+  for (const status of [409, 422, 429, 500, 502, 503]) assert.equal(isPermanentGitHubFailure(status, none), false)
+})
+
+test('a 403 backs off when access is refused, but retries when it is a rate limit', () => {
+  assert.equal(isPermanentGitHubFailure(403, new Headers(), '{"message":"Resource not accessible by integration"}'), true)
+  assert.equal(isPermanentGitHubFailure(403, new Headers({ 'x-ratelimit-remaining': '0' })), false)
+  assert.equal(isPermanentGitHubFailure(403, new Headers({ 'retry-after': '60' })), false)
+  assert.equal(isPermanentGitHubFailure(403, new Headers(), '{"message":"You have exceeded a secondary rate limit"}'), false)
+  assert.equal(isGitHubRateLimited(429, new Headers()), true)
+  assert.equal(isGitHubRateLimited(403, new Headers({ 'x-ratelimit-remaining': '12' })), false)
 })
 
 test('keys the backoff by lowercase board address', () => {

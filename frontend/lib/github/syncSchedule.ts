@@ -26,8 +26,25 @@ export function inBackoff(lastFailure: SyncRecord | null, now = Date.now()): boo
   return !!lastFailure && now - lastFailure.at < FAILED_RETRY_MS
 }
 
-/** GitHub statuses that mean the link itself is broken (no access, missing file), not a blip. */
-export const isPermanentGitHubStatus = (status: number) => status === 401 || status === 404
+/**
+ * A GitHub rate limit, which passes on its own. GitHub answers both rate limits and refused access
+ * with 403; a rate limit carries Retry-After (secondary limits) or X-RateLimit-Remaining: 0 (primary),
+ * and says "rate limit" in its message.
+ */
+export function isGitHubRateLimited(status: number, headers: Pick<Headers, 'get'>, body = ''): boolean {
+  if (status === 429) return true
+  if (status !== 403) return false
+  return headers.get('retry-after') !== null || headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(body)
+}
+
+/**
+ * GitHub failures that mean the link itself is broken, not a blip: expired access (401), a missing
+ * file or repo (404), or refused access (a 403 that isn't a rate limit, e.g. no push access).
+ */
+export function isPermanentGitHubFailure(status: number, headers: Pick<Headers, 'get'>, body = ''): boolean {
+  if (status === 401 || status === 404) return true
+  return status === 403 && !isGitHubRateLimited(status, headers, body)
+}
 
 /**
  * What the cron does after syncing a board's files.

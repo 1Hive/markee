@@ -72,8 +72,13 @@ export function isCampaignBoard(row: CampaignListingRow, newForRent: ReadonlySet
   return row.verificationGated === true
 }
 
+// The exclusion list's addresses, lowercased once per list, so each board is a single lookup.
+const excludedSets = new WeakMap<Record<string, string>, ReadonlySet<string>>()
+
 export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
-  return Object.keys(excluded).some(a => lower(a) === lower(row.address))
+  let set = excludedSets.get(excluded)
+  if (!set) excludedSets.set(excluded, set = new Set(Object.keys(excluded).map(lower)))
+  return set.has(lower(row.address))
 }
 
 /**
