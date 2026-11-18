@@ -65,19 +65,21 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
   })
   const filesOf = files.map(fs => fs.filter(f => f.verified))
 
-  // Each GitHub file's last sync (lib/github/markeeSync.ts), for boards that have files.
+  // Each GitHub file's last sync (lib/github/markeeSync.ts), for boards that have files. Only the
+  // per-embed sync badges need it, so a failed read leaves them out instead of failing the response.
   const withFiles = boards.filter((_, i) => filesOf[i].length > 0)
-  const syncHashes = withFiles.length ? await hgetallChunked(withFiles.map(fileSyncKey)) : []
-  const syncOf = new Map(withFiles.map((b, i) => [b, syncHashes[i]]))
-
   // Messages only matter for boards with sites. Legacy boards have no getTopMarkees and count by
   // board address alone.
   const withUrls = boards.filter((_, i) => urlsOf[i].length > 0)
-  const tops = withUrls.length
-    ? await getModerationClient().multicall({
-        contracts: withUrls.map(address => ({ address: address as Address, abi: TOP_ABI, functionName: 'getTopMarkees' as const, args: [BigInt(BOARD_MESSAGE_LIMIT)] as const })),
-      }).catch(() => [])
-    : []
+  const [syncHashes, tops] = await Promise.all([
+    withFiles.length ? hgetallChunked(withFiles.map(fileSyncKey)).catch(() => []) : [],
+    withUrls.length
+      ? getModerationClient().multicall({
+          contracts: withUrls.map(address => ({ address: address as Address, abi: TOP_ABI, functionName: 'getTopMarkees' as const, args: [BigInt(BOARD_MESSAGE_LIMIT)] as const })),
+        }).catch(() => [])
+      : [],
+  ])
+  const syncOf = new Map(withFiles.map((b, i) => [b, syncHashes[i]]))
   const messagesOf = new Map(withUrls.map((b, i) => [b, ((tops[i]?.result?.[0] ?? []) as readonly string[]).map(a => a.toLowerCase())]))
 
   const urlKeys = boards.flatMap((b, i) => urlsOf[i].flatMap(url => {
@@ -104,12 +106,13 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
     const views: Record<string, number> = {}
     const lastView: Record<string, number | null> = {}
     // Same order as the dashboard lists them: GitHub files, then sites. Ties go to the earlier one.
-    const sync: Record<string, FileSyncStatus> = {}
+    // Set only once a file has a sync record; boards without one carry no `sync` field.
+    let sync: Record<string, FileSyncStatus> | undefined
     filesOf[i].forEach(f => {
       const key = fileIntegrationKey(f)
       views[key] = repoViews.get(f.repoFullName) ?? 0
       const status = parseFileSync(syncOf.get(b)?.[key])
-      if (status) sync[key] = status
+      if (status) (sync ??= {})[key] = status
     })
     urlsOf[i].forEach(url => {
       const host = normalizeHost(url)
@@ -122,6 +125,6 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
     const choice = choices[i]
     const chosen = !!choice && keys.includes(choice)
     const featured = chosen ? choice : keys.reduce<string | null>((best, k) => best === null || views[k] > views[best] ? k : best, null)
-    return [b, { featured, chosen, views, lastView, sync }]
+    return [b, sync ? { featured, chosen, views, lastView, sync } : { featured, chosen, views, lastView }]
   }))
 }

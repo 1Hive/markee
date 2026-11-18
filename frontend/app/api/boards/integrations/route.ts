@@ -15,7 +15,8 @@ const BOARDS_LIMIT = 100
 const RATE_WINDOW = 60
 const RATE_MAX = 60
 
-// GET ?boards=0x1,0x2,...  → { [board]: { featured, chosen, views } } (see lib/integrations/server.ts)
+// GET ?boards=0x1,0x2,...  → { [board]: { featured, chosen, views, lastView, sync? } }; `sync` is present
+// only for boards with a GitHub file sync record (see lib/integrations/server.ts)
 export async function GET(req: NextRequest) {
   if (!await underRateLimit('boards:integrations', clientIp(req), RATE_MAX, RATE_WINDOW)) {
     return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { 'Retry-After': String(RATE_WINDOW) } })
