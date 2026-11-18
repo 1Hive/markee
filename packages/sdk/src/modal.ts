@@ -36,6 +36,7 @@ export const boardMessageCount = (s: Pick<Snapshot, 'entries' | 'nextOffset' | '
 };
 const btn = (cmd: string, label: string, cls = '', attrs = '') => `<button type="button" class="btn ${cls}" data-cmd="${cmd}" ${attrs}>${label}</button>`;
 const link = (url: string, label: string) => /^https:\/\//.test(url) ? `<a href="${e(url)}" target="_blank" rel="noopener noreferrer">${e(label)} ↗</a>` : '';
+const validBaseBeneficiary = (value: string) => /^0x[0-9a-fA-F]{40}$/.test(value.trim()) && !/^0x0{40}$/i.test(value.trim());
 
 export class MarkeeModal {
   private host: HTMLDivElement;
@@ -393,7 +394,7 @@ export class MarkeeModal {
         if (placement.kind === 'platform-community') {
           if (cmd !== 'activate') return;
           const beneficiary = this.baseBeneficiary.trim();
-          if (!/^0x[0-9a-fA-F]{40}$/.test(beneficiary) || /^0x0{40}$/i.test(beneficiary)) throw new Error('Enter a nonzero Base beneficiary address.');
+          if (!validBaseBeneficiary(beneficiary)) throw new Error('Enter a valid, nonzero Base beneficiary address.');
           const allowed = this.allowedStrategies();
           const strategy = allowed.includes(this.selectedStrategy) ? this.selectedStrategy : allowed[0];
           this.authorization = { kind: 'platform-activate', account, value: await this.client.authorizePlatform(placement, strategy, beneficiary as Address) };
@@ -501,7 +502,10 @@ export class MarkeeModal {
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
-    return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'claim' ? 'Claim community revenue' : 'Activate this community’s Markee'}</h2><p>A signed authorization lets Markee’s operator execute this action after checking your current community rights.</p><div class="card stack">${['registryCommunity', 'recipient', 'beneficiary', 'activator', 'leaderboardFactory', 'communityKey', 'factory', 'strategy'].filter(k => message[k] !== undefined).map(k => `<div class="meta">${e(k)}<br><strong class="mono">${e(String(message[k]))}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community treasury. Bridged claims remain pending until destination delivery is confirmed.' : auth.kind === 'platform-activate' ? 'This creates one Base board paying its beneficiary directly. The board owner may need to accept admin on Base.' : 'This creates one community board and its revenue vault on Base.'}</p>`;
+    const beneficiaryNote = String(message.strategy) === '1'
+      ? 'For Sale transfers native ETH on Base to this beneficiary. Confirm it can receive ETH transfers.'
+      : 'For Rent streams ETHx on Base to this beneficiary. Confirm it can receive a Superfluid ETHx stream.';
+    return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'claim' ? 'Claim community revenue' : 'Activate this community’s Markee'}</h2><p>A signed authorization lets Markee’s operator execute this action after checking your current community rights.</p><div class="card stack">${['registryCommunity', 'recipient', 'beneficiary', 'activator', 'leaderboardFactory', 'communityKey', 'factory', 'strategy'].filter(k => message[k] !== undefined).map(k => `<div class="meta">${e(k === 'beneficiary' ? 'Base beneficiary' : k)}<br><strong class="mono">${e(String(message[k]))}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community treasury. Bridged claims remain pending until destination delivery is confirmed.' : auth.kind === 'platform-activate' ? `${beneficiaryNote} The board owner may need to accept admin on Base.` : 'This creates one community board and its revenue vault on Base.'}</p>`;
   }
   private entryMessage(entry: Entry) {
     return entry.moderated === false ? entry.message : entry.moderation?.state === 'soft-flagged' ? entry.moderation?.reason || 'This message is hidden by automatic moderation.' : 'This message is hidden by moderation.';
@@ -546,6 +550,13 @@ export class MarkeeModal {
     return `<form id="markee-action" data-form="${form ? 'entry' : 'create'}">${form ? this.selectedMessageHtml(form.entry) : `<section class="message-card editor-card">${this.field('message', 'Markee message', '', '', true)}${this.field('name', 'Your name (optional)')}</section>`}${this.fundingHtml(form?.entry)}</form>`;
   }
   private updateFields() {
+    const beneficiary = this.root.querySelector<HTMLInputElement>('#base-beneficiary');
+    if (beneficiary) {
+      const valid = validBaseBeneficiary(beneficiary.value);
+      beneficiary.setCustomValidity(valid ? '' : 'Enter a valid, nonzero Base address.');
+      const activate = this.root.querySelector<HTMLButtonElement>('button[data-cmd="activate"]');
+      if (activate) activate.disabled = this.busy || !valid;
+    }
     for (const field of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-byte-limit]')) {
       const limit = Number(field.dataset.byteLimit);
       const bytes = new TextEncoder().encode(field.value).length;
@@ -622,13 +633,16 @@ export class MarkeeModal {
         : pendingAcceptance ? btn('check-platform-admin', 'Check board ownership acceptance', 'primary')
         : canAccept ? btn('accept-admin', 'Accept board ownership on Base', 'primary')
         : status === 'not_integrated' && !this.account ? btn('connect', 'Connect community wallet', 'primary')
-        : status === 'not_integrated' && c.permissions?.canActivate && strategies.length ? btn('activate', 'Review activation', 'primary')
+        : status === 'not_integrated' && c.permissions?.canActivate && strategies.length ? btn('activate', 'Review activation', 'primary', validBaseBeneficiary(this.baseBeneficiary) ? '' : 'disabled')
         : '';
       const explanation = status === 'disabled' ? 'This platform is not yet enabled for Markee activation.'
         : pending ? 'The board was created. Its activator must accept board ownership on Base before it becomes active.'
         : status === 'active' ? 'Revenue is paid directly to the Base beneficiary shown below.'
         : 'An authorized project owner can create one Markee board for this community.';
-      return `${heading('Community Markee')}<p class="muted">${e(explanation)}</p><div class="card"><div class="stat"><span>Integration</span><strong>${status === 'active' ? 'Active' : pending ? 'Awaiting board owner' : status === 'disabled' ? 'Not enabled' : 'Not activated'}</strong></div>${c.platform?.beneficiary ? `<p class="meta">Base beneficiary<br><strong class="mono">${e(c.platform.beneficiary)}</strong></p>` : ''}${choice}${status === 'not_integrated' && c.permissions?.canActivate ? `<label class="meta" for="base-beneficiary">Base beneficiary address</label><input id="base-beneficiary" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" value="${e(this.baseBeneficiary)}"><p class="meta">For Sale sends ETH; For Rent streams ETHx. The board owner can update this address later.</p>` : ''}<div class="row">${action || '<span class="meta">No action is available for this wallet.</span>'}</div></div>`;
+      const beneficiaryHelp = this.selectedStrategy === 'sale'
+        ? 'For Sale transfers native ETH on Base. Choose an address that can receive ETH transfers, including contract wallets with a payable receive path.'
+        : 'For Rent streams ETHx on Base. Choose an address that can receive an incoming Superfluid ETHx stream; it does not receive native ETH.';
+      return `${heading('Community Markee')}<p class="muted">${e(explanation)}</p><div class="card"><div class="stat"><span>Integration</span><strong>${status === 'active' ? 'Active' : pending ? 'Awaiting board owner' : status === 'disabled' ? 'Not enabled' : 'Not activated'}</strong></div>${c.platform?.beneficiary ? `<p class="meta">Base beneficiary<br><strong class="mono">${e(c.platform.beneficiary)}</strong></p>` : ''}${choice}${status === 'not_integrated' && c.permissions?.canActivate ? `<label class="meta" for="base-beneficiary">Base beneficiary address</label><input id="base-beneficiary" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" aria-describedby="base-beneficiary-help" required value="${e(this.baseBeneficiary)}"><p class="meta" id="base-beneficiary-help">Enter a valid, nonzero Base address to continue. ${beneficiaryHelp} The board owner can update this address later.</p>` : ''}<div class="row">${action || '<span class="meta">No action is available for this wallet.</span>'}</div></div>`;
     }
     const choice = '';
     return `${heading('Community treasury')}<p class="muted">Authorized community members can activate Markee and collect community revenue.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}${choice}<div class="row">${this.adminProcessing ? btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect community wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>`;
