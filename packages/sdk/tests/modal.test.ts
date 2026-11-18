@@ -68,25 +68,28 @@ test('community admin view links to the matching Markee creator dashboard', () =
   }
 });
 
-test('platform activation explains what the Base beneficiary must receive', () => {
-  const modal = Object.create(MarkeeModal.prototype) as { communityHtml(): string; authorizationHtml(): string; selectedStrategy: string; authorization: unknown; baseBeneficiary: string };
+test('platform activation asks for an explicit Base beneficiary and explains the selected payment model', () => {
+  const modal = Object.create(MarkeeModal.prototype) as { communityHtml(): string; activationHtml(): string; authorizationHtml(): string; selectedStrategy: string; authorization: unknown; baseBeneficiary: string };
   Object.assign(modal, {
     options: { placement: { kind: 'platform-community', platformId: 'revnet', chainId: 8453 } },
-    client: { options: {} }, account: address, adminProcessing: false, baseBeneficiary: address,
+    client: { options: {} }, account: address, adminProcessing: false, baseBeneficiary: '',
     snapshot: { chainId: 8453, board: null, community: {
       integration: { status: 'not_integrated' }, revenue: { claimableAmount: '0' }, permissions: { canActivate: true },
     } },
   });
   modal.selectedStrategy = 'sale';
-  assert.match(modal.communityHtml(), /For Sale transfers native ETH on Base\. Choose an address that can receive ETH transfers/);
-  assert.doesNotMatch(modal.communityHtml(), /data-cmd="activate" disabled/);
-  modal.baseBeneficiary = '';
-  assert.match(modal.communityHtml(), /data-cmd="activate" disabled/);
+  assert.match(modal.communityHtml(), /Set up community Markee/);
+  assert.doesNotMatch(modal.communityHtml(), /id="base-beneficiary"/);
+  assert.match(modal.activationHtml(), /Beneficiary wallet or contract address on Base/);
+  assert.match(modal.activationHtml(), /Payments transfer native ETH on Base/);
+  assert.match(modal.activationHtml(), /id="base-beneficiary"[^>]*value=""/);
+  assert.match(modal.activationHtml(), /data-cmd="activate" disabled/);
   modal.baseBeneficiary = `0x${'0'.repeat(40)}`;
-  assert.match(modal.communityHtml(), /data-cmd="activate" disabled/);
+  assert.match(modal.activationHtml(), /data-cmd="activate" disabled/);
   modal.baseBeneficiary = address;
+  assert.doesNotMatch(modal.activationHtml(), /data-cmd="activate" disabled/);
   modal.selectedStrategy = 'rent';
-  assert.match(modal.communityHtml(), /For Rent streams ETHx on Base\. Choose an address that can receive an incoming Superfluid ETHx stream/);
+  assert.match(modal.activationHtml(), /Payments stream ETHx on Base/);
   for (const [strategy, payment] of [[1, 'native ETH'], [2, 'ETHx']] as const) {
     modal.authorization = { kind: 'platform-activate', value: { typedData: { message: { strategy, beneficiary: address } } } };
     const html = modal.authorizationHtml();

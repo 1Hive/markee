@@ -88,7 +88,7 @@ export class MarkeeModal {
     if (this.busy || this.closed) return;
     this.initialSelection = false;
     this.review = undefined; this.authorization = undefined; this.form = undefined; this.tab = 'main';
-    this.result = undefined; this.error = '';
+    this.result = undefined; this.error = ''; this.baseBeneficiary = '';
     this.snapshot = undefined;
     this.render();
     void this.reload();
@@ -287,6 +287,7 @@ export class MarkeeModal {
     this.captureDraft();
     if (cmd === 'leaderboard') { this.leaderboardOpen = !this.leaderboardOpen; this.render(); return; }
     if (cmd.startsWith('strategy:')) { const strategy = cmd.slice(9); if (strategy === 'sale' || strategy === 'rent') { this.selectedStrategy = strategy; this.render(); } return; }
+    if (cmd === 'begin-activation' && this.options.placement.kind === 'platform-community') { this.tab = 'activation'; this.render(); return; }
     if (cmd === 'create') { this.tab = 'main'; this.form = undefined; this.review = undefined; this.render(); return; }
     if (cmd.startsWith('tab:')) { this.tab = cmd.slice(4); this.review = undefined; this.authorization = undefined; this.render(); return; }
     if (cmd === 'back') {
@@ -613,6 +614,21 @@ export class MarkeeModal {
     const chosen = this.client.options.allowedStrategies;
     return chosen?.length ? supported.filter(strategy => chosen.includes(strategy)) : supported;
   }
+  private activationHtml() {
+    const c = this.snapshot?.community;
+    if (this.options.placement.kind !== 'platform-community' || !c || c.integration.status !== 'not_integrated' || !c.permissions?.canActivate || !this.account) {
+      return this.communityHtml();
+    }
+    const strategies = this.allowedStrategies();
+    if (!strategies.length) return '<p class="note">Activation is unavailable for this platform configuration.</p>';
+    const selected = strategies.includes(this.selectedStrategy) ? this.selectedStrategy : strategies[0];
+    const sale = selected === 'sale';
+    const description = sale
+      ? 'Payments transfer native ETH on Base. Use a wallet or contract that can receive native ETH transfers.'
+      : 'Payments stream ETHx on Base. Use a wallet or contract that can receive an incoming Superfluid ETHx stream.';
+    const choices = strategies.length > 1 ? `<div class="activation-strategies" role="group" aria-label="Payment strategy">${strategies.map(strategy => `<button type="button" class="activation-strategy${strategy === selected ? ' selected' : ''}" data-cmd="strategy:${strategy}" aria-pressed="${strategy === selected}"><strong>${strategy === 'sale' ? 'For Sale' : 'For Rent'}</strong><span>${strategy === 'sale' ? 'One-time ETH payments' : 'Continuous ETHx streams'}</span></button>`).join('')}</div>` : `<p class="activation-fixed">${sale ? 'For Sale · one-time ETH payments' : 'For Rent · continuous ETHx streams'}</p>`;
+    return `<div class="activation-flow"><div class="eyebrow">Community setup · Base</div><h2>Activate this community’s Markee</h2><p class="muted">Create a board for this community. Choose where its payments will go before signing an authorization.</p><section class="activation-section"><div class="activation-step"><span>1</span><div><h3>Payment model</h3><p>How supporters fund messages on this board.</p></div></div>${choices}</section><section class="activation-section"><div class="activation-step"><span>2</span><div><h3>Base beneficiary</h3><p>Enter the address that will receive community payments on Base.</p></div></div><label for="base-beneficiary">Beneficiary wallet or contract address on Base</label><input id="base-beneficiary" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" aria-describedby="base-beneficiary-help" required value="${e(this.baseBeneficiary)}"><p class="activation-help" id="base-beneficiary-help">${e(description)} Address format can be checked here; a contract’s ability to receive payments must be confirmed separately.</p></section><div class="activation-actions">${btn('back', 'Back')}${btn('activate', 'Review activation', 'primary', validBaseBeneficiary(this.baseBeneficiary) ? '' : 'disabled')}</div></div>`;
+  }
   private communityHtml() {
     const c = this.snapshot?.community;
     if (!c) return '<p class="note">Community information is unavailable.</p>';
@@ -623,7 +639,6 @@ export class MarkeeModal {
     if (generic) {
       const status = c.integration.status;
       const strategies = status === 'not_integrated' ? this.allowedStrategies() : [];
-      const choice = strategies.length > 1 ? `<div class="row" role="group" aria-label="Board strategy">${strategies.map(strategy => btn(`strategy:${strategy}`, strategy === 'rent' ? 'For Rent' : 'For Sale', strategy === this.selectedStrategy ? 'selected' : '')).join('')}</div>` : '';
       const pending = status === 'pending_admin';
       const owner = c.platform?.boardOwner;
       const canAccept = pending && !!owner && owner.toLowerCase() === this.account?.toLowerCase();
@@ -633,19 +648,16 @@ export class MarkeeModal {
         : pendingAcceptance ? btn('check-platform-admin', 'Check board ownership acceptance', 'primary')
         : canAccept ? btn('accept-admin', 'Accept board ownership on Base', 'primary')
         : status === 'not_integrated' && !this.account ? btn('connect', 'Connect community wallet', 'primary')
-        : status === 'not_integrated' && c.permissions?.canActivate && strategies.length ? btn('activate', 'Review activation', 'primary', validBaseBeneficiary(this.baseBeneficiary) ? '' : 'disabled')
+        : status === 'not_integrated' && c.permissions?.canActivate && strategies.length ? btn('begin-activation', 'Set up community Markee', 'primary')
         : '';
       const explanation = status === 'disabled' ? 'This platform is not yet enabled for Markee activation.'
         : pending ? 'The board was created. Its activator must accept board ownership on Base before it becomes active.'
         : status === 'active' ? 'Revenue is paid directly to the Base beneficiary shown below.'
         : 'An authorized project owner can create one Markee board for this community.';
-      const beneficiaryHelp = this.selectedStrategy === 'sale'
-        ? 'For Sale transfers native ETH on Base. Choose an address that can receive ETH transfers, including contract wallets with a payable receive path.'
-        : 'For Rent streams ETHx on Base. Choose an address that can receive an incoming Superfluid ETHx stream; it does not receive native ETH.';
-      return `${heading('Community Markee')}<p class="muted">${e(explanation)}</p><div class="card"><div class="stat"><span>Integration</span><strong>${status === 'active' ? 'Active' : pending ? 'Awaiting board owner' : status === 'disabled' ? 'Not enabled' : 'Not activated'}</strong></div>${c.platform?.beneficiary ? `<p class="meta">Base beneficiary<br><strong class="mono">${e(c.platform.beneficiary)}</strong></p>` : ''}${choice}${status === 'not_integrated' && c.permissions?.canActivate ? `<label class="meta" for="base-beneficiary">Base beneficiary address</label><input id="base-beneficiary" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" aria-describedby="base-beneficiary-help" required value="${e(this.baseBeneficiary)}"><p class="meta" id="base-beneficiary-help">Enter a valid, nonzero Base address to continue. ${beneficiaryHelp} The board owner can update this address later.</p>` : ''}<div class="row">${action || '<span class="meta">No action is available for this wallet.</span>'}</div></div>`;
+      return `${heading('Community Markee')}<p class="muted">${e(explanation)}</p><div class="card"><div class="stat"><span>Integration</span><strong>${status === 'active' ? 'Active' : pending ? 'Awaiting board owner' : status === 'disabled' ? 'Not enabled' : 'Not activated'}</strong></div>${c.platform?.beneficiary ? `<p class="meta">Base beneficiary<br><strong class="mono">${e(c.platform.beneficiary)}</strong></p>` : ''}<div class="row">${action || '<span class="meta">No action is available for this wallet.</span>'}</div></div>`;
     }
     const choice = '';
-    return `${heading('Community treasury')}<p class="muted">Authorized community members can activate Markee and collect community revenue.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}${choice}<div class="row">${this.adminProcessing ? btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect community wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>`;
+    return `${heading('Community treasury')}<p class="muted">This legacy Gardens integration pays the council treasury on its identity chain. To choose a Base beneficiary, use the new platform activation flow when it is enabled.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}${choice}<div class="row">${this.adminProcessing ? btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect community wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>`;
   }
   private title() {
     const s = this.snapshot;
@@ -654,6 +666,7 @@ export class MarkeeModal {
     if (this.authorization) return 'Review authorization';
     if (this.pending) return 'Payment in progress';
     if (this.tab === 'wallet') return s?.strategy === 'rent' ? 'Deposit manager' : 'Wallet & rewards';
+    if (this.tab === 'activation' && this.options.placement.kind === 'platform-community') return 'Activate community Markee';
     if (this.tab === 'community' || s && (!s.board || s.community?.integration.status === 'pending_admin')) return this.options.placement.kind === 'platform-community' ? 'Community Markee' : 'Community treasury';
     if (this.form?.kind.startsWith('edit')) return 'Edit your Markee';
     if (!this.form) return 'Change the Markee Sign';
@@ -704,6 +717,7 @@ export class MarkeeModal {
     else if (this.authorization) body = this.authorizationHtml();
     else if (!s) body = this.error ? btn('refresh', 'Retry', 'primary') : '<div class="loading" role="status" aria-live="polite"><span class="spinner"></span>Loading Markee…</div>';
     else if (this.pending) body = `<h2>Waiting for confirmation</h2><p>Your transaction was sent. You can close this modal and come back to check it.</p><p class="meta mono">${e(this.pending.hash)}</p><p class="note">Do not send a second payment while this transaction is pending.</p>`;
+    else if (this.tab === 'activation' && this.options.placement.kind === 'platform-community') body = this.activationHtml();
     else if (!s.board || s.community?.integration.status === 'pending_admin' || this.tab === 'community') body = this.communityHtml();
     else if (this.tab === 'wallet') body = this.walletHtml();
     else body = `${this.form?.kind.startsWith('edit') ? '' : this.entriesHtml()}${this.formHtml()}${!this.account && this.hostedEligible() ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
