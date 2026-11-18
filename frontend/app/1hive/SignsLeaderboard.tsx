@@ -11,12 +11,12 @@ import useFlowingAmount from '@/hooks/useFlowingAmount'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { SECONDS_IN_MONTH } from '@/lib/strategy'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
-import type { OneHiveSign } from '@/lib/campaigns/oneHive'
+import { CAMPAIGN_1HIVE_MIN_VIEWS, type Campaign1HiveSign } from '@/lib/campaigns/1hive'
 import { CAMPAIGN_CARD } from './styles'
 
 const COLS = 6
 
-function SignRow({ sign, rank, ethPrice }: { sign: OneHiveSign; rank: number; ethPrice: number | null }) {
+function SignRow({ sign, rank, ethPrice }: { sign: Campaign1HiveSign; rank: number; ethPrice: number | null }) {
   const streaming = sign.strategy === 'streaming'
   const rate = BigInt(sign.topRateRaw)
   const bid = BigInt(sign.topBidRaw)
@@ -43,7 +43,19 @@ function SignRow({ sign, rank, ethPrice }: { sign: OneHiveSign; rank: number; et
           <StrategyBadge strategy={sign.strategy} size="xs" />
         </div>
       </td>
-      <td className="px-4 py-5 text-right tabular-nums" style={{ color: TEXT }}>{sign.views.toLocaleString('en-US')}</td>
+      <td className="px-4 py-5 text-right tabular-nums" style={{ color: TEXT }}>
+        {sign.views.toLocaleString('en-US')}
+        {/* Listed so the sign can see where it stands, but not funded until it reaches the minimum. */}
+        {sign.views < CAMPAIGN_1HIVE_MIN_VIEWS && (
+          <span
+            className="mt-1.5 block whitespace-nowrap text-[10px] uppercase tracking-[1px]"
+            style={{ color: MUTED }}
+            title={`Signs need at least ${CAMPAIGN_1HIVE_MIN_VIEWS} views to earn a bonus`}
+          >
+            Needs {CAMPAIGN_1HIVE_MIN_VIEWS}+ views
+          </span>
+        )}
+      </td>
       <td className="px-4 py-5 text-right font-bold tabular-nums" style={{ color: PINK }}>
         {streaming
           ? rate > 0n
@@ -73,7 +85,7 @@ function SkeletonRows() {
 }
 
 export function SignsLeaderboard({ createHref }: { createHref: string }) {
-  const [signs, setSigns] = useState<OneHiveSign[] | null>(null)
+  const [signs, setSigns] = useState<Campaign1HiveSign[] | null>(null)
   const [ethPrice, setEthPrice] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -81,7 +93,7 @@ export function SignsLeaderboard({ createHref }: { createHref: string }) {
     let cancelled = false
     fetch('/api/campaigns/1hive')
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
-      .then((d: { leaderboards?: OneHiveSign[]; ethPriceUsd?: number | null }) => {
+      .then((d: { leaderboards?: Campaign1HiveSign[]; ethPriceUsd?: number | null }) => {
         if (cancelled) return
         setSigns(d.leaderboards ?? [])
         setEthPrice(d.ethPriceUsd ?? null)

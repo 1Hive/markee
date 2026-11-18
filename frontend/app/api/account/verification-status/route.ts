@@ -9,8 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { isAddress } from 'viem'
-import { kv } from '@vercel/kv'
-import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
+import { verificationStatusFor } from '@/lib/leaderboards/verificationStatus'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -21,31 +20,8 @@ const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 const RATE_WINDOW = 60
 const RATE_MAX = 60
 
-interface OiMeta {
-  verifiedUrl?: string
-  verifiedUrls?: string[]
-}
-
 function parseAddresses(raw: string[]): string[] {
   return [...new Set(raw.map(a => a.trim().toLowerCase()).filter(a => isAddress(a)))].slice(0, 200)
-}
-
-async function statusFor(addresses: string[]) {
-  if (addresses.length === 0) return {}
-
-  const oiMetaKeys = addresses.map(a => `oi:meta:${a}`)
-  const [linkedFilesPerAddr, oiMetas] = await Promise.all([
-    getLinkedFilesBatch(addresses),
-    kv.mget<(OiMeta | null)[]>(...oiMetaKeys),
-  ])
-
-  const result: Record<string, { verifiedUrls: string[]; linkedFiles: LinkedFile[] }> = {}
-  addresses.forEach((addr, i) => {
-    const meta = oiMetas[i]
-    const verifiedUrls = Array.isArray(meta?.verifiedUrls) ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : []
-    result[addr] = { verifiedUrls, linkedFiles: linkedFilesPerAddr[i] }
-  })
-  return result
 }
 
 function rateLimited() {
@@ -60,7 +36,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const raw: unknown = body?.addresses
     if (!Array.isArray(raw)) return NextResponse.json({}, { headers: NO_CACHE })
-    return NextResponse.json(await statusFor(parseAddresses(raw.filter((a): a is string => typeof a === 'string'))), { headers: NO_CACHE })
+    return NextResponse.json(await verificationStatusFor(parseAddresses(raw.filter((a): a is string => typeof a === 'string'))), { headers: NO_CACHE })
   } catch (err) {
     console.error('[account/verification-status] error:', err)
     // 500, not {} with 200 -- the caller needs to tell "nothing is verified" apart from "we couldn't

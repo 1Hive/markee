@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { LiveDot } from '@/components/ui/LiveDot'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
-import { ONE_HIVE_SPONSOR_URL, ONE_HIVE_TERMS } from '@/lib/campaigns/oneHive'
+import { CAMPAIGN_1HIVE_SPONSOR_URL, CAMPAIGN_1HIVE_TERMS } from '@/lib/campaigns/1hive'
 import { BonusSlider } from './BonusSlider'
 import { HeroSignCard } from './HeroSignCard'
 import { SignsLeaderboard } from './SignsLeaderboard'
@@ -30,7 +30,7 @@ const STEPS = [
   { n: '03', title: 'Get paid', body: 'Up to $1k/mo. based on traffic', Icon: Zap },
 ]
 
-export default function OneHiveCampaignPage() {
+export default function Campaign1HivePage() {
   return (
     <div className="min-h-screen bg-[#060A2A]">
       <Header activePage="1hive" />
@@ -50,7 +50,7 @@ export default function OneHiveCampaignPage() {
               style={{ fontFamily: MONO, color: TEXT2 }}
             >
               <LiveDot color={GREEN} /> limited time · sponsored by{' '}
-              <a href={ONE_HIVE_SPONSOR_URL} target="_blank" rel="noopener noreferrer" className="-ml-1 hover:text-[#F897FE]">1Hive</a>
+              <a href={CAMPAIGN_1HIVE_SPONSOR_URL} target="_blank" rel="noopener noreferrer" className="-ml-1 hover:text-[#F897FE]">1Hive</a>
             </span>
             <h1 className="mt-6 text-[44px] font-extrabold leading-[1.02] tracking-[-2px] sm:text-[64px] sm:tracking-[-3px]" style={{ color: TEXT }}>
               Earn up to <span style={{ color: PINK }}>$1k/mo</span> when you add a Markee to your site.
@@ -121,7 +121,7 @@ export default function OneHiveCampaignPage() {
         <div className={`${CARD} mx-auto mt-14 max-w-3xl p-6 sm:p-8`}>
           <h3 className="text-xs uppercase tracking-[2px]" style={{ fontFamily: MONO, color: MUTED }}>Terms and conditions</h3>
           <ul className="mt-4 list-disc space-y-2.5 pl-5 text-[15px] leading-relaxed" style={{ color: TEXT2 }}>
-            {ONE_HIVE_TERMS.map((t) => <li key={t}>{t}</li>)}
+            {CAMPAIGN_1HIVE_TERMS.map((t) => <li key={t}>{t}</li>)}
           </ul>
         </div>
       </section>

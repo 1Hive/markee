@@ -51,7 +51,7 @@ jobs:
         run: npm run test:streaming-campaign
 
       - name: 1Hive campaign eligibility
-        run: npm run test:one-hive
+        run: npm run test:1hive
 
       - name: Keeper logic
         run: npm run test:keeper

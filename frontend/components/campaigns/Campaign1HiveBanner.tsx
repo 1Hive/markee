@@ -2,11 +2,11 @@ import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { LiveDot } from '@/components/ui/LiveDot'
 import { MONO, PINK, GREEN, TEXT, TEXT2, MUTED } from '@/lib/design-tokens'
-import { ONE_HIVE_MIN_VIEWS, oneHiveMonthlyBonusUsd } from '@/lib/campaigns/oneHive'
+import { CAMPAIGN_1HIVE_MIN_VIEWS, campaign1HiveMonthlyBonusUsd } from '@/lib/campaigns/1hive'
 
 // Home-page promo for the 1Hive incentives campaign, in the "Create a Markee and start earning" section. Remove along with the header
 // pill when the campaign ends.
-export function OneHiveBanner() {
+export function Campaign1HiveBanner() {
   return (
     <div
       className="flex flex-col gap-4 rounded-2xl border px-5 py-5 text-left sm:px-7 sm:py-6 md:flex-row md:items-center md:gap-7"
@@ -27,10 +27,10 @@ export function OneHiveBanner() {
       <div className="flex flex-wrap items-center gap-5 md:gap-7">
         <div className="md:border-l md:pl-7" style={{ borderColor: 'rgba(138,143,191,0.25)' }}>
           <div className="text-[22px] font-bold leading-none" style={{ fontFamily: MONO, color: GREEN }}>
-            ${oneHiveMonthlyBonusUsd(ONE_HIVE_MIN_VIEWS)}/mo
+            ${campaign1HiveMonthlyBonusUsd(CAMPAIGN_1HIVE_MIN_VIEWS)}/mo
           </div>
           <div className="mt-1 text-[11px]" style={{ fontFamily: MONO, color: MUTED }}>
-            bonus unlocks at {ONE_HIVE_MIN_VIEWS} views
+            bonus unlocks at {CAMPAIGN_1HIVE_MIN_VIEWS} views
           </div>
         </div>
         <Link

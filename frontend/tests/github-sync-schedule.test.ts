@@ -68,6 +68,32 @@ test('a reverted VERSION read counts as a missing function', async () => {
   assert.equal(isMissingFunction(error), true)
 })
 
+function plainClient(answer: (body: { method: string; params: unknown[] }) => unknown) {
+  return createPublicClient({ chain: base, transport: custom({ request: async (body: { method: string; params: unknown[] }) => answer(body) }, { retryCount: 0 }) })
+}
+const rpcError = (code: number, message: string, data?: string) => Object.assign(new Error(message), { code, message, ...(data ? { data } : {}) })
+
+test('a node-reported revert counts as a missing function', async () => {
+  // How a public node reports a call to a function the contract doesn't have.
+  const reverted = await plainClient(() => { throw rpcError(3, 'execution reverted', '0x') })
+    .readContract({ address: BOARD, abi: VERSION_ABI, functionName: 'VERSION' }).then(() => null, e => e)
+  assert.equal(isMissingFunction(reverted), true)
+  const noData = await plainClient(() => { throw rpcError(-32603, 'execution reverted') })
+    .readContract({ address: BOARD, abi: VERSION_ABI, functionName: 'VERSION' }).then(() => null, e => e)
+  assert.equal(isMissingFunction(noData), true)
+})
+
+test('an RPC internal error is not a missing function', async () => {
+  // viem wraps any -32603 with a message as ContractFunctionRevertedError; a streaming board must not
+  // then be read as fixed-price.
+  for (const client of [plainClient, batchedClient]) {
+    const error = await client(() => { throw rpcError(-32603, 'Internal error') })
+      .readContract({ address: BOARD, abi: VERSION_ABI, functionName: 'VERSION' }).then(() => null, e => e)
+    assert.ok(error, 'expected the read to fail')
+    assert.equal(isMissingFunction(error), false)
+  }
+})
+
 test('a failed RPC request is not a missing function', async () => {
   const client = batchedClient(() => { throw new Error('upstream 502') })
   const error = await client.readContract({ address: BOARD, abi: VERSION_ABI, functionName: 'VERSION' }).then(() => null, e => e)

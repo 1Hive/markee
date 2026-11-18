@@ -20,7 +20,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { LiveDot } from '@/components/ui/LiveDot'
-import { OneHiveBanner } from '@/components/campaigns/OneHiveBanner'
+import { Campaign1HiveBanner } from '@/components/campaigns/Campaign1HiveBanner'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px 100px'
@@ -587,7 +587,7 @@ export default function Home() {
             sub="Add a Markee to your website or open source repo in just a few clicks."
           />
           {/* 1Hive campaign promo */}
-          <OneHiveBanner />
+          <Campaign1HiveBanner />
           <div style={{ textAlign: 'center', marginTop: 28 }}>
             <PrimaryButton href="/raise-funding">Create a Markee →</PrimaryButton>
           </div>

@@ -3,35 +3,34 @@
 // Bonus curve: monthly bonus in USD = sqrt(views), from 100 views ($10/mo) up to a cap of 1M views
 // ($1k/mo). Signs under 100 views are not funded.
 
-export const ONE_HIVE_MIN_VIEWS = 100
-export const ONE_HIVE_MAX_VIEWS = 1_000_000
-export const ONE_HIVE_SPONSOR_URL = 'https://1hive.org'
+export const CAMPAIGN_1HIVE_MIN_VIEWS = 100
+export const CAMPAIGN_1HIVE_MAX_VIEWS = 1_000_000
+export const CAMPAIGN_1HIVE_SPONSOR_URL = 'https://1hive.org'
 
-export function oneHiveMonthlyBonusUsd(views: number): number {
-  if (!Number.isFinite(views) || views < ONE_HIVE_MIN_VIEWS) return 0
-  return Math.round(Math.sqrt(Math.min(views, ONE_HIVE_MAX_VIEWS)))
+export function campaign1HiveMonthlyBonusUsd(views: number): number {
+  if (!Number.isFinite(views) || views < CAMPAIGN_1HIVE_MIN_VIEWS) return 0
+  return Math.round(Math.sqrt(Math.min(views, CAMPAIGN_1HIVE_MAX_VIEWS)))
 }
 
 // ── Leaderboard eligibility ──────────────────────────────────────────────────
 //
 // Every new For Rent or For Sale Markee activated (first real message live) since the v1.4 launch
-// is listed automatically, as long as it has a verified site embed (the marketplace's own rule,
-// applied upstream by /api/ecosystem/leaderboards). Boards copied over by a migration are older
+// is listed automatically, as long as it has a verified site or GitHub embed (hasVerifiedEmbed). Boards copied over by a migration are older
 // signs, not new ones, and never count. Rejected signs are removed by hand via
-// ONE_HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive does the reads.
+// CAMPAIGN_1HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive does the reads.
 
 /**
  * The v1.4 launch: 2026-11-13 16:59:17 UTC, the block the v1.4 factories were deployed at
  * (V14_FACTORIES_DEPLOY_BLOCK, 56,993,907). Every v1.4 For Sale board is newer than this; For Rent's
  * factory predates v1.4, so For Rent boards must also have been activated after it.
  */
-export const ONE_HIVE_CAMPAIGN_START = 1794589157
+export const CAMPAIGN_1HIVE_CAMPAIGN_START = 1794589157
 
 /**
  * Signs rejected from the campaign: board address (any case) -> why it was removed. Add an entry and
  * deploy to take a sign off the leaderboard.
  */
-export const ONE_HIVE_EXCLUDED_BOARDS: Record<string, string> = {}
+export const CAMPAIGN_1HIVE_EXCLUDED_BOARDS: Record<string, string> = {}
 
 /** The subset of an /api/ecosystem/leaderboards row the campaign reads. */
 export interface CampaignListingRow {
@@ -64,7 +63,7 @@ export function isCampaignBoard(row: CampaignListingRow): boolean {
   return (row.strategy === 'streaming' || row.verificationGated === true) && !row.migratedFrom
 }
 
-export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = ONE_HIVE_EXCLUDED_BOARDS): boolean {
+export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
   return Object.keys(excluded).some(a => lower(a) === lower(row.address))
 }
 
@@ -87,8 +86,17 @@ export function activationTime(row: CampaignListingRow, spans: CampaignTopSpan[]
   return placeholderFunded ? spans[0].from : null
 }
 
-export function isEligibleBoard(row: CampaignListingRow, activatedAt: number | null, start = ONE_HIVE_CAMPAIGN_START, excluded = ONE_HIVE_EXCLUDED_BOARDS): boolean {
-  return isCampaignBoard(row) && !isExcludedBoard(row, excluded) && activatedAt !== null && activatedAt >= start
+/**
+ * Embedded somewhere: a verified website or a verified GitHub file. No bonus goes to a sign that
+ * hasn't been added to a site, so this is checked here as well as by the marketplace listing (which
+ * exempts Coop-administered boards). The route merges the address-based lookup into the row first.
+ */
+export function hasVerifiedEmbed(row: CampaignListingRow): boolean {
+  return (row.verifiedUrls?.length ?? 0) > 0 || !!row.verifiedUrl || !!row.linkedFiles?.some(f => f.verified === true)
+}
+
+export function isEligibleBoard(row: CampaignListingRow, activatedAt: number | null, start = CAMPAIGN_1HIVE_CAMPAIGN_START, excluded = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
+  return isCampaignBoard(row) && !isExcludedBoard(row, excluded) && hasVerifiedEmbed(row) && activatedAt !== null && activatedAt >= start
 }
 
 /**
@@ -130,7 +138,7 @@ export function siteLabel(row: CampaignListingRow): string {
 }
 
 /** What /api/campaigns/1hive returns per sign. Amounts are wei strings; USD is priced client-side. */
-export interface OneHiveSign {
+export interface Campaign1HiveSign {
   address: string
   site: string
   strategy: 'streaming' | 'fixed'
@@ -148,11 +156,11 @@ export interface OneHiveSign {
   streamedAt: number
 }
 
-export const ONE_HIVE_TERMS: string[] = [
+export const CAMPAIGN_1HIVE_TERMS: string[] = [
   'Signs need at least 100 views to get funded.',
   'More views, more funding: $10/mo for 100 views, up to $1k/mo for 1M+ views.',
-  "The bonus is paid directly to the message. The sign's beneficiary receives the funds, and 1Hive owns the message that's displayed.",
-  "As with any Markee, anyone can outbid 1Hive to take over the message. 38% of every payment goes to the Markee Cooperative's Revnet, earning MARKEE tokens for the buyer.",
+  "The bonus is paid directly to the Markee sign. The sign's beneficiary receives the funds, and 1Hive owns the message that's displayed.",
+  "As with any Markee, anyone can outbid 1Hive to take over the sign. 38% of every payment goes to the Markee Cooperative's Revnet, earning MARKEE tokens for the buyer, and the remaining funds go directly to the beneficiary set for the Markee.",
   'Limit one eligible bonus per domain.',
   'Available on any new For Rent or For Sale sign embed.',
   'Pay amounts are updated weekly based on view counts.',

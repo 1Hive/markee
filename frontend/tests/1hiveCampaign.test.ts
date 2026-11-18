@@ -1,25 +1,27 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  ONE_HIVE_CAMPAIGN_START,
+  CAMPAIGN_1HIVE_CAMPAIGN_START,
   activationTime,
   isCampaignBoard,
   isEligibleBoard,
+  hasVerifiedEmbed,
   isExcludedBoard,
   siteLabel,
   utcDay,
   viewAddresses,
   viewsSince,
   type CampaignListingRow,
-} from '../lib/campaigns/oneHive'
+} from '../lib/campaigns/1hive'
 
-const START = ONE_HIVE_CAMPAIGN_START // v1.4 launch, 2026-11-13T16:59:17Z
+const START = CAMPAIGN_1HIVE_CAMPAIGN_START // v1.4 launch, 2026-11-13T16:59:17Z
 const BOARD = '0xAAAA000000000000000000000000000000000001'
 const OLD = '0xbbbb000000000000000000000000000000000002'
 const SEED = '0x5eed000000000000000000000000000000000003'
 const PAID = '0x9a1d000000000000000000000000000000000004'
-const forRent: CampaignListingRow = { address: BOARD, strategy: 'streaming' }
-const forSale: CampaignListingRow = { address: BOARD, strategy: 'fixed', verificationGated: true }
+const EMBED = { verifiedUrls: ['https://example.org'] }
+const forRent: CampaignListingRow = { address: BOARD, strategy: 'streaming', ...EMBED }
+const forSale: CampaignListingRow = { address: BOARD, strategy: 'fixed', verificationGated: true, ...EMBED }
 
 test('campaign start is the v1.4 launch', () => {
   assert.equal(new Date(START * 1000).toISOString(), '2026-11-13T16:59:17.000Z')
@@ -59,6 +61,14 @@ test('legacy factory boards and migrated boards are never eligible', () => {
   assert.equal(isCampaignBoard({ address: BOARD, strategy: 'fixed' }), false)
   assert.equal(isEligibleBoard({ ...forSale, migratedFrom: OLD }, START + 60, START, {}), false)
   assert.equal(isEligibleBoard({ ...forRent, migratedFrom: OLD }, START + 60, START, {}), false)
+})
+
+test('a sign with no verified site or GitHub embed is never eligible', () => {
+  const bare = { address: BOARD, strategy: 'streaming' } as CampaignListingRow
+  assert.equal(isEligibleBoard(bare, START + 60, START, {}), false)
+  assert.equal(isEligibleBoard({ ...bare, linkedFiles: [{ verified: false, repoFullName: 'x/y' }] }, START + 60, START, {}), false)
+  assert.equal(hasVerifiedEmbed({ ...bare, linkedFiles: [{ verified: true, repoFullName: 'x/y' }] }), true)
+  assert.equal(isEligibleBoard({ ...bare, verifiedUrls: [], linkedFiles: [{ verified: true }] }, START + 60, START, {}), true)
 })
 
 test('exclusions match the board address case-insensitively', () => {

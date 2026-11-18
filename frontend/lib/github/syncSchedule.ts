@@ -32,7 +32,17 @@ export function shouldBackOff(results: readonly SyncFileResult[]): boolean {
   return failed.length > 0 && failed.every(r => r.permanent === true)
 }
 
-/** A read reverted or hit an address with no such function, as opposed to a failed RPC request. */
+/**
+ * A read reverted or hit an address with no such function, as opposed to a failed RPC request.
+ *
+ * viem also reports an RPC internal error (-32603) that has a message as ContractFunctionRevertedError,
+ * so that class alone can't tell a transient Alchemy failure from a real revert. A real revert carries
+ * revert data (`raw`; '0x' through the multicall batch) or the node's "execution reverted" reason; an
+ * internal error has neither, only its own message as the reason.
+ */
 export function isMissingFunction(error: unknown): boolean {
-  return error instanceof BaseError && !!error.walk(cause => cause instanceof ContractFunctionRevertedError || cause instanceof ContractFunctionZeroDataError)
+  if (!(error instanceof BaseError)) return false
+  if (error.walk(cause => cause instanceof ContractFunctionZeroDataError)) return true
+  const reverted = error.walk(cause => cause instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null
+  return !!reverted && (reverted.raw !== undefined || /revert/i.test(reverted.reason ?? ''))
 }
