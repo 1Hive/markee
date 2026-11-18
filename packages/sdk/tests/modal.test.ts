@@ -49,6 +49,25 @@ test('connected app wallet retains its balance and payment review', () => {
   assert.match(view(address).footerHtml(), />Review Payment<\/button>/);
 });
 
+test('community admin view links to the matching Markee creator dashboard', () => {
+  for (const [chainId, origin] of [[8453, 'www'], [11155111, '2staging']] as const) {
+    for (const kind of ['gardens-community', 'platform-community'] as const) {
+      const modal = Object.create(MarkeeModal.prototype) as { communityHtml(): string };
+      Object.assign(modal, {
+        options: { placement: { kind, chainId } }, client: { options: {} }, account: null, adminProcessing: false,
+        snapshot: { chainId, board: null, community: {
+          integration: { status: 'not_integrated' }, revenue: { claimableAmount: '0' },
+          permissions: { canActivate: false },
+        } },
+      });
+      const html = modal.communityHtml();
+      assert.ok(html.includes(`href="https://${origin}.markee.xyz/account?section=creator"`));
+      assert.match(html, /Manage on Markee ↗/);
+      assert.match(html, /target="_blank" rel="noopener noreferrer"/);
+    }
+  }
+});
+
 function rentView(account: string | null) {
   const modal = view(account) as unknown as { snapshot: Record<string, unknown>; footerHtml(): string; fundingHtml(): string; reviewHtml(): string; review: unknown };
   // The minimum from the screenshot: 0.000999999997884 ETH/mo (a per-second rate times a month).
