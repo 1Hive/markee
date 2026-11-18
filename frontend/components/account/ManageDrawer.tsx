@@ -18,7 +18,7 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { hasTwoStepAdmin } from '@/lib/strategy'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
-import { featuredIntegrationMessage, fileSyncTip, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
+import { VIEWS_UNAVAILABLE_TIP, featuredIntegrationMessage, fileSyncTip, orderIntegrations, viewReporting, viewReportingTip, viewsUnavailable } from '@/lib/integrations/featured'
 import type { FileSyncStatus } from '@/lib/github/syncSchedule'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { useSiteVerify } from '@/hooks/useSiteVerify'
@@ -78,7 +78,7 @@ function SyncTag({ status }: { status: FileSyncStatus }) {
   )
 }
 
-function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; reportingTip: string | null; sync?: FileSyncStatus; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
+function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | 'unavailable' | null; reportingTip: string | null; sync?: FileSyncStatus; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
   const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
   const walletFetch = useWalletAuthFetch()
@@ -175,7 +175,12 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync
         {featured && !unverifiedFile && <FeaturedTag />}
         {it.file && !unverifiedFile && sync && <SyncTag status={sync} />}
         {unverifiedFile && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: MUTED, border: '1px solid rgba(138,143,191,0.35)', borderRadius: 99, padding: '1px 7px' }}>Not verified</span>}
-        {views != null && (
+        {views === 'unavailable' && (
+          <span title={VIEWS_UNAVAILABLE_TIP} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 12, color: MUTED, whiteSpace: 'nowrap' }}>
+            <Eye size={13} aria-label={VIEWS_UNAVAILABLE_TIP} />–
+          </span>
+        )}
+        {typeof views === 'number' && (
           <span title={reportingTip ?? 'Views'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 12, color: reportingTip ? AMBER : TEXT2, whiteSpace: 'nowrap' }}>
             {reportingTip ? <EyeOff size={13} aria-label={reportingTip} /> : <Eye size={13} style={{ color: MUTED }} aria-label="views" />}{fmtCount(views)}
           </span>
@@ -362,7 +367,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 it={it}
                 featured={!!info && info.featured === it.key}
                 chosen={!!info?.chosen}
-                views={info ? info.views[it.key] ?? null : null}
+                views={!info ? null : viewsUnavailable(info, it.key) ? 'unavailable' : info.views[it.key] ?? null}
                 reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
                 sync={info?.sync?.[it.key]}
                 canEdit={isAdmin}

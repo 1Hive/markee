@@ -21,7 +21,7 @@ import { TxSteps, TxProgress } from '@/components/modals/StreamUI'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
-import { fileIntegrationKey, urlIntegrationKey, orderIntegrations, onePerDomain, viewReporting, type BoardIntegrations } from '@/lib/integrations/featured'
+import { VIEWS_UNAVAILABLE_TIP, fileIntegrationKey, urlIntegrationKey, orderIntegrations, onePerDomain, viewReporting, viewsUnavailable, type BoardIntegrations } from '@/lib/integrations/featured'
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
@@ -290,9 +290,10 @@ function SiteLogo({ domain, size = 16 }: { domain: string; size?: number }) {
 const NO_VIEWS_TIP = 'No views recorded from this site. It might not have view tracking turned on.'
 function SiteViews({ info, itemKey, views, loaded }: { info?: BoardIntegrations; itemKey: string; views: number; loaded: boolean }) {
   const none = viewReporting(info, itemKey) === 'none'
+  const unknown = viewsUnavailable(info, itemKey)
   return (
-    <span title={none ? NO_VIEWS_TIP : undefined} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-      {none ? <EyeOff size={10} style={{ opacity: 0.7 }} aria-label={NO_VIEWS_TIP} /> : <Eye size={10} style={{ opacity: 0.7 }} />} {loaded ? formatViews(views) : <ViewsSpinner size={9} />}
+    <span title={none ? NO_VIEWS_TIP : unknown ? VIEWS_UNAVAILABLE_TIP : undefined} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
+      {none ? <EyeOff size={10} style={{ opacity: 0.7 }} aria-label={NO_VIEWS_TIP} /> : <Eye size={10} style={{ opacity: 0.7 }} />} {!loaded ? <ViewsSpinner size={9} /> : unknown ? '–' : formatViews(views)}
     </span>
   )
 }
@@ -442,7 +443,7 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
                 <ExternalLink size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
               </span>
               <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 3, fontFamily: MONO, color: MUTED }}>
-                <Eye size={10} style={{ opacity: 0.7 }} /> {item.viewsLoaded ? formatViews(item.views) : <ViewsSpinner size={9} />}
+                <Eye size={10} style={{ opacity: 0.7 }} /> {!item.viewsLoaded ? <ViewsSpinner size={9} /> : viewsUnavailable(info, item.key) ? <span title={VIEWS_UNAVAILABLE_TIP}>–</span> : formatViews(item.views)}
               </span>
             </a>
           ) : (

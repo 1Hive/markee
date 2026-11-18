@@ -20,7 +20,24 @@ export interface BoardIntegrations {
   lastView: Record<string, number | null>
   // GitHub files only: the last sync of the billboard into each file, or absent if none recorded yet.
   sync?: Record<string, FileSyncStatus>
+  // Integrations whose views couldn't be read this time (e.g. GitHub traffic or a KV read failed).
+  // Their `views` entry is 0 and means "unknown", not "none". Absent when every read worked.
+  unavailable?: string[]
 }
+
+// The owner's pick if it's still one of the board's integrations, else the most viewed. Integrations
+// whose views couldn't be read don't compete (their 0 is unknown), unless none could be read. Ties go
+// to the earlier key.
+export function pickFeatured(views: Record<string, number>, choice: string | null | undefined, unavailable: readonly string[] = []): { featured: string | null; chosen: boolean } {
+  const keys = Object.keys(views)
+  if (choice && keys.includes(choice)) return { featured: choice, chosen: true }
+  const known = keys.filter(k => !unavailable.includes(k))
+  const featured = (known.length ? known : keys).reduce<string | null>((best, k) => best === null || views[k] > views[best] ? k : best, null)
+  return { featured, chosen: false }
+}
+
+export const VIEWS_UNAVAILABLE_TIP = "Views couldn't be loaded right now"
+export const viewsUnavailable = (info: BoardIntegrations | null | undefined, key: string): boolean => !!info?.unavailable?.includes(key)
 
 // "Sync failed" detail for a GitHub embed, worded for its owner; null when the last sync worked or
 // none is recorded.
@@ -39,7 +56,8 @@ export type ViewReporting = 'ok' | 'none' | 'stale'
 export const STALE_DAYS = 14
 
 export function viewReporting(info: BoardIntegrations | null | undefined, key: string, now: number = Date.now()): ViewReporting {
-  if (!info || !key.startsWith('u:') || !(key in info.views)) return 'ok'
+  // Views that couldn't be read say nothing about whether the embed reports them.
+  if (!info || !key.startsWith('u:') || !(key in info.views) || viewsUnavailable(info, key)) return 'ok'
   const last = info.lastView[key] ?? null
   if (last === null) return info.views[key] > 0 ? 'ok' : 'none'
   return now / 1000 - last > STALE_DAYS * 86_400 ? 'stale' : 'ok'

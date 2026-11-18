@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getLinkedFiles } from '@/lib/github/linkedFiles'
-import { getGithubToken, fetchRepoTraffic, type RepoTraffic } from '@/lib/github/traffic'
+import { readRepoTraffic, type RepoTraffic } from '@/lib/github/traffic'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -37,12 +37,8 @@ export async function GET(req: NextRequest) {
   }
 
   const entries = await Promise.all(
-    [...byRepo.entries()].map(async ([repoFullName, uid]) => {
-      const token = await getGithubToken(uid)
-      if (!token) return [repoFullName, null] as const
-      const traffic = await fetchRepoTraffic(repoFullName, token)
-      return [repoFullName, traffic] as const
-    })
+    // Each repo on its own: one that can't be read is left out, the others are still returned.
+    [...byRepo.entries()].map(async ([repoFullName, uid]) => [repoFullName, await readRepoTraffic(repoFullName, uid)] as const)
   )
 
   const result: Record<string, RepoTraffic> = {}
