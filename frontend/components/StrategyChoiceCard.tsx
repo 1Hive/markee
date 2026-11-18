@@ -27,10 +27,13 @@ function rgba(hex: string, a: number) {
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`
 }
 
+// Keyboard behaviour (arrow keys, one tab stop) belongs to the radiogroup that renders the cards; see
+// ChooseStrategy in app/create-a-markee/page.tsx.
 export function StrategyChoiceCard({
-  strategyKey, selected, disabled, onSelect, viewCount,
+  strategyKey, selected, disabled, onSelect, viewCount, tabIndex, onKeyDown, buttonRef,
 }: {
   strategyKey: Strategy; selected: boolean; disabled?: boolean; onSelect: () => void; viewCount?: number
+  tabIndex?: number; onKeyDown?: React.KeyboardEventHandler<HTMLButtonElement>; buttonRef?: React.Ref<HTMLButtonElement>
 }) {
   const [hovering, setHovering] = useState(false)
   const meta = STRATEGIES[strategyKey]
@@ -46,6 +49,9 @@ export function StrategyChoiceCard({
         role="radio"
         aria-checked={isSelected}
         aria-disabled={disabled || undefined}
+        ref={buttonRef}
+        tabIndex={tabIndex}
+        onKeyDown={onKeyDown}
         onClick={() => { if (!disabled) onSelect() }}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}

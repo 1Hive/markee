@@ -18,11 +18,12 @@ import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { hasTwoStepAdmin } from '@/lib/strategy'
 import { metaUpdateMessage } from '@/lib/openinternet/meta'
 import { unlinkFileMessage } from '@/lib/github/unlink'
-import { featuredIntegrationMessage, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
+import { featuredIntegrationMessage, fileSyncTip, orderIntegrations, viewReporting, viewReportingTip } from '@/lib/integrations/featured'
+import type { FileSyncStatus } from '@/lib/github/syncSchedule'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { useSiteVerify } from '@/hooks/useSiteVerify'
 import { alreadyVerifiedNote, verifiedOnSameDomain } from '@/lib/integrations/verifiedSites'
-import { MONO, PINK, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
+import { MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, DANGER, AMBER } from '@/lib/design-tokens'
 import type { AnyLeaderboard, BaseLeaderboard, WebsiteLeaderboard } from '@/components/account/types'
 import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } from '@/components/account/primitives'
 import { integrationsOf, type Integration } from '@/components/account/sites'
@@ -63,7 +64,21 @@ function FeaturedTag() {
   )
 }
 
-function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; reportingTip: string | null; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
+// A GitHub embed's last billboard sync: "Synced" or "Sync failed", with the time on hover.
+function SyncTag({ status }: { status: FileSyncStatus }) {
+  const when = new Date(status.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const color = status.ok ? GREEN : DANGER
+  return (
+    <span
+      title={status.ok ? `Last synced ${when}` : `Sync failed ${when}${status.error ? `: ${status.error}` : ''}`}
+      style={{ flexShrink: 0, fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color, border: `1px solid ${color}55`, borderRadius: 99, padding: '1px 7px', whiteSpace: 'nowrap' }}
+    >
+      {status.ok ? 'Synced' : 'Sync failed'}
+    </span>
+  )
+}
+
+function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | null; reportingTip: string | null; sync?: FileSyncStatus; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
   const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
   const walletFetch = useWalletAuthFetch()
@@ -158,6 +173,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
           </a>
         </span>
         {featured && !unverifiedFile && <FeaturedTag />}
+        {it.file && !unverifiedFile && sync && <SyncTag status={sync} />}
         {unverifiedFile && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: MUTED, border: '1px solid rgba(138,143,191,0.35)', borderRadius: 99, padding: '1px 7px' }}>Not verified</span>}
         {views != null && (
           <span title={reportingTip ?? 'Views'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 12, color: reportingTip ? AMBER : TEXT2, whiteSpace: 'nowrap' }}>
@@ -189,6 +205,9 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, canE
         <div style={{ fontSize: 12, color: AMBER, padding: '0 0 10px', lineHeight: 1.45 }}>
           {reportingTip}. Check the site sends the view call from the embed prompt&apos;s View tracking step.
         </div>
+      )}
+      {canEdit && it.file && !unverifiedFile && fileSyncTip(sync) && (
+        <div style={{ fontSize: 12, color: sync?.permanent ? DANGER : AMBER, padding: '0 0 10px', lineHeight: 1.45 }}>{fileSyncTip(sync)}</div>
       )}
       {error && <div style={{ fontSize: 12, color: DANGER, padding: '0 0 10px' }}>{error}</div>}
     </div>
@@ -345,6 +364,7 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 chosen={!!info?.chosen}
                 views={info ? info.views[it.key] ?? null : null}
                 reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
+                sync={info?.sync?.[it.key]}
                 canEdit={isAdmin}
                 onChanged={() => { reloadIntegrations(); onSuccess() }}
                 onFeaturedChanged={reloadIntegrations}

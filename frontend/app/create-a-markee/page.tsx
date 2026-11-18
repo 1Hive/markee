@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, Suspense } from 'react'
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useAccount, useSwitchChain, useReadContract } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
@@ -209,10 +209,45 @@ function ChooseStrategy({ selected, onSelect }: { selected: Strategy | null; onS
       .catch(() => {})
   }, [])
 
+  // ARIA radio group: one tab stop (the selected card, else the first enabled one); arrow keys move
+  // to the previous/next enabled card and select it; Home/End jump to the ends. Disabled cards are
+  // skipped and can't take focus.
+  const options: { key: Strategy; disabled: boolean }[] = [
+    { key: 'streaming', disabled: !STREAMING_ENABLED },
+    { key: 'fixed', disabled: false },
+  ]
+  const enabled = options.filter(o => !o.disabled).map(o => o.key)
+  const tabStop = selected && enabled.includes(selected) ? selected : enabled[0]
+  const refs = useRef<Partial<Record<Strategy, HTMLButtonElement | null>>>({})
+  const onKeyDown = (from: Strategy) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    const i = enabled.indexOf(from)
+    const next =
+      e.key === 'ArrowDown' || e.key === 'ArrowRight' ? enabled[(i + 1) % enabled.length]
+      : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? enabled[(i - 1 + enabled.length) % enabled.length]
+      : e.key === 'Home' ? enabled[0]
+      : e.key === 'End' ? enabled[enabled.length - 1]
+      : null
+    if (!next) return
+    e.preventDefault()
+    onSelect(next)
+    refs.current[next]?.focus()
+  }
+
   return (
     <div role="radiogroup" aria-label="Pricing strategy" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '28px 24px', marginBottom: 28 }}>
-      <StrategyChoiceCard strategyKey="streaming" selected={selected === 'streaming'} disabled={!STREAMING_ENABLED} onSelect={() => onSelect('streaming')} viewCount={strategyViews?.streaming} />
-      <StrategyChoiceCard strategyKey="fixed" selected={selected === 'fixed'} onSelect={() => onSelect('fixed')} viewCount={strategyViews?.fixed} />
+      {options.map(({ key, disabled }) => (
+        <StrategyChoiceCard
+          key={key}
+          strategyKey={key}
+          selected={selected === key}
+          disabled={disabled}
+          onSelect={() => onSelect(key)}
+          viewCount={strategyViews?.[key]}
+          tabIndex={!disabled && key === tabStop ? 0 : -1}
+          onKeyDown={disabled ? undefined : onKeyDown(key)}
+          buttonRef={el => { refs.current[key] = el }}
+        />
+      ))}
     </div>
   )
 }

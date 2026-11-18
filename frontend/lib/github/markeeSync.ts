@@ -1,6 +1,7 @@
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther, isAddress, parseAbi } from 'viem'
-import { isMissingFunction, isPermanentGitHubStatus, syncFailedKey, type SyncFileResult } from './syncSchedule'
+import { fileSyncKey, fileSyncStatus, isMissingFunction, isPermanentGitHubStatus, syncFailedKey, type SyncFileResult } from './syncSchedule'
+import { fileIntegrationKey } from '@/lib/integrations/featured'
 import { BASE_STREAMING_FACTORY, BOARD_MIGRATORS, FACTORIES, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { base } from 'viem/chains'
 import { billboardLine } from '@/lib/github/billboardText'
@@ -251,6 +252,14 @@ export function billboardSignature(state: BillboardState): string {
 
 export interface SyncOutcome { status: number; body: Record<string, unknown> }
 
+/** A failed GitHub read or write, worded for the board owner (shown per embed in the Manage drawer). */
+function githubFailure(action: 'Read' | 'Write', status: number): string {
+  if (status === 401) return 'GitHub access expired or was revoked (401). Reconnect GitHub'
+  if (status === 404) return 'File not found, or this GitHub account can no longer access it (404)'
+  if (status === 403 || status === 429) return `GitHub rate limited or refused the ${action.toLowerCase()} (${status})`
+  return `${action} failed (GitHub ${status})`
+}
+
 export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownState?: BillboardState): Promise<SyncOutcome> {
   console.log(`[update-markee-file] triggered for ${normalizedAddress}`)
 
@@ -308,7 +317,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
         { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' } }
       )
       if (!fileRes.ok) {
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: isPermanentGitHubStatus(fileRes.status), error: `Fetch failed (${fileRes.status})` })
+        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: isPermanentGitHubStatus(fileRes.status), error: githubFailure('Read', fileRes.status) })
         continue
       }
 
@@ -375,7 +384,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
 
       if (!putRes.ok) {
         console.error(`[update-markee-file] write failed for ${file.repoFullName}/${file.filePath}:`, putRes.status, (await putRes.text().catch(() => '')).slice(0, 500))
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: isPermanentGitHubStatus(putRes.status), error: `Write failed (${putRes.status})` })
+        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: isPermanentGitHubStatus(putRes.status), error: githubFailure('Write', putRes.status) })
       } else {
         results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: true })
       }
@@ -389,6 +398,14 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
   const failed    = results.filter(r => !r.success)
   const delimiterFails = failed.filter(r => r.error?.toLowerCase().includes('delimiter'))
   for (const r of failed) console.warn(`[update-markee-file] ${r.repoFullName}/${r.filePath} not synced: ${r.error}`)
+
+  // Each file's outcome, for the per-embed status in the Manage drawer. Best effort: a failed write
+  // here must not fail a sync that reached GitHub.
+  if (results.length > 0) {
+    const at = Date.now()
+    await kv.hset(fileSyncKey(normalizedAddress), Object.fromEntries(results.map(r => [fileIntegrationKey(r), JSON.stringify(fileSyncStatus(r, at))])))
+      .catch(err => console.warn('[update-markee-file] could not save file sync status:', err))
+  }
 
   // A sync that worked (here or from the manual route) ends any cron backoff for this board.
   if (succeeded.length > 0) await kv.del(syncFailedKey(normalizedAddress)).catch(() => {})

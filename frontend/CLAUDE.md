@@ -99,6 +99,7 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 | `github:markee:{address}` | Linked files array per leaderboard | 5 years |
 | `github:synced:{address}` | Signature and time of the last successful README sync (cron) | none |
 | `github:sync-failed:{address}` | Billboard signature of a sync that failed for a lasting reason; the cron skips that board until it expires or the billboard changes | 6 hours |
+| `github:file-sync:{address}` | Hash of each linked file's last sync (field = `f:{repo}/{path}`, value `{ok, at, error?, permanent?}`), shown per GitHub embed in the Manage drawer | none |
 | `github:contract:{address}` | Reverse lookup address → `{owner, repo, githubUserId}` | 5 years |
 | `views:github:{address}` | Cached traffic data | 1 hour |
 | `cache:superfluid:leaderboards` | Cached Superfluid leaderboard API response | 60 s |

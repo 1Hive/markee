@@ -7,6 +7,7 @@ import { getModerationClient } from '@/lib/moderation/server'
 import { BOARD_MESSAGE_LIMIT } from '@/lib/streaming/listing'
 import { lastSiteViewKey, normalizeHost } from '@/lib/views/host'
 import { fileIntegrationKey, onePerDomain, urlIntegrationKey, type BoardIntegrations } from '@/lib/integrations/featured'
+import { fileSyncKey, type FileSyncStatus } from '@/lib/github/syncSchedule'
 
 // The owner's pick, as an integration key. Absent means "most viewed".
 export const featuredKvKey = (board: string) => `board:featured:${board.toLowerCase()}`
@@ -22,6 +23,26 @@ async function mgetNumbers(keys: string[]): Promise<Map<string, number>> {
     chunk.forEach((k, j) => out.set(k, Number(counts[j] ?? 0)))
   }
   return out
+}
+
+async function hgetallChunked(keys: string[]): Promise<(Record<string, unknown> | null)[]> {
+  const out: (Record<string, unknown> | null)[] = []
+  for (let i = 0; i < keys.length; i += MGET_CHUNK) {
+    const pipeline = kv.pipeline()
+    keys.slice(i, i + MGET_CHUNK).forEach(k => pipeline.hgetall(k))
+    out.push(...await pipeline.exec<(Record<string, unknown> | null)[]>())
+  }
+  return out
+}
+
+// Stored as JSON; the KV client may already have parsed it.
+function parseFileSync(raw: unknown): FileSyncStatus | null {
+  try {
+    const v = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return v && typeof v === 'object' && typeof (v as FileSyncStatus).ok === 'boolean' && typeof (v as FileSyncStatus).at === 'number'
+      ? { ok: (v as FileSyncStatus).ok, at: (v as FileSyncStatus).at, error: typeof (v as FileSyncStatus).error === 'string' ? (v as FileSyncStatus).error : undefined, permanent: (v as FileSyncStatus).permanent === true }
+      : null
+  } catch { return null }
 }
 
 // Each board's verified integrations with their views, and which one is featured.
@@ -43,6 +64,11 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
     return onePerDomain(meta?.verifiedUrls?.length ? meta.verifiedUrls : meta?.verifiedUrl ? [meta.verifiedUrl] : [], choices[i])
   })
   const filesOf = files.map(fs => fs.filter(f => f.verified))
+
+  // Each GitHub file's last sync (lib/github/markeeSync.ts), for boards that have files.
+  const withFiles = boards.filter((_, i) => filesOf[i].length > 0)
+  const syncHashes = withFiles.length ? await hgetallChunked(withFiles.map(fileSyncKey)) : []
+  const syncOf = new Map(withFiles.map((b, i) => [b, syncHashes[i]]))
 
   // Messages only matter for boards with sites. Legacy boards have no getTopMarkees and count by
   // board address alone.
@@ -78,7 +104,13 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
     const views: Record<string, number> = {}
     const lastView: Record<string, number | null> = {}
     // Same order as the dashboard lists them: GitHub files, then sites. Ties go to the earlier one.
-    filesOf[i].forEach(f => { views[fileIntegrationKey(f)] = repoViews.get(f.repoFullName) ?? 0 })
+    const sync: Record<string, FileSyncStatus> = {}
+    filesOf[i].forEach(f => {
+      const key = fileIntegrationKey(f)
+      views[key] = repoViews.get(f.repoFullName) ?? 0
+      const status = parseFileSync(syncOf.get(b)?.[key])
+      if (status) sync[key] = status
+    })
     urlsOf[i].forEach(url => {
       const host = normalizeHost(url)
       const addrs = [b, ...(messagesOf.get(b) ?? [])]
@@ -90,6 +122,6 @@ export async function readBoardIntegrations(boardsIn: string[]): Promise<Record<
     const choice = choices[i]
     const chosen = !!choice && keys.includes(choice)
     const featured = chosen ? choice : keys.reduce<string | null>((best, k) => best === null || views[k] > views[best] ? k : best, null)
-    return [b, { featured, chosen, views, lastView }]
+    return [b, { featured, chosen, views, lastView, sync }]
   }))
 }

@@ -14,17 +14,21 @@ export function campaign1HiveMonthlyBonusUsd(views: number): number {
 
 // ── Leaderboard eligibility ──────────────────────────────────────────────────
 //
-// Every new For Rent or For Sale Markee activated (first real message live) since the v1.4 launch
-// is listed automatically, as long as it has a verified site or GitHub embed (hasVerifiedEmbed). Boards copied over by a migration are older
-// signs, not new ones, and never count. Rejected signs are removed by hand via
-// CAMPAIGN_1HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive does the reads.
+// A sign is listed when it is a new (v1.4-era) For Rent or For Sale Markee that has been activated
+// (a real message went live) and has a verified site or GitHub embed. There is no start date for
+// views: every view the sign has ever had counts, including views while only the placeholder
+// message was up. Boards copied over by a migration are older signs and never count. Disqualified
+// boards (lib/leaderboards/disqualified.ts) never count, and signs rejected from this campaign only
+// are removed via CAMPAIGN_1HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive
+// does the reads.
 
 /**
- * The v1.4 launch: 2026-11-13 16:59:17 UTC, the block the v1.4 factories were deployed at
- * (V14_FACTORIES_DEPLOY_BLOCK, 56,993,907). Every v1.4 For Sale board is newer than this; For Rent's
- * factory predates v1.4, so For Rent boards must also have been activated after it.
+ * For Rent boards that already existed at the v1.4 launch (2026-11-13 16:59:17 UTC,
+ * V14_FACTORIES_DEPLOY_BLOCK 56,993,907). For Rent's factory (BASE_STREAMING_FACTORY) predates v1.4
+ * and only ever appends to its board list, so the boards at index 80 and up are the ones created
+ * since the launch. Every v1.4 For Sale board is new by construction (its factory launched then).
  */
-export const CAMPAIGN_1HIVE_CAMPAIGN_START = 1794589157
+export const FOR_RENT_BOARDS_BEFORE_V14 = 80
 
 /**
  * Signs rejected from the campaign: board address (any case) -> why it was removed. Add an entry and
@@ -39,6 +43,8 @@ export interface CampaignListingRow {
   strategy?: string
   /** Set by /api/forsale/leaderboards: the current, vertical-agnostic For Sale factories. */
   verificationGated?: boolean
+  /** Set by /api/ecosystem/leaderboards from lib/leaderboards/disqualified.ts. */
+  disqualified?: boolean
   name?: string
   leaderboardName?: string
   verifiedUrl?: string | null
@@ -56,11 +62,14 @@ export interface CampaignTopSpan { markee: string; from: number; to: number | nu
 const lower = (a: string | null | undefined) => (a ?? '').toLowerCase()
 
 /**
- * Only boards from the current For Rent and For Sale factories count, and only ones created there:
- * a board migrated in (every v1.3 For Sale board was copied to v1.4) is an existing sign.
+ * Only new boards count: every v1.4 For Sale board, and For Rent boards created since the v1.4
+ * launch (`newForRent`, lowercase addresses). A board migrated in (every v1.3 For Sale board was
+ * copied to v1.4) is an existing sign.
  */
-export function isCampaignBoard(row: CampaignListingRow): boolean {
-  return (row.strategy === 'streaming' || row.verificationGated === true) && !row.migratedFrom
+export function isCampaignBoard(row: CampaignListingRow, newForRent: ReadonlySet<string>): boolean {
+  if (row.migratedFrom) return false
+  if (row.strategy === 'streaming') return newForRent.has(lower(row.address))
+  return row.verificationGated === true
 }
 
 export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
@@ -68,58 +77,49 @@ export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string
 }
 
 /**
- * When the board's first real message went live, from its #1 history. Null if it hasn't happened or
+ * Whether the board's first real message has gone live, from its #1 history. False if it hasn't, or
  * the moderation scan hasn't recorded it yet (a just-activated board appears within one scan).
  *
- * For Rent: the first #1 span (the first TopChanged).
+ * For Rent: any #1 span (the first TopChanged).
  * For Sale: initialize() deploys an empty placeholder message that holds #1 from the moment the board
- * is created, so its span is skipped and activation is the first span of any other message. If the
- * placeholder itself was given a message and funds instead, activation falls back to its span.
+ * is created, so its span doesn't count; any other message reaching #1 does. So does the placeholder
+ * itself being given a message and funds.
  */
-export function activationTime(row: CampaignListingRow, spans: CampaignTopSpan[] | undefined): number | null {
-  if (!spans?.length) return null
-  if (row.strategy === 'streaming') return spans[0].from
+export function isActivated(row: CampaignListingRow, spans: CampaignTopSpan[] | undefined): boolean {
+  if (!spans?.length) return false
+  if (row.strategy === 'streaming') return true
   const placeholder = lower(spans[0].markee)
-  const firstReal = spans.find(s => lower(s.markee) !== placeholder)
-  if (firstReal) return firstReal.from
-  const placeholderFunded = BigInt(row.topFundsAddedRaw || '0') > 0n && !!row.topMessage && lower(row.topMarkeeAddress) === placeholder
-  return placeholderFunded ? spans[0].from : null
+  if (spans.some(s => lower(s.markee) !== placeholder)) return true
+  return BigInt(row.topFundsAddedRaw || '0') > 0n && !!row.topMessage && lower(row.topMarkeeAddress) === placeholder
 }
 
 /**
  * Embedded somewhere: a verified website or a verified GitHub file. No bonus goes to a sign that
- * hasn't been added to a site, so this is checked here as well as by the marketplace listing (which
- * exempts Coop-administered boards). The route merges the address-based lookup into the row first.
+ * hasn't been added to a site. The marketplace listing checks this too, but exempts Coop-administered
+ * boards, so it's checked here as well. The route merges the address-based lookup into the row first.
  */
 export function hasVerifiedEmbed(row: CampaignListingRow): boolean {
   return (row.verifiedUrls?.length ?? 0) > 0 || !!row.verifiedUrl || !!row.linkedFiles?.some(f => f.verified === true)
 }
 
-export function isEligibleBoard(row: CampaignListingRow, activatedAt: number | null, start = CAMPAIGN_1HIVE_CAMPAIGN_START, excluded = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
-  return isCampaignBoard(row) && !isExcludedBoard(row, excluded) && hasVerifiedEmbed(row) && activatedAt !== null && activatedAt >= start
+export function isEligibleBoard(
+  row: CampaignListingRow,
+  spans: CampaignTopSpan[] | undefined,
+  newForRent: ReadonlySet<string>,
+  excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS,
+): boolean {
+  return isCampaignBoard(row, newForRent) && row.disqualified !== true && !isExcludedBoard(row, excluded)
+    && hasVerifiedEmbed(row) && isActivated(row, spans)
 }
 
 /**
  * Every address a sign's views were counted under: the board and each message that has been #1 on
- * it. Views stay with a message, so including past #1 messages means being outbid never takes views
- * away from the sign.
+ * it, including the For Sale placeholder. Views stay with a message, so including past #1 messages
+ * means being outbid never takes views away from the sign. A sign's views are the sum of these
+ * addresses' all-time counters (views:total:{address}).
  */
 export function viewAddresses(row: CampaignListingRow, spans: CampaignTopSpan[] | undefined): string[] {
   return [...new Set([lower(row.address), lower(row.topMarkeeAddress), ...(spans ?? []).map(s => lower(s.markee))].filter(Boolean))]
-}
-
-/** UTC day string (YYYY-MM-DD), matching the daily view counters' field names. */
-export const utcDay = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString().slice(0, 10)
-
-/** Sums daily view counters ({ 'YYYY-MM-DD': count }) from `fromDay` onward, inclusive. */
-export function viewsSince(dailies: (Record<string, number | string> | null | undefined)[], fromDay: string): number {
-  let total = 0
-  for (const daily of dailies) {
-    for (const [day, count] of Object.entries(daily ?? {})) {
-      if (day >= fromDay) total += Number(count) || 0
-    }
-  }
-  return total
 }
 
 /** "host/path" of the first verified site, else the verified GitHub repo, else the board name. */
@@ -144,7 +144,7 @@ export interface Campaign1HiveSign {
   strategy: 'streaming' | 'fixed'
   topMessage: string | null
   topMarkeeAddress: string | null
-  activatedAt: number
+  /** All-time views across the board and every message that has been #1 on it. */
   views: number
   /** For Rent: the winning stream rate (wei/sec). For Sale: 0. */
   topRateRaw: string

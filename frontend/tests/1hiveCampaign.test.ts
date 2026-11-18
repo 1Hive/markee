@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  CAMPAIGN_1HIVE_CAMPAIGN_START,
-  activationTime,
+  FOR_RENT_BOARDS_BEFORE_V14,
+  hasVerifiedEmbed,
+  isActivated,
   isCampaignBoard,
   isEligibleBoard,
-  hasVerifiedEmbed,
   isExcludedBoard,
   siteLabel,
-  utcDay,
   viewAddresses,
-  viewsSince,
   type CampaignListingRow,
+  type CampaignTopSpan,
 } from '../lib/campaigns/1hive'
 
-const START = CAMPAIGN_1HIVE_CAMPAIGN_START // v1.4 launch, 2026-11-13T16:59:17Z
 const BOARD = '0xAAAA000000000000000000000000000000000001'
 const OLD = '0xbbbb000000000000000000000000000000000002'
 const SEED = '0x5eed000000000000000000000000000000000003'
@@ -22,68 +20,76 @@ const PAID = '0x9a1d000000000000000000000000000000000004'
 const EMBED = { verifiedUrls: ['https://example.org'] }
 const forRent: CampaignListingRow = { address: BOARD, strategy: 'streaming', ...EMBED }
 const forSale: CampaignListingRow = { address: BOARD, strategy: 'fixed', verificationGated: true, ...EMBED }
+// For Rent boards created since the v1.4 launch (lowercase), as the route reads them from the factory.
+const NEW_FOR_RENT = new Set([BOARD.toLowerCase()])
+const NONE = new Set<string>()
+const rentSpans: CampaignTopSpan[] = [{ markee: '0x1', from: 500, to: 600 }, { markee: '0x2', from: 900, to: null }]
+const saleSpans: CampaignTopSpan[] = [{ markee: SEED, from: 100, to: 200 }, { markee: PAID, from: 200, to: null }]
 
-test('campaign start is the v1.4 launch', () => {
-  assert.equal(new Date(START * 1000).toISOString(), '2026-11-13T16:59:17.000Z')
+test('80 For Rent boards existed at the v1.4 launch', () => {
+  assert.equal(FOR_RENT_BOARDS_BEFORE_V14, 80)
 })
 
-test('For Rent activation is its first #1 span', () => {
-  assert.equal(activationTime(forRent, undefined), null)
-  assert.equal(activationTime(forRent, [{ markee: '0x1', from: 500, to: 600 }, { markee: '0x2', from: 900, to: null }]), 500)
+test('For Rent is activated by its first #1 span', () => {
+  assert.equal(isActivated(forRent, undefined), false)
+  assert.equal(isActivated(forRent, []), false)
+  assert.equal(isActivated(forRent, rentSpans), true)
 })
 
-test("For Sale activation skips initialize()'s empty placeholder message", () => {
-  // Created on day 100 (placeholder becomes #1), first paid message takes #1 on day 200.
-  const spans = [{ markee: SEED, from: 100, to: 200 }, { markee: PAID, from: 200, to: null }]
-  assert.equal(activationTime(forSale, spans), 200)
-})
-
-test('a For Sale board with only its placeholder is not activated', () => {
-  assert.equal(activationTime({ ...forSale, topMarkeeAddress: SEED, topMessage: null, topFundsAddedRaw: '0' }, [{ markee: SEED, from: 100, to: null }]), null)
-  assert.equal(isEligibleBoard(forSale, null, START, {}), false)
+test("For Sale activation ignores initialize()'s empty placeholder message", () => {
+  assert.equal(isActivated(forSale, saleSpans), true)
+  assert.equal(isActivated(forSale, [{ markee: SEED, from: 100, to: null }]), false)
 })
 
 test('a For Sale placeholder given a message and funds counts as activated', () => {
-  const funded = { ...forSale, topMarkeeAddress: SEED, topMessage: 'hello', topFundsAddedRaw: '1000' }
-  assert.equal(activationTime(funded, [{ markee: SEED, from: 100, to: null }]), 100)
+  const funded = { ...forSale, topMarkeeAddress: SEED, topMessage: 'gm', topFundsAddedRaw: '1000' }
+  assert.equal(isActivated(funded, [{ markee: SEED, from: 100, to: null }]), true)
+  assert.equal(isActivated({ ...funded, topFundsAddedRaw: '0' }, [{ markee: SEED, from: 100, to: null }]), false)
 })
 
-test('new For Rent and For Sale boards activated at or after the v1.4 launch are eligible', () => {
-  assert.equal(isEligibleBoard(forRent, START, START, {}), true)
-  assert.equal(isEligibleBoard(forSale, START + 60, START, {}), true)
+test('every v1.4 For Sale board and For Rent boards created since the launch are campaign boards', () => {
+  assert.equal(isCampaignBoard(forSale, NONE), true)
+  assert.equal(isCampaignBoard(forRent, NEW_FOR_RENT), true)
+  // A For Rent board created before the launch never counts, however recently it was activated.
+  assert.equal(isCampaignBoard(forRent, NONE), false)
 })
 
-test('boards activated before the launch are not eligible', () => {
-  assert.equal(isEligibleBoard(forRent, START - 1, START, {}), false)
+test('legacy factory boards and migrated boards are never campaign boards', () => {
+  assert.equal(isCampaignBoard({ address: BOARD, strategy: 'fixed' }, NEW_FOR_RENT), false)
+  assert.equal(isCampaignBoard({ ...forSale, migratedFrom: OLD }, NEW_FOR_RENT), false)
+  assert.equal(isCampaignBoard({ ...forRent, migratedFrom: OLD }, NEW_FOR_RENT), false)
 })
 
-test('legacy factory boards and migrated boards are never eligible', () => {
-  assert.equal(isCampaignBoard({ address: BOARD, strategy: 'fixed' }), false)
-  assert.equal(isEligibleBoard({ ...forSale, migratedFrom: OLD }, START + 60, START, {}), false)
-  assert.equal(isEligibleBoard({ ...forRent, migratedFrom: OLD }, START + 60, START, {}), false)
+test('an activated new board with a verified embed is eligible, with no start date', () => {
+  assert.equal(isEligibleBoard(forRent, rentSpans, NEW_FOR_RENT, {}), true)
+  assert.equal(isEligibleBoard(forSale, saleSpans, NEW_FOR_RENT, {}), true)
+  // Activation time doesn't matter, only that it happened.
+  assert.equal(isEligibleBoard(forSale, [{ markee: SEED, from: 1, to: 2 }, { markee: PAID, from: 2, to: null }], NONE, {}), true)
+  assert.equal(isEligibleBoard(forSale, [{ markee: SEED, from: 100, to: null }], NONE, {}), false)
 })
 
 test('a sign with no verified site or GitHub embed is never eligible', () => {
   const bare = { address: BOARD, strategy: 'streaming' } as CampaignListingRow
-  assert.equal(isEligibleBoard(bare, START + 60, START, {}), false)
-  assert.equal(isEligibleBoard({ ...bare, linkedFiles: [{ verified: false, repoFullName: 'x/y' }] }, START + 60, START, {}), false)
+  assert.equal(isEligibleBoard(bare, rentSpans, NEW_FOR_RENT, {}), false)
+  assert.equal(isEligibleBoard({ ...bare, linkedFiles: [{ verified: false, repoFullName: 'x/y' }] }, rentSpans, NEW_FOR_RENT, {}), false)
   assert.equal(hasVerifiedEmbed({ ...bare, linkedFiles: [{ verified: true, repoFullName: 'x/y' }] }), true)
-  assert.equal(isEligibleBoard({ ...bare, verifiedUrls: [], linkedFiles: [{ verified: true }] }, START + 60, START, {}), true)
+  assert.equal(isEligibleBoard({ ...bare, verifiedUrls: [], linkedFiles: [{ verified: true }] }, rentSpans, NEW_FOR_RENT, {}), true)
+})
+
+test('a disqualified board is never eligible', () => {
+  assert.equal(isEligibleBoard({ ...forRent, disqualified: true }, rentSpans, NEW_FOR_RENT, {}), false)
 })
 
 test('exclusions match the board address case-insensitively', () => {
   assert.equal(isExcludedBoard(forRent, { [BOARD.toLowerCase()]: 'rejected' }), true)
-  assert.equal(isEligibleBoard(forRent, START + 60, START, { [BOARD.toUpperCase().replace('0X', '0x')]: 'view farming' }), false)
+  assert.equal(isEligibleBoard(forRent, rentSpans, NEW_FOR_RENT, { [BOARD.toUpperCase().replace('0X', '0x')]: 'view farming' }), false)
   assert.equal(isExcludedBoard(forRent, {}), false)
 })
 
-test('views count the board and every message that has been #1, from the activation day on', () => {
-  const row: CampaignListingRow = { ...forRent, topMarkeeAddress: '0xC' }
-  const addrs = viewAddresses(row, [{ markee: '0xA', from: 1, to: 2 }, { markee: '0xB', from: 2, to: null }])
-  assert.deepEqual(new Set(addrs), new Set([BOARD.toLowerCase(), '0xc', '0xa', '0xb']))
-
-  assert.equal(utcDay(START), '2026-11-13')
-  assert.equal(viewsSince([{ '2026-11-12': 50, '2026-11-13': 3, '2026-11-14': '4' }, null, { '2026-12-01': 10 }], utcDay(START)), 17)
+test('views count the board and every message that has been #1, placeholder included', () => {
+  const row: CampaignListingRow = { ...forSale, topMarkeeAddress: '0xC' }
+  const addrs = viewAddresses(row, [{ markee: SEED, from: 1, to: 2 }, { markee: '0xB', from: 2, to: null }])
+  assert.deepEqual(new Set(addrs), new Set([BOARD.toLowerCase(), '0xc', SEED.toLowerCase(), '0xb']))
 })
 
 test('site label prefers the verified site, then the verified repo, then the name', () => {

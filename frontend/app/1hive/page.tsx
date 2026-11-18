@@ -97,7 +97,7 @@ export default function Campaign1HivePage() {
             <h2 className="flex items-center gap-3 text-[26px] font-extrabold tracking-[-1px]" style={{ color: TEXT }}>
               <LiveDot color={GREEN} /> Signs earning bonuses
             </h2>
-            <span className="text-xs" style={{ fontFamily: MONO, color: MUTED }}>ranked by views since activation</span>
+            <span className="text-xs" style={{ fontFamily: MONO, color: MUTED }}>ranked by total views</span>
           </div>
 
           <SignsLeaderboard createHref={CREATE_HREF} />

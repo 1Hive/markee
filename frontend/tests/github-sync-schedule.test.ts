@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createPublicClient, custom, encodeFunctionResult, multicall3Abi, parseAbi } from 'viem'
 import { base } from 'viem/chains'
-import { FAILED_RETRY_MS, RESYNC_AFTER_MS, isMissingFunction, isPermanentGitHubStatus, shouldBackOff, syncDecision, syncFailedKey, type SyncFileResult } from '../lib/github/syncSchedule'
+import { FAILED_RETRY_MS, RESYNC_AFTER_MS, isMissingFunction, isPermanentGitHubStatus, boardSyncResult, fileSyncStatus, syncDecision, syncFailedKey, type SyncFileResult } from '../lib/github/syncSchedule'
 
 const now = 1_800_000_000_000
 
@@ -36,10 +36,24 @@ test('retries a failed board at once when its billboard changes', () => {
 const file = (over: Partial<SyncFileResult>): SyncFileResult => ({ repoFullName: 'o/r', filePath: 'README.md', success: false, ...over })
 
 test('backs off only when every failed file failed for a lasting reason', () => {
-  assert.equal(shouldBackOff([file({ permanent: true, error: 'Address-specific delimiters not found in file' })]), true)
-  assert.equal(shouldBackOff([file({ permanent: true }), file({ permanent: false, error: 'Write failed (502)' })]), false)
-  assert.equal(shouldBackOff([file({ error: 'Sync failed' })]), false)
-  assert.equal(shouldBackOff([]), false)
+  assert.equal(boardSyncResult([file({ permanent: true, error: 'Address-specific delimiters not found in file' })]), 'backoff')
+  assert.equal(boardSyncResult([file({ permanent: true }), file({ permanent: false, error: 'Write failed (502)' })]), 'retry')
+  assert.equal(boardSyncResult([file({ error: 'Sync failed' })]), 'retry')
+  assert.equal(boardSyncResult([]), 'retry')
+})
+
+test('a board is synced only when every file synced', () => {
+  assert.equal(boardSyncResult([file({ success: true }), file({ success: true, unchanged: true })]), 'synced')
+  // One file current, the other hit a GitHub 502: retry next run instead of recording the board as synced.
+  assert.equal(boardSyncResult([file({ success: true }), file({ error: 'Write failed (502)' })]), 'retry')
+  // One file current, the other lost its delimiters: back off; the current file needs nothing more.
+  assert.equal(boardSyncResult([file({ success: true }), file({ permanent: true, error: 'Address-specific delimiters not found in file' })]), 'backoff')
+})
+
+test('each file keeps its own sync status', () => {
+  assert.deepEqual(fileSyncStatus(file({ success: true }), 5), { ok: true, at: 5 })
+  assert.deepEqual(fileSyncStatus(file({ permanent: true, error: 'Fetch failed (404)' }), 5), { ok: false, at: 5, error: 'Fetch failed (404)', permanent: true })
+  assert.deepEqual(fileSyncStatus(file({}), 5), { ok: false, at: 5, error: 'Sync failed', permanent: false })
 })
 
 test('treats 401 and 404 as lasting GitHub failures and everything else as temporary', () => {

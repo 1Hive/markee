@@ -403,7 +403,7 @@ export default function RaiseFunding() {
           superfluid:   { markees: 0, eth: 0 },
         }
         for (const lb of data.leaderboards ?? []) {
-          if (lb.gamed) continue
+          if (lb.disqualified) continue
           const key = lb.platform === 'website' ? 'openinternet' : lb.platform
           if (!acc[key] || lb.markeeCount < 1) continue
           acc[key].markees++

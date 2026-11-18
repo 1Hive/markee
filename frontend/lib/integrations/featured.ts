@@ -3,6 +3,7 @@
 // integration with the most views. /api/boards/integrations works it out, so every page agrees.
 
 import { normalizeHost } from '@/lib/views/host'
+import type { FileSyncStatus } from '@/lib/github/syncSchedule'
 
 export const fileIntegrationKey = (f: { repoFullName: string; filePath: string }) => `f:${f.repoFullName}/${f.filePath}`
 export const urlIntegrationKey = (url: string) => `u:${url}`
@@ -17,6 +18,19 @@ export interface BoardIntegrations {
   // Sites only: unix seconds of the last view the site reported, or null if none since we started
   // recording it.
   lastView: Record<string, number | null>
+  // GitHub files only: the last sync of the billboard into each file, or absent if none recorded yet.
+  sync?: Record<string, FileSyncStatus>
+}
+
+// "Sync failed" detail for a GitHub embed, worded for its owner; null when the last sync worked or
+// none is recorded.
+export function fileSyncTip(status: FileSyncStatus | undefined): string | null {
+  if (!status || status.ok) return null
+  const when = new Date(status.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const error = status.error ?? 'Sync failed'
+  return status.permanent
+    ? `The last sync into this file failed (${when}): ${error}. Once it's fixed, it syncs again within a few hours, or right away from the Markee page.`
+    : `The last sync into this file failed (${when}): ${error}. It retries automatically.`
 }
 
 // Whether a site's embed is reporting views. 'none': no view ever logged. 'stale': none for

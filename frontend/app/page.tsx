@@ -285,8 +285,8 @@ export default function Home() {
         if (!data) return
         const leaderboards: { address: string; topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
-        // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude gamed
-        setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))
+        // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude disqualified
+        setTop5Eco(leaderboards.filter(lb => !lb.disqualified && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))
         setTop5EcoLoading(false)
         if (typeof data.ethPriceUsd === 'number' && data.ethPriceUsd > 0) setListingEthPrice(data.ethPriceUsd)
         const messages = active.reduce(

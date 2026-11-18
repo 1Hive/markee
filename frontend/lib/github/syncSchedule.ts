@@ -23,13 +23,38 @@ export function syncDecision(signature: string, previous: SyncRecord | null, las
 export const isPermanentGitHubStatus = (status: number) => status === 401 || status === 404
 
 /**
- * Back off only when every failed file failed for a lasting reason (no GitHub connection,
- * invalid repo, no access, missing delimiters). A GitHub 5xx, 409, rate limit or network error
- * right after a purchase must be retried on the next run, not 6 hours later.
+ * What the cron does after syncing a board's files.
+ * - 'synced': every file is current, so the board isn't synced again until its billboard changes or
+ *   a day passes.
+ * - 'retry': a file failed for a reason that may pass (GitHub 5xx, 409, rate limit, network error),
+ *   so the board is synced again on the next run, even if other files worked.
+ * - 'backoff': every failure is lasting (no GitHub connection, invalid repo, no access, missing
+ *   delimiters), so the same billboard isn't retried for FAILED_RETRY_MS. Files that worked are
+ *   already current.
  */
-export function shouldBackOff(results: readonly SyncFileResult[]): boolean {
+export function boardSyncResult(results: readonly SyncFileResult[]): 'synced' | 'retry' | 'backoff' {
   const failed = results.filter(r => !r.success)
-  return failed.length > 0 && failed.every(r => r.permanent === true)
+  if (results.length > 0 && failed.length === 0) return 'synced'
+  return failed.length > 0 && failed.every(r => r.permanent === true) ? 'backoff' : 'retry'
+}
+
+/**
+ * The last sync of each linked GitHub file, shown per embed in the Manage drawer: one hash per board,
+ * field = the file's integration key (lib/integrations/featured.ts fileIntegrationKey).
+ */
+export const fileSyncKey = (board: string) => `github:file-sync:${board.toLowerCase()}`
+
+export interface FileSyncStatus {
+  ok: boolean
+  /** Unix ms of the attempt. */
+  at: number
+  error?: string
+  /** A failure that won't fix itself: the owner has to act (reconnect, add delimiters, restore access). */
+  permanent?: boolean
+}
+
+export function fileSyncStatus(result: SyncFileResult, at: number): FileSyncStatus {
+  return result.success ? { ok: true, at } : { ok: false, at, error: result.error ?? 'Sync failed', permanent: result.permanent === true }
 }
 
 /**
