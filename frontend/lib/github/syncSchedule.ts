@@ -8,15 +8,22 @@ export const FAILED_RETRY_MS = 6 * 60 * 60_000
 export const syncFailedKey = (board: string) => `github:sync-failed:${board.toLowerCase()}`
 
 /**
- * Whether the GitHub sync cron should write a board's billboard this run.
- * - 'unchanged': the last successful sync has this billboard and is under a day old.
- * - 'backoff': the last attempt with this same billboard failed for a reason that won't fix
- *   itself; a new message or price (a different signature) retries at once.
+ * Whether the GitHub sync cron should write a board's billboard this run: 'unchanged' when the last
+ * successful sync has this billboard and is under a day old.
  */
-export function syncDecision(signature: string, previous: SyncRecord | null, lastFailure: SyncRecord | null, now = Date.now()): 'sync' | 'unchanged' | 'backoff' {
-  if (previous?.signature === signature && now - previous.at < RESYNC_AFTER_MS) return 'unchanged'
-  if (lastFailure?.signature === signature && now - lastFailure.at < FAILED_RETRY_MS) return 'backoff'
-  return 'sync'
+export function syncDecision(signature: string, previous: SyncRecord | null, now = Date.now()): 'sync' | 'unchanged' {
+  return previous?.signature === signature && now - previous.at < RESYNC_AFTER_MS ? 'unchanged' : 'sync'
+}
+
+/**
+ * Whether a board is backing off after a sync that failed for a lasting reason. The cron checks this
+ * before reading the board from the chain, so a broken link costs no RPC until FAILED_RETRY_MS
+ * passes. A new message doesn't end the backoff: these failures are about the file (missing
+ * delimiters, no access), not the billboard. Changing the board's links (saveLinkedFiles) or any
+ * successful sync, such as the manual update-markee-file route, clears it.
+ */
+export function inBackoff(lastFailure: SyncRecord | null, now = Date.now()): boolean {
+  return !!lastFailure && now - lastFailure.at < FAILED_RETRY_MS
 }
 
 /** GitHub statuses that mean the link itself is broken (no access, missing file), not a blip. */

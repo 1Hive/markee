@@ -2,32 +2,33 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createPublicClient, custom, encodeFunctionResult, multicall3Abi, parseAbi } from 'viem'
 import { base } from 'viem/chains'
-import { FAILED_RETRY_MS, RESYNC_AFTER_MS, isMissingFunction, isPermanentGitHubStatus, boardSyncResult, fileSyncStatus, syncDecision, syncFailedKey, type SyncFileResult } from '../lib/github/syncSchedule'
+import { FAILED_RETRY_MS, RESYNC_AFTER_MS, isMissingFunction, isPermanentGitHubStatus, boardSyncResult, fileSyncStatus, inBackoff, syncDecision, syncFailedKey, type SyncFileResult } from '../lib/github/syncSchedule'
 
 const now = 1_800_000_000_000
 
 test('syncs a board with no history', () => {
-  assert.equal(syncDecision('a', null, null, now), 'sync')
+  assert.equal(syncDecision('a', null, now), 'sync')
 })
 
 test('skips a board already synced with the same billboard today', () => {
-  assert.equal(syncDecision('a', { signature: 'a', at: now - 60_000 }, null, now), 'unchanged')
+  assert.equal(syncDecision('a', { signature: 'a', at: now - 60_000 }, now), 'unchanged')
 })
 
 test('resyncs the same billboard once a day', () => {
-  assert.equal(syncDecision('a', { signature: 'a', at: now - RESYNC_AFTER_MS }, null, now), 'sync')
+  assert.equal(syncDecision('a', { signature: 'a', at: now - RESYNC_AFTER_MS }, now), 'sync')
 })
 
-test('backs off a board whose same billboard failed recently', () => {
-  assert.equal(syncDecision('a', null, { signature: 'a', at: now - 10 * 60_000 }, now), 'backoff')
+test('syncs at once when the billboard changes', () => {
+  assert.equal(syncDecision('b', { signature: 'a', at: now - 60_000 }, now), 'sync')
+})
+
+test('backs off a board that failed for a lasting reason, whatever its billboard', () => {
+  assert.equal(inBackoff(null, now), false)
+  assert.equal(inBackoff({ signature: 'a', at: now - 10 * 60_000 }, now), true)
 })
 
 test('retries a failed board once the backoff passes', () => {
-  assert.equal(syncDecision('a', null, { signature: 'a', at: now - FAILED_RETRY_MS }, now), 'sync')
-})
-
-test('retries a failed board at once when its billboard changes', () => {
-  assert.equal(syncDecision('b', null, { signature: 'a', at: now - 60_000 }, now), 'sync')
+  assert.equal(inBackoff({ signature: 'a', at: now - FAILED_RETRY_MS }, now), false)
 })
 
 // ─── Which failures back off ────────────────────────────────────────────────
