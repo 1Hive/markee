@@ -3,7 +3,7 @@ import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { observeMessage, reviewMessage } from '../../../lib/moderation/queue'
 import { mnemonicToAccount } from 'viem/accounts'
 import { unlinkFileMessage } from '../../../lib/github/unlink'
-import { featuredIntegrationMessage } from '../../../lib/integrations/featured'
+import { VIEWS_UNAVAILABLE_TIP, featuredIntegrationMessage } from '../../../lib/integrations/featured'
 import { E2E_MNEMONIC } from './env'
 import { E2E_ACCOUNT, E2E_OTHER as OTHER, TX_TIMEOUT, buySale, isolateChain, kv, rpc } from './support'
 
@@ -20,7 +20,8 @@ let board = ''
 
 async function openDrawer(page: Page) {
   await page.goto('/account?section=creator')
-  const row = page.locator('.acct-row', { hasText: /example\.(com|org)/ })
+  // Shown on its featured integration: a site, or a seeded GitHub repo once one is the most viewed.
+  const row = page.locator('.acct-row', { hasText: /example\.(com|org)|e2e\/ok/ })
   await expect(row).toBeVisible({ timeout: TX_TIMEOUT })
   await row.getByRole('button', { name: 'Manage' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -188,6 +189,80 @@ test('the featured site is the most viewed until the owner picks one', async ({ 
   expect((await read()).lastView[`u:${second}`]).toBeGreaterThan(0)
   await kv(['SET', `oi:meta:${b}`, JSON.stringify(meta)])
 })
+
+// Verified GitHub embeds seeded in local KV. Linking a real repo needs GitHub; these never reach it.
+const ghFile = (repo: string, linkedByUid: string) => ({
+  repoFullName: `e2e/${repo}`, repoOwner: 'e2e', repoName: repo, repoAvatarUrl: '', repoHtmlUrl: '', filePath: 'README.md',
+  verified: true, linkedByUid, linkedAt: new Date().toISOString(),
+})
+const fileKey = (repo: string) => `f:e2e/${repo}/README.md`
+
+test('the GitHub sync cron records a lasting failure on the embed and backs off', async ({ request }) => {
+  const b = board.toLowerCase()
+  // Linked by a GitHub account that has since disconnected: no token, a lasting failure.
+  await kv(['SET', `github:markee:${b}`, JSON.stringify([ghFile('no-token', 'e2e-disconnected')])])
+  const cron = async () => {
+    const res = await request.get('/api/cron/github-sync', { headers: { Authorization: 'Bearer e2e' }, timeout: 120_000 })
+    expect(res.status()).toBe(200)
+    return res.json()
+  }
+  expect(await cron()).toMatchObject({ failed: 1, backoff: 0 })
+  const status = JSON.parse(await kv<string>(['HGET', `github:file-sync:${b}`, fileKey('no-token')]))
+  expect(status).toMatchObject({ ok: false, permanent: true, error: expect.stringContaining('Reconnect GitHub') })
+  expect(await kv(['EXISTS', `github:sync-failed:${b}`])).toBe(1)
+
+  // The next run skips it (before any chain read) instead of failing it again.
+  expect(await cron()).toMatchObject({ failed: 0, backoff: 1 })
+})
+
+test("embeds whose views can't be read never take down the others", async ({ page }) => {
+  const b = board.toLowerCase()
+  const meta = JSON.parse(await kv<string>(['GET', `oi:meta:${b}`]))
+  const site = urlKeyOf(meta)
+  // e2e/ok reads its cached traffic; the others each fail differently: a disconnected account (no
+  // token, from the cron test), an unreadable token record, and an unreadable traffic cache entry
+  // (wrong KV type), which used to fail the whole response.
+  await kv(['SET', 'github:user:e2e-ok', JSON.stringify({ accessToken: 'e2e-not-a-real-token' })])
+  await kv(['SET', 'github:user:e2e-corrupt', '{not json'])
+  await kv(['SET', 'views:github:repo:e2e/ok', JSON.stringify({ count: 42, uniques: 3 })])
+  await kv(['HSET', 'views:github:repo:e2e/broken-cache', 'count', '1'])
+  await kv(['SET', `github:markee:${b}`, JSON.stringify([ghFile('ok', 'e2e-ok'), ghFile('no-token', 'e2e-disconnected'), ghFile('corrupt-token', 'e2e-corrupt'), ghFile('broken-cache', 'e2e-ok')])])
+  await kv(['HSET', `github:file-sync:${b}`, fileKey('ok'), JSON.stringify({ ok: true, at: Date.now() })])
+  await kv(['DEL', 'cache:forsale:leaderboards', 'sdk:snapshots:v1:listings:cache:forsale:leaderboards'])
+
+  const res = await page.request.get(`/api/boards/integrations?boards=${b}`, { timeout: 30_000 })
+  expect(res.status()).toBe(200)
+  const info = (await res.json())[b]
+  expect(info.views).toEqual({ [fileKey('ok')]: 42, [fileKey('no-token')]: 0, [fileKey('corrupt-token')]: 0, [fileKey('broken-cache')]: 0, [site]: 5 })
+  expect(info.unavailable).toEqual([fileKey('no-token'), fileKey('corrupt-token'), fileKey('broken-cache')])
+  // The most viewed of the embeds that could be read.
+  expect(info).toMatchObject({ featured: fileKey('ok'), chosen: false })
+  // Per-embed sync status: present only for files that have a record.
+  expect(Object.keys(info.sync).sort()).toEqual([fileKey('no-token'), fileKey('ok')])
+  expect(info.sync[fileKey('ok')]).toMatchObject({ ok: true })
+  expect(info.sync[fileKey('no-token')]).toMatchObject({ ok: false, permanent: true })
+
+  // The board page's GitHub traffic lists the repo it could read and leaves out the rest.
+  const traffic = await page.request.get(`/api/github/traffic-multi?address=${b}`, { timeout: 30_000 })
+  expect(traffic.status()).toBe(200)
+  expect(await traffic.json()).toEqual({ repos: { 'e2e/ok': { count: 42, uniques: 3 } } })
+
+  // The Manage drawer shows the working counts and marks the others as unknown, not 0.
+  const drawer = await openDrawer(page)
+  const rowOf = (label: string) => drawer.locator('div', { has: page.getByText(label, { exact: true }) }).filter({ has: page.getByLabel(/views|couldn't be loaded/) }).last()
+  await expect(rowOf('e2e/ok · README.md')).toContainText('42')
+  await expect(rowOf('e2e/ok · README.md').getByText('Synced', { exact: true })).toBeVisible()
+  await expect(rowOf('e2e/no-token · README.md').getByText('Sync failed', { exact: true })).toBeVisible()
+  await expect(drawer.getByLabel(VIEWS_UNAVAILABLE_TIP)).toHaveCount(3)
+  for (const repo of ['no-token', 'corrupt-token', 'broken-cache']) await expect(rowOf(`e2e/${repo} · README.md`).getByLabel(VIEWS_UNAVAILABLE_TIP)).toBeVisible()
+  await expect(rowOf('example.com')).toContainText('5')
+
+  await kv(['DEL', `github:markee:${b}`, `github:file-sync:${b}`, `github:sync-failed:${b}`, 'github:user:e2e-ok', 'github:user:e2e-corrupt', 'views:github:repo:e2e/ok', 'views:github:repo:e2e/broken-cache', 'cache:forsale:leaderboards', 'sdk:snapshots:v1:listings:cache:forsale:leaderboards'])
+})
+
+function urlKeyOf(meta: { verifiedUrls?: string[]; verifiedUrl?: string }) {
+  return `u:${meta.verifiedUrls?.[0] ?? meta.verifiedUrl}`
+}
 
 test('transfer admin', async ({ page }) => {
   const drawer = await openDrawer(page)

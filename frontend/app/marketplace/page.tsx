@@ -23,6 +23,7 @@ import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { logoDevUrl } from '@/lib/utils'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const PURP  = '#7B6AF4'
@@ -55,7 +56,7 @@ interface Leaderboard {
   logoUrl?: string
   status?: string
   isLegacy?: boolean
-  gamed?: boolean
+  disqualified?: boolean
   // Populated for boards with no inherent platform tag (the shared "For Sale" factory) so Served On
   // can be derived from actual verification instead of a creation-time tag.
   linkedFiles?: { verified: boolean; repoOwner?: string; repoFullName?: string }[]
@@ -780,7 +781,7 @@ export default function MarketplacePage() {
       }
       // default (raised) — rank by cumulative funds: fixed boards' lump-sum total, streaming boards'
       // total streamed-in. One cumulative-$ axis so the "Total raised" column and its sort are honest.
-      if (!!a.gamed !== !!b.gamed) return a.gamed ? 1 : -1
+      if (!!a.disqualified !== !!b.disqualified) return a.disqualified ? 1 : -1
       const at = BigInt(a.totalFundsRaw || '0')
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
@@ -802,7 +803,7 @@ export default function MarketplacePage() {
   const pageCount  = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
 
   // Top leaderboard for featured hero (by totalFunds, must have a message)
-  const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage && !lb.gamed).sort((a, b) => {
+  const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage && !lb.disqualified).sort((a, b) => {
     const at = BigInt(a.totalFundsRaw || '0'), bt = BigInt(b.totalFundsRaw || '0')
     return bt > at ? 1 : bt < at ? -1 : 0
   })[0] ?? null, [leaderboards])
@@ -838,7 +839,7 @@ export default function MarketplacePage() {
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               Marketplace
             </div>
             <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>

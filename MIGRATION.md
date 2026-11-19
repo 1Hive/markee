@@ -106,7 +106,7 @@ Only **v1.1 Leaderboard** contracts support `setRevNetTerminal` / `setRevNetEnab
 
 ## Pending ops
 
-- [ ] **KV credential rotation** — `KV_REST_API_URL`/`KV_REST_API_TOKEN` were exposed in a prior session. Rotate via: Vercel dashboard → Storage → KV store → Settings → Regenerate token, then re-pull env vars with `vercel env pull`.
+- [x] **KV credential rotation** — `KV_REST_API_URL`/`KV_REST_API_TOKEN` were exposed in a prior session. Rotated (done 2026-11-18).
 - [ ] **Superfluid v1.1 migration** — scan `0x7A6CE4...` for `MarkeeCreated` events, then `migrateFromLegacy()` for each, using the automation wallet.
 - [ ] **OI KV meta** — populate `oi:meta:{address}` for Mati's Markee, OwnerSyncSafe, Hello! so they display logos and site URLs instead of `status: pending`.
 

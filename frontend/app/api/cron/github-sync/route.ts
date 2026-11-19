@@ -6,7 +6,12 @@
  *
  * Purchases from the SDK, other apps or direct contract calls never hit the sync route, so this
  * re-renders every linked board and syncs only those whose message or price changed. A daily
- * resync also restores blocks someone edited by hand.
+ * resync also restores blocks someone edited by hand. A board whose sync fails for a lasting
+ * reason (missing delimiters, revoked GitHub access, missing file) is skipped, before any chain read,
+ * until FAILED_RETRY_MS passes or its links change, so a broken link costs one attempt every few
+ * hours instead of every run. Temporary failures (GitHub 5xx, conflicts, rate limits) retry on the next run. A
+ * board counts as synced only when every one of its files is; each file's last outcome is saved
+ * (github:file-sync:{board}) and shown per embed in the Manage drawer.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -14,18 +19,17 @@ import { kv } from '@vercel/kv'
 import { currentBoardsForLegacy, getLinkedFiles } from '@/lib/github/linkedFiles'
 import { mapSettled } from '@/lib/concurrency'
 import { billboardSignature, readBillboardState, syncMarkeeFile } from '@/lib/github/markeeSync'
+import { FAILED_RETRY_MS, boardSyncResult, inBackoff, syncDecision, syncFailedKey, type SyncFileResult, type SyncRecord } from '@/lib/github/syncSchedule'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const LINKED_PREFIX = 'github:markee:'
 const syncedKey = (board: string) => `github:synced:${board}`
-const RESYNC_AFTER_MS = 24 * 60 * 60_000
 const LOCK_KEY = 'github:sync:lock'
 const SYNC_CONCURRENCY = 4
 
-interface SyncedState { signature: string; at: number }
-type BoardOutcome = 'skipped' | 'synced' | 'unchanged' | 'failed'
+type BoardOutcome = 'skipped' | 'synced' | 'unchanged' | 'failed' | 'backoff'
 
 function authorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
@@ -56,14 +60,32 @@ async function syncBoard(board: string): Promise<BoardOutcome> {
     return 'skipped'
   }
   try {
-    const state = await readBillboardState(board as `0x${string}`)
+    if (inBackoff(await kv.get<SyncRecord>(syncFailedKey(board)))) return 'backoff'
+    const [state, previous] = await Promise.all([
+      readBillboardState(board as `0x${string}`),
+      kv.get<SyncRecord>(syncedKey(board)),
+    ])
     const signature = billboardSignature(state)
-    const previous = await kv.get<SyncedState>(syncedKey(board))
-    if (previous?.signature === signature && Date.now() - previous.at < RESYNC_AFTER_MS) return 'unchanged'
+    if (syncDecision(signature, previous) === 'unchanged') return 'unchanged'
     const outcome = await syncMarkeeFile(board as `0x${string}`, state)
-    if (!outcome.body.success) return 'failed'
-    await kv.set(syncedKey(board), { signature, at: Date.now() })
-    return 'synced'
+    const results = (outcome.body.results ?? []) as SyncFileResult[]
+    const result = boardSyncResult(results)
+    if (result === 'synced') {
+      await kv.set(syncedKey(board), { signature, at: Date.now() })
+      return 'synced'
+    }
+    // Only a board whose every file is current is recorded as synced. Otherwise a file that failed
+    // would keep its old message until the daily resync.
+    const failed = results.filter(r => !r.success)
+    const reason = failed.map(r => `${r.repoFullName}/${r.filePath}: ${r.error}`).join('; ') || (outcome.body.error as string | undefined) || `status ${outcome.status}`
+    const partial = failed.length < results.length ? ` (${results.length - failed.length} of ${results.length} files synced)` : ''
+    if (result === 'backoff') {
+      console.warn(`[cron/github-sync] ${board} sync failed${partial}: ${reason}; retrying in ${FAILED_RETRY_MS / 3_600_000}h unless its links change`)
+      await kv.set(syncFailedKey(board), { signature, at: Date.now() }, { ex: Math.ceil(FAILED_RETRY_MS / 1000) })
+    } else {
+      console.warn(`[cron/github-sync] ${board} sync failed${partial}: ${reason}; temporary, retrying next run`)
+    }
+    return 'failed'
   } catch (err) {
     console.error(`[cron/github-sync] ${board}`, err)
     return 'failed'
@@ -76,7 +98,7 @@ export async function GET(req: NextRequest) {
   try {
     const boards = await linkedBoards()
     const outcomes = await mapSettled(boards, SYNC_CONCURRENCY, syncBoard)
-    const summary = { boards: 0, synced: 0, unchanged: 0, failed: 0 }
+    const summary = { boards: 0, synced: 0, unchanged: 0, failed: 0, backoff: 0 }
     outcomes.forEach((result, i) => {
       if (result.status === 'rejected') console.error(`[cron/github-sync] ${boards[i]}`, result.reason)
       const outcome = result.status === 'fulfilled' ? result.value : 'failed'
@@ -84,6 +106,7 @@ export async function GET(req: NextRequest) {
       summary.boards++
       summary[outcome]++
     })
+    console.log('[cron/github-sync] summary', JSON.stringify(summary))
     return NextResponse.json(summary)
   } finally {
     await kv.del(LOCK_KEY)

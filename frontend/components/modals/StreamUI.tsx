@@ -8,6 +8,7 @@ import { ModeratedContent } from '@/components/moderation'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
 import { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 export { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 }
 export const GOLD = '#FFD700'
 export const RED = '#FF8E8E'
@@ -504,7 +505,7 @@ export function ModalShell({ stepLabel, onClose, footer, children }: {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             {stepLabel}
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}>×</button>
@@ -537,7 +538,7 @@ export function TxSteps({ steps }: { steps: { label: string; done: boolean; acti
                 <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             ) : s.active ? (
-              <span style={{ width: 7, height: 7, borderRadius: 99, background: PINK, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot size={7} />
             ) : (
               <span style={{ width: 6, height: 6, borderRadius: 99, background: MUTED }} />
             )}

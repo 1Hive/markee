@@ -11,13 +11,13 @@ import { PINK, BLUE, GREEN, BG, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-
 
 const C = { bg: BG, pink: PINK, blue: BLUE, green: GREEN, text: TEXT, text2: TEXT2, muted: MUTED, border: BORDER }
 
-function StrategyGlyph({ glyph, size = 24, color }: { glyph: 'tag' | 'stream'; size?: number; color: string }) {
+export function StrategyGlyph({ glyph, size = 24, color }: { glyph: 'tag' | 'stream'; size?: number; color: string }) {
   const s = { width: size, height: size, viewBox: '0 0 24 24' as const, fill: 'none' as const, stroke: color, strokeWidth: 1.8 as const, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
   if (glyph === 'tag') return <svg {...s}><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24H4a1 1 0 0 0-1 1v5.59a2 2 0 0 0 .59 1.41l9.58 9.59a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1.2" fill={color} stroke="none"/></svg>
   return <svg {...s}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
 }
 
-function fmtViews(n: number): string {
+export function fmtViews(n: number): string {
   if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000)     return `${+(n / 1_000).toFixed(1)}K`
   return String(n)

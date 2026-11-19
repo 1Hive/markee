@@ -1,6 +1,7 @@
 // lib/github/linkedFiles.ts
 import { kv } from '@vercel/kv'
 import { getAddress, isAddress } from 'viem'
+import { syncFailedKey } from './syncSchedule'
 
 export interface LinkedFile {
   repoFullName: string
@@ -259,10 +260,12 @@ function legacyToArray(obj: Record<string, unknown>): LinkedFile[] {
   }]
 }
 
+/** Saving a board's links also ends any sync backoff, so a fixed or new link syncs on the next run. */
 export async function saveLinkedFiles(leaderboardAddress: string, files: LinkedFile[]): Promise<void> {
   await kv.set(
     `github:markee:${leaderboardAddress.toLowerCase()}`,
     files,
     { ex: 60 * 60 * 24 * 365 * 5 },
   )
+  await kv.del(syncFailedKey(leaderboardAddress)).catch(() => {})
 }

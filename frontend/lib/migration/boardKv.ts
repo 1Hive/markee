@@ -227,6 +227,8 @@ export const KEY_RULES: KeyRule[] = [
   rule('github:markee', `github:markee:${A}`, 'board', 'copy'),
   rule('github:contract', `github:contract:${A}`, 'board', 'copy'),
   rule('github:synced', `github:synced:${A}`, 'board', 'skip', { reason: 'sync signature; the successor must resync so its own delimiters are written' }),
+  rule('github:sync-failed', `github:sync-failed:${A}`, 'board', 'skip', { reason: 'six-hour sync backoff; the successor syncs on its own' }),
+  rule('github:file-sync', `github:file-sync:${A}`, 'board', 'skip', { reason: 'last sync result per linked file; the successor records its own on its first sync' }),
   rule('oi:meta', `oi:meta:${A}`, 'board', 'copy'),
   rule('board:featured', `board:featured:${A}`, 'board', 'copy'),
   rule('board:tophistory', `board:tophistory:${A}`, 'board', 'copy', { rewrite: rewriteTopHistory }),

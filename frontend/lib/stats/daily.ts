@@ -33,7 +33,8 @@ export function lastDays(n: number, now: number = Date.now()): string[] {
 
 const CHUNK = 500
 
-async function hgetalls(keys: string[]): Promise<Record<string, string | number>[]> {
+// HGETALL for many keys, pipelined in chunks to stay under Upstash's request-size cap.
+export async function hgetalls(keys: string[]): Promise<Record<string, string | number>[]> {
   const out: Record<string, string | number>[] = []
   for (let i = 0; i < keys.length; i += CHUNK) {
     const pipeline = kv.pipeline()

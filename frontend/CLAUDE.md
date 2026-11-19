@@ -97,6 +97,9 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 | `github:user:{uid}` | GitHub OAuth token + user info | 1 year |
 | `github:oauth:state:{state}` | CSRF state | 10 min |
 | `github:markee:{address}` | Linked files array per leaderboard | 5 years |
+| `github:synced:{address}` | Signature and time of the last successful README sync (cron) | none |
+| `github:sync-failed:{address}` | A sync that failed for a lasting reason; the cron skips that board (before any chain read) until it expires. Saving the board's links or any successful sync clears it | 6 hours |
+| `github:file-sync:{address}` | Hash of each linked file's last sync (field = `f:{repo}/{path}`, value `{ok, at, error?, permanent?}`), shown per GitHub embed in the Manage drawer | none |
 | `github:contract:{address}` | Reverse lookup address → `{owner, repo, githubUserId}` | 5 years |
 | `views:github:{address}` | Cached traffic data | 1 hour |
 | `cache:superfluid:leaderboards` | Cached Superfluid leaderboard API response | 60 s |
