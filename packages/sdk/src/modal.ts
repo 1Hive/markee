@@ -639,7 +639,7 @@ export class MarkeeModal {
       }
       const minimum = this.snapshot.strategy === 'sale' && this.form ? 1n : BigInt(this.snapshot.minimum);
       amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${ceilToTwoSignificant(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
-      this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum));
+      this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum && presets.minimum !== presets.boost));
       this.root.querySelector('[data-cmd="preset:boost"]')?.setAttribute('aria-pressed', String(value === presets.boost));
     }
   }
