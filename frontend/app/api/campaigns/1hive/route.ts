@@ -6,8 +6,9 @@
 // only reads:
 //
 //   - boards and on-chain totals from the cached marketplace listing (/api/ecosystem/leaderboards);
-//   - which For Rent boards were created since the v1.4 launch (the factory's board list from index
-//     FOR_RENT_BOARDS_BEFORE_V14 on: one RPC read);
+//   - which boards were created since the v1.4 launch on factories that predate it (the For Rent
+//     factory's list from FOR_RENT_BOARDS_BEFORE_V14 on, the v1.3 For Sale factory's from
+//     FOR_SALE_V13_BOARDS_BEFORE_V14 on: two RPC reads), so a migrated copy of a new sign counts;
 //   - each board's verified site/GitHub embeds, by address (lib/leaderboards/verificationStatus.ts);
 //     a sign with no verified embed is never listed;
 //   - activation from each board's #1 history (lib/leaderboard/topHistory.ts, kept current by the
@@ -31,10 +32,10 @@ import { verificationStatusFor } from '@/lib/leaderboards/verificationStatus'
 import { DISQUALIFIED_BOARDS, isDisqualifiedBoard } from '@/lib/leaderboards/disqualified'
 import { viewsKey } from '@/lib/views/boards'
 import { createStreamingClient } from '@/lib/streaming/client'
-import { BASE_STREAMING_FACTORY } from '@/lib/contracts/addresses'
+import { BASE_STREAMING_FACTORY, FACTORIES } from '@/lib/contracts/addresses'
 import { LeaderboardFactoryABI } from '@/lib/contracts/abis'
 import {
-  CAMPAIGN_1HIVE_EXCLUDED_BOARDS, FOR_RENT_BOARDS_BEFORE_V14, isCampaignBoard, isEligibleBoard, siteLabel, viewAddresses,
+  CAMPAIGN_1HIVE_EXCLUDED_BOARDS, FOR_RENT_BOARDS_BEFORE_V14, FOR_SALE_V13_BOARDS_BEFORE_V14, isCampaignBoard, isEligibleBoard, siteLabel, viewAddresses,
   type CampaignListingRow, type Campaign1HiveSign,
 } from '@/lib/campaigns/1hive'
 
@@ -68,16 +69,20 @@ async function load() {
     // for 60 s rather than re-loaded on every request.
     const listing = await res.json() as { leaderboards?: ListingRow[]; ethPriceUsd?: number | null }
 
-    // For Rent boards created since the v1.4 launch: the factory only appends, so it's everything
-    // past the boards it had then.
-    stage = 'For Rent factory read'
-    const newForRentList = await createStreamingClient().readContract({
-      address: BASE_STREAMING_FACTORY, abi: LeaderboardFactoryABI, functionName: 'getLeaderboards',
-      args: [BigInt(FOR_RENT_BOARDS_BEFORE_V14), 10_000n],
+    // Boards created since the v1.4 launch on the factories that predate it: both only append, so
+    // it's everything past the boards each had then.
+    stage = 'factory reads'
+    const client = createStreamingClient()
+    const since = (address: `0x${string}`, from: number) => client.readContract({
+      address, abi: LeaderboardFactoryABI, functionName: 'getLeaderboards', args: [BigInt(from), 10_000n],
     })
-    const newForRent = new Set(newForRentList.map(a => a.toLowerCase()))
+    const [forRent, forSaleV13] = await Promise.all([
+      since(BASE_STREAMING_FACTORY, FOR_RENT_BOARDS_BEFORE_V14),
+      since(FACTORIES.FOR_SALE, FOR_SALE_V13_BOARDS_BEFORE_V14),
+    ])
+    const newBoards = new Set([...forRent, ...forSaleV13].map(a => a.toLowerCase()))
 
-    const rows = (listing.leaderboards ?? []).filter(row => isCampaignBoard(row, newForRent))
+    const rows = (listing.leaderboards ?? []).filter(row => isCampaignBoard(row, newBoards))
     const addrs = rows.map(r => r.address.toLowerCase())
     // Verification is looked up by address (the same KV records /account and the marketplace use):
     // a listing row from one platform route can miss an embed added through another.
@@ -88,7 +93,7 @@ async function load() {
       const v = verification[addrs[i]]
       const row = v ? { ...listed, verifiedUrls: v.verifiedUrls, linkedFiles: v.linkedFiles } : listed
       const spans = histories.get(addrs[i])
-      return isEligibleBoard({ ...row, disqualified: row.disqualified || isDisqualifiedBoard(row.address) }, spans, newForRent) ? [{ row, spans }] : []
+      return isEligibleBoard({ ...row, disqualified: row.disqualified || isDisqualifiedBoard(row.address) || (!!row.migratedFrom && isDisqualifiedBoard(row.migratedFrom)) }, spans, newBoards) ? [{ row, spans }] : []
     })
 
     // All-time views for every address the eligible signs were counted under, in one read.

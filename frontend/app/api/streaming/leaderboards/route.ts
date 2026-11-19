@@ -4,7 +4,7 @@ import { cachedListing } from '@/lib/leaderboards/cached'
 // Enumerates streaming-priced boards (one vertical-agnostic StreamingLeaderboardFactory) and returns
 // them normalized to the same row shape as the fixed-price vertical APIs, tagged strategy: 'streaming'.
 // totalFundsRaw is what the board raised (subgraph inflow net of GDA refunds, plus lump sums carried
-// over by a migrated board); effectiveRateRaw is the current top wei/sec for the $/mo label.
+// over by a migrated board, plus a migrated board's legacy inflow); effectiveRateRaw is the current top wei/sec for the $/mo label.
 // Inert (returns []) until NEXT_PUBLIC_STREAMING_FACTORY is configured.
 
 import { NextResponse } from 'next/server'
@@ -14,7 +14,7 @@ import { BOARD_MIGRATORS, STREAMING_FACTORY, STREAMING_ENABLED } from '@/lib/con
 import { listVisibleBoards } from '@/lib/contracts/migration'
 import { createStreamingClient } from '@/lib/streaming/client'
 import { getStreamingBoardMeta } from '@/lib/streaming/boardMeta'
-import { fetchBoardTotals } from '@/lib/streaming/subgraph'
+import { fetchBoardTotals, withLegacyTotals } from '@/lib/streaming/subgraph'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { VERTICAL_PLATFORM, verticalFromPlatform, type Vertical } from '@/lib/strategy'
 import { StreamingLeaderboardFactoryABI, StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
@@ -128,7 +128,9 @@ async function loadListing(request: Request) {
         : Promise.resolve([]),
       chunkedMulticall(platformCalls as Parameters<typeof client.multicall>[0]['contracts']),
       Promise.all(addresses.map(a => getStreamingBoardMeta(a))),
-      fetchBoardTotals(addresses, ETHX, BigInt(streamedAt)),
+      // A migrated board's streams stayed on its legacy board (they can't be moved, and the legacy
+      // board keeps receiving any still open), so its inflow counts toward the successor too.
+      fetchBoardTotals([...addresses, ...addresses.flatMap(a => predecessorOf.get(a.toLowerCase()) ?? [])], ETHX, BigInt(streamedAt)),
       kv.mget<({ logoUrl?: string; siteUrl?: string; verifiedUrl?: string; verifiedUrls?: string[]; status?: string } | null)[]>(...oiMetaKeys),
       // "Served On" falls back to a verified GitHub link when there's no verifiedUrl -- same
       // address-keyed github:markee:{address} KV namespace every other listing route reads.
@@ -138,9 +140,8 @@ async function loadListing(request: Request) {
     const leaderboards = addresses.map((addr, i) => {
       const b = i * CALLS_PER_BOARD
       const name        = (metaResults[b]?.result as string) ?? addr
-      const totals      = totalsByBoard.get(addr.toLowerCase())
-      const streamed    = totals?.raised ?? 0n
-      const raisedRate  = totals?.raisedRate ?? 0n
+      // Its own inflow plus what its legacy original received (and still receives from open streams).
+      const { raised: streamed, raisedRate } = withLegacyTotals(totalsByBoard, addr, predecessorOf.get(addr.toLowerCase()))
       // Lump sums a migrated board carries over: totalLeaderboardFunds sums each Markee's
       // totalFundsAdded, which the streaming board only ever reads, so it never overlaps the streamed
       // inflow. Without it a board migrated in place reads as having raised nothing.

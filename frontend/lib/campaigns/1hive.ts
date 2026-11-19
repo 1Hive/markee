@@ -17,7 +17,8 @@ export function campaign1HiveMonthlyBonusUsd(views: number): number {
 // A sign is listed when it is a new (v1.4-era) For Rent or For Sale Markee that has been activated
 // (a real message went live) and has a verified site or GitHub embed. There is no start date for
 // views: every view the sign has ever had counts, including views while only the placeholder
-// message was up. Boards copied over by a migration are older signs and never count. Disqualified
+// message was up. A board copied over by the v1.4 migration counts only if its original was created
+// after the v1.4 launch; copies of older signs never count. Disqualified
 // boards (lib/leaderboards/disqualified.ts) never count, and signs rejected from this campaign only
 // are removed via CAMPAIGN_1HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive
 // does the reads.
@@ -29,6 +30,12 @@ export function campaign1HiveMonthlyBonusUsd(views: number): number {
  * since the launch. Every v1.4 For Sale board is new by construction (its factory launched then).
  */
 export const FOR_RENT_BOARDS_BEFORE_V14 = 80
+
+/**
+ * Boards the v1.3 For Sale factory (FACTORIES.FOR_SALE) had at the v1.4 launch. Boards created on it
+ * after the launch (index 18 and up) are new signs; the forced migration copied them to v1.4.
+ */
+export const FOR_SALE_V13_BOARDS_BEFORE_V14 = 18
 
 /**
  * Signs rejected from the campaign: board address (any case) -> why it was removed. Add an entry and
@@ -62,13 +69,16 @@ export interface CampaignTopSpan { markee: string; from: number; to: number | nu
 const lower = (a: string | null | undefined) => (a ?? '').toLowerCase()
 
 /**
- * Only new boards count: every v1.4 For Sale board, and For Rent boards created since the v1.4
- * launch (`newForRent`, lowercase addresses). A board migrated in (every v1.3 For Sale board was
- * copied to v1.4) is an existing sign.
+ * Only new boards count: every v1.4 For Sale board created on v1.4, and For Rent boards created since
+ * the v1.4 launch. `newBoards` (lowercase addresses) holds every board created since the launch on a
+ * factory that predates it: the For Rent factory's boards from FOR_RENT_BOARDS_BEFORE_V14 on, and the
+ * v1.3 For Sale factory's from FOR_SALE_V13_BOARDS_BEFORE_V14 on. A migrated board is judged by its
+ * original, so a copy of a sign created after the launch still counts and a copy of an older one
+ * (every pre-launch v1.3 board was copied to v1.4) doesn't.
  */
-export function isCampaignBoard(row: CampaignListingRow, newForRent: ReadonlySet<string>): boolean {
-  if (row.migratedFrom) return false
-  if (row.strategy === 'streaming') return newForRent.has(lower(row.address))
+export function isCampaignBoard(row: CampaignListingRow, newBoards: ReadonlySet<string>): boolean {
+  if (row.migratedFrom) return newBoards.has(lower(row.migratedFrom))
+  if (row.strategy === 'streaming') return newBoards.has(lower(row.address))
   return row.verificationGated === true
 }
 
@@ -78,7 +88,8 @@ const excludedSets = new WeakMap<Record<string, string>, ReadonlySet<string>>()
 export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
   let set = excludedSets.get(excluded)
   if (!set) excludedSets.set(excluded, set = new Set(Object.keys(excluded).map(lower)))
-  return set.has(lower(row.address))
+  // Listed under either address: an entry added before the migration names the original board.
+  return set.has(lower(row.address)) || (!!row.migratedFrom && set.has(lower(row.migratedFrom)))
 }
 
 /**
@@ -110,10 +121,10 @@ export function hasVerifiedEmbed(row: CampaignListingRow): boolean {
 export function isEligibleBoard(
   row: CampaignListingRow,
   spans: CampaignTopSpan[] | undefined,
-  newForRent: ReadonlySet<string>,
+  newBoards: ReadonlySet<string>,
   excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS,
 ): boolean {
-  return isCampaignBoard(row, newForRent) && row.disqualified !== true && !isExcludedBoard(row, excluded)
+  return isCampaignBoard(row, newBoards) && row.disqualified !== true && !isExcludedBoard(row, excluded)
     && hasVerifiedEmbed(row) && isActivated(row, spans)
 }
 
