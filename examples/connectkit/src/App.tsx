@@ -6,7 +6,7 @@ import type { Address, MarkeeTheme, Placement } from '@markee_team/sdk';
 import { useMarkeeWallet } from './wallet';
 
 const sale = import.meta.env.VITE_SALE_BOARD || '0x80783947c9561EFa9BA484D44BBd5AAa03028242';
-const apiUrl = import.meta.env.VITE_MARKEE_API_URL || undefined;
+const apiUrl = import.meta.env.VITE_MARKEE_API_URL || 'https://1staging.markee.xyz/api/sdk/v1';
 const publishedSite = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://markee-sdk-connectkit-example.vercel.app';
 const siteUrl = typeof window !== 'undefined' && window.location.origin === publishedSite ? publishedSite : undefined;
 const themes = {
