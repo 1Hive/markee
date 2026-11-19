@@ -222,6 +222,9 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
   // Winning streams left on old boards: shown beside the count, since Streaming Now includes them.
   const legacyWinning = (data?.legacyStreams ?? []).filter(s => s.isTop).length
   const liveRate = winningRate(data)
+  // An old-board stream whose rate couldn't be read drains the balance too, so the runway is at most
+  // what's shown.
+  const rateUnknown = (data?.legacyStreams ?? []).some(s => s.rateUnknown)
   // Everything the wallet is streaming, old boards included, so it's never below Streaming Now.
   const totalRate = [...streams, ...(data?.legacyStreams ?? [])].reduce((s, x) => s + BigInt(x.rateRaw), 0n)
   const balanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
@@ -256,7 +259,7 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
             <div style={{ flex: '1 1 160px' }}>
               <div style={label}>Runs Out In</div>
               {data
-                ? <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: low ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{liveRate > 0n ? formatRunway(runway) : 'Not streaming'}</div>
+                ? <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: low ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{liveRate > 0n ? `${rateUnknown ? 'Under ' : ''}${formatRunway(runway)}` : rateUnknown ? 'Unknown' : 'Not streaming'}</div>
                 : <div className="skeleton" style={{ width: 120, height: 18, marginTop: 8, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />}
             </div>
             {!mode && (

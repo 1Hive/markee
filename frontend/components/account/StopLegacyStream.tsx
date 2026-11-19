@@ -5,7 +5,7 @@
 // stopped, so Stop is the only action. Used by the Buyer Hub's Stream Balance card and the Deposit
 // Manager modal (/api/streaming/deposit-manager returns these as legacyStreams).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { type Address, type Hex } from 'viem'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
@@ -30,6 +30,8 @@ export function StopLegacyStream({ stream, onDone, compact = false }: { stream: 
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
   const [error, setError] = useState<string | null>(null)
+  // Set on the click itself: isPending only flips once the wallet request is under way.
+  const submitting = useRef(false)
   const toast = useToast()
   const wrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
 
@@ -46,11 +48,15 @@ export function StopLegacyStream({ stream, onDone, compact = false }: { stream: 
 
   const go = async () => {
     if (wrongChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
+    if (submitting.current) return
+    submitting.current = true
     setError(null)
     try {
       setHash(await writeContractAsync({ address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI, functionName: 'setFlowrate', args: [ETHX, stream.boardAddress as Address, 0n], chainId: CANONICAL_CHAIN.id }))
     } catch (e) {
       if (!isUserRejection(e)) setError(formatTransactionError(e))
+    } finally {
+      submitting.current = false
     }
   }
 
@@ -67,6 +73,7 @@ export function StopLegacyStream({ stream, onDone, compact = false }: { stream: 
         {busy ? <WalletPending label={isPending ? 'Confirm in wallet…' : 'Confirming…'} /> : (
           <button
             onClick={go}
+            disabled={busy}
             style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 34, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
             {wrongChain ? 'Switch to Base' : 'Stop stream'}

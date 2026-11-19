@@ -112,6 +112,9 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   // The balance drains for winning streams left open on old boards too.
   const legacyWinning = legacyStreams.filter(s => s.isTop).length
   const streamingNowRate = [...winning, ...legacyStreams.filter(s => s.isTop)].reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
+  // An old-board stream whose rate couldn't be read drains the balance too, so the runway is at most
+  // what's shown.
+  const rateUnknown = legacyStreams.some(s => s.rateUnknown)
   const notStreamingRate = notStreaming.reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
 
   // Decimals derived from the actual drain rate (same helper used for every other live balance on
@@ -139,7 +142,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const runway = runwaySeconds(countdownBalance, streamingNowRate)
   const tier = runwayTier(runway)
   const tierColor = tier === 'danger' ? RED : tier === 'warning' ? GOLD : PINK
-  const progressPct = streamingNowRate > 0n ? runwayProgressPct(runway) : 100
+  const progressPct = streamingNowRate > 0n ? runwayProgressPct(runway) : rateUnknown ? 0 : 100
 
   function depositShortcut(months: number) {
     if (streamingNowRate <= 0n) return
@@ -261,7 +264,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
 
             {/* ── Runs out in (skipped entirely once we know there's nothing streaming -- an empty
                  wallet isn't a warning state, it just hasn't been set up yet) ── */}
-            {(initialLoading || streamingNowRate > 0n) && (
+            {(initialLoading || streamingNowRate > 0n || rateUnknown) && (
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={labelStyle}>
@@ -270,7 +273,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 </span>
                 {initialLoading ? <ViewsSpinner size={14} color={MUTED} /> : (
                   <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 800, color: TEXT }}>
-                    {formatRunway(runway)}
+                    {streamingNowRate > 0n ? `${rateUnknown ? 'Under ' : ''}${formatRunway(runway)}` : 'Unknown'}
                   </span>
                 )}
               </div>

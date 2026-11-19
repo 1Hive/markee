@@ -1087,9 +1087,10 @@ function AccountDashboard() {
         fetch(`/api/streaming/leaderboards${suffix}`,    { cache: 'no-store' }),
         fetch(`/api/forsale/leaderboards${suffix}`,      { cache: 'no-store' }),
       ])
-      const [sfData, ghData, oiJson, strData, fsJson] = await Promise.all(responses.map(r => r.ok ? r.json().catch(() => null) : null))
+      const parsed = await Promise.all(responses.map(r => r.ok ? r.json().catch(() => null) : null))
       if (seq !== loadSeqRef.current) return false
-      const [sfRes, ghRes, oiRes, strRes, fsRes] = responses.map((r, i) => ({ ok: r.ok && [sfData, ghData, oiJson, strData, fsJson][i] !== null }))
+      const [sfData, ghData, oiJson, strData, fsJson] = parsed
+      const [sfRes, ghRes, oiRes, strRes, fsRes] = parsed.map(json => ({ ok: json !== null }))
       if (sfRes.ok) {
         const data = sfData
         setSuperfluidBoards(
