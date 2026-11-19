@@ -17,10 +17,10 @@ test('the sign uses the current winner and follows Markee moderation state', () 
 test('unknown moderation withholds message; flagged content is blurred and excluded from view tracking', () => {
   const unknown = signHtml({ ...snapshot, entries: [{ ...entry, moderated: null }] }, true);
   assert.doesNotMatch(unknown, /Current message|Author/);
-  assert.match(unknown, /class="skeleton-lines" role="status" aria-label="Loading message"><span class="skeleton-line"><\/span><span class="skeleton-line short"><\/span>/);
+  assert.match(unknown, /Message unavailable\. Moderation could not be checked\./);
   assert.doesNotMatch(unknown, /This is a sign/);
   assert.doesNotMatch(unknown, new RegExp(entry.message));
-  // Before the snapshot arrives the sign shows the same bars, so nothing jumps once it loads.
+  // Only the initial request shows loading bars; a completed but unchecked snapshot is explicit.
   assert.match(signHtml(null, true), /class="skeleton-lines" role="status" aria-label="Loading the Markee sign"/);
   const flagged = signHtml({ ...snapshot, entries: [{ ...entry, moderated: true }] }, true);
   assert.match(flagged, /class="message obscured" aria-hidden="true"/);

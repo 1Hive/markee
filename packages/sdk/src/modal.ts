@@ -550,7 +550,7 @@ export class MarkeeModal {
     return entry.moderated === false ? entry.message : entry.moderation?.state === 'soft-flagged' ? entry.moderation?.reason || 'This message is hidden by automatic moderation.' : 'This message is hidden by moderation.';
   }
   private entryMessageHtml(entry: Entry) {
-    if (entry.moderated === null || entry.moderated === undefined) return `<div class="message skeleton-lines" role="status" aria-label="Loading message"><span class="skeleton-line"></span><span class="skeleton-line short"></span></div>`;
+    if (entry.moderated === null || entry.moderated === undefined) return '<p class="message moderation-placeholder" role="status">Message unavailable. Moderation could not be checked.</p>';
     return `<p class="message${entry.moderated === false ? '' : ' moderation-placeholder'}">${e(this.entryMessage(entry))}</p>`;
   }
   private entriesHtml() {

@@ -1,7 +1,8 @@
 import 'server-only'
 import { kv } from '@vercel/kv'
-import { createPublicClient, getAddress, http } from 'viem'
+import { createPublicClient, getAddress } from 'viem'
 import { base } from 'viem/chains'
+import { getRpcTransportForChain } from '@/lib/sdk/chains'
 import { ADMIN_ADDRESSES } from '@/lib/moderation/config'
 import { internalHeaders, internalOrigin } from '@/lib/internal-origin'
 import { normalizeItem, notifyEventsOf, type EmailFrequency, type ModerationItem, type ModerationScope, type ModeratorEntry, type NotifyEvents } from '@/lib/moderation/queue'
@@ -89,13 +90,7 @@ function normalizeBoardModerators(raw: BoardModerators): BoardModerators {
 }
 
 export function getModerationClient() {
-  return createPublicClient({
-    chain: base,
-    transport: http(
-      process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
-      { fetchOptions: { cache: 'no-store' } },
-    ),
-  })
+  return createPublicClient({ chain: base, transport: getRpcTransportForChain(base.id) })
 }
 
 export function isGlobalAdmin(address: string | null | undefined): boolean {

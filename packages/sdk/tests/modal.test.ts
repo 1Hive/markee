@@ -27,7 +27,7 @@ test('moderation notices use distinct styling while approved messages keep the n
   assert.match(flagged, /class="message moderation-placeholder">This message is hidden by moderation\./);
   assert.doesNotMatch(flagged, /Private text/);
   const loading = modal.entryMessageHtml({ message: 'Private text', moderated: null });
-  assert.match(loading, /class="message skeleton-lines" role="status" aria-label="Loading message"><span class="skeleton-line"><\/span><span class="skeleton-line short"><\/span>/);
+  assert.match(loading, /class="message moderation-placeholder" role="status">Message unavailable\. Moderation could not be checked\./);
   assert.doesNotMatch(loading, /Private text|This is a sign/);
   assert.match(modal.entryMessageHtml({ message: '<Public text>', moderated: false }), /class="message">&lt;Public text&gt;<\/p>/);
 });

@@ -69,7 +69,7 @@ export function signHtml(snapshot: Snapshot | null, showAction: boolean, unavail
   const body = unavailable ? '<span class="notice" role="status">Markee sign is temporarily unavailable.</span>'
     : !snapshot ? loadingLines('Loading the Markee sign')
       : !entry ? '<span class="notice">The sign is waiting for its first message.</span>'
-        : visibility === 'unavailable' ? loadingLines('Loading message')
+        : visibility === 'unavailable' ? '<span class="notice" role="status">Message unavailable. Moderation could not be checked.</span>'
           : `<span class="message ${visibility === 'flagged' ? 'obscured' : ''}" ${visibility === 'flagged' ? 'aria-hidden="true"' : ''}>${escapeHtml(entry.message)}</span>${visibility === 'flagged' ? '<span class="veil" role="status">This message has been flagged.</span>' : ''}`;
   const views = entry?.views === null || entry?.views === undefined ? '' : `<span class="views" aria-label="${entry.views.toLocaleString()} views"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M1.3 8s2.4-4 6.7-4 6.7 4 6.7 4-2.4 4-6.7 4S1.3 8 1.3 8Z"/><circle cx="8" cy="8" r="2"/></svg>${entry.views.toLocaleString()}</span>`;
   const rate = showAction && snapshot && entry ? `<span class="rate">${formatEth(fundingPresets(snapshot).boost.toString())} ${snapshot.strategy === 'rent' ? 'ETH/mo' : 'ETH'} to change</span>` : '';
