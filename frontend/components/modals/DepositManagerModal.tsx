@@ -44,6 +44,8 @@ export interface DepositManagerStream {
   rank: number
   isTop: boolean
   rateRaw: string
+  /** On a migrated board's legacy original (returned in legacyStreams, not streams). */
+  legacy?: boolean
 }
 
 const labelStyle: React.CSSProperties = { fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center' }

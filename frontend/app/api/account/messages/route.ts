@@ -2,11 +2,12 @@
 // Returns all v1.1+ markees owned by a given wallet across all leaderboards.
 // Legacy TopDawg markees are handled by the client via the subgraph.
 import { NextResponse } from 'next/server'
-import { createPublicClient, http } from 'viem'
+import { createPublicClient, http, parseAbi } from 'viem'
 import { base } from 'viem/chains'
 import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
+import { BOARD_MIGRATORS } from '@/lib/contracts/addresses'
 import { fetchBackerPositions } from '@/lib/streaming/subgraph'
 import { listBoardMessages } from '@/lib/streaming/messages'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
@@ -39,6 +40,8 @@ const MARKEE_ABI = [
 ] as const
 
 const ZERO = '0x0000000000000000000000000000000000000000'
+
+const MARKEE_SUCCESSOR_ABI = parseAbi(['function markeeSuccessorOf(address) view returns (address)'])
 
 function getClient() {
   return createPublicClient({
@@ -84,6 +87,7 @@ async function fetchStreamingOwned(
     siteUrl?: string | null
     repoFullName?: string | null
     repoHtmlUrl?: string | null
+    migratedFrom?: string | null
   }> = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
   if (boards.length === 0) return []
 
@@ -126,6 +130,20 @@ async function fetchStreamingOwned(
       return null
     })
 
+  // A migrated board's streams stayed on its legacy original, so a copied message's spend so far is
+  // what the wallet streamed to the original message there. Added to the copy, so the Buyer Hub keeps
+  // showing what each message cost (lib/contracts/migration.ts). Only legacy boards the wallet ever
+  // streamed to are replayed.
+  const legacySpent = await legacyRentSpend(client, owner, owned.map(({ lb }) => lb), nowSec)
+    .catch(e => { console.warn('[account/messages] legacy rent spend read failed', e); return null })
+  owned.forEach(({ lb, m }, i) => {
+    if (!lb.migratedFrom) return
+    // Unknown legacy spend leaves the total unknown, so a partial read isn't snapshotted.
+    if (legacySpent === null) { spent[i] = null; return }
+    const extra = legacySpent.get(m.address)
+    if (extra && spent[i] !== null) spent[i] = (BigInt(spent[i]!) + extra).toString()
+  })
+
   const backsThis = (board: string) =>
     (backed[ownedBoards.indexOf(board.toLowerCase())]?.result as string | undefined)?.toLowerCase()
 
@@ -160,6 +178,38 @@ async function fetchStreamingOwned(
         repoHtmlUrl: lb.repoHtmlUrl ?? null,
       }
     })
+}
+
+// What this wallet streamed to its own messages on migrated boards' legacy originals, keyed by each
+// message's successor (lowercase). Throws if any part can't be read.
+async function legacyRentSpend(
+  client: ReturnType<typeof getClient>,
+  owner: string,
+  boards: { address: string; migratedFrom?: string | null }[],
+  nowSec: number,
+): Promise<Map<string, bigint>> {
+  const out = new Map<string, bigint>()
+  const legacy = [...new Set(boards.flatMap(lb => lb.migratedFrom ? [lb.migratedFrom.toLowerCase()] : []))]
+  if (legacy.length === 0) return out
+  const positions = await fetchBackerPositions(owner, legacy, STREAMING_BASE.ethx, BigInt(nowSec))
+  const streamedTo = legacy.filter(b => (positions.get(b)?.contributed ?? 0n) > 0n)
+  if (streamedTo.length === 0) return out
+  const messages = (await Promise.all(streamedTo.map(board =>
+    listBoardMessages(client, board, { only: m => m.owner === owner }).then(ms => ms.map(m => ({ board, m }))))))
+    .flat()
+  if (messages.length === 0) return out
+  const successors = await chunkedMulticall(client, messages.map(({ m }) => ({
+    address: BOARD_MIGRATORS.STREAMING, abi: MARKEE_SUCCESSOR_ABI, functionName: 'markeeSuccessorOf' as const, args: [m.address as `0x${string}`] as const,
+  })))
+  const spent = await mapSettled(messages, RENT_SPEND_CONCURRENCY, ({ board, m }) => readLifetimeStreamed(board, m.address, owner))
+  messages.forEach((_, i) => {
+    const successor = (successors[i]?.result as string | undefined)?.toLowerCase()
+    const lifetime = spent[i]
+    if (lifetime.status === 'rejected') throw lifetime.reason
+    if (!successor || successor === ZERO) return
+    out.set(successor, (out.get(successor) ?? 0n) + netStreamedWei(lifetime.value, nowSec))
+  })
+  return out
 }
 
 // The wallet's running total spent on its own messages, for the Buyer Hub chart (lib/stats/daily.ts).

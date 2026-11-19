@@ -9,6 +9,21 @@ export interface BoardTotals {
   raisedRate: bigint
 }
 
+/**
+ * A board's streamed totals, including its legacy original's when it was migrated: streams can't
+ * move with a board, so everything the original received (and still receives from streams left
+ * open) belongs to the board. Lump sums are not part of these totals; the copied Markees carry the
+ * original's into the successor's totalLeaderboardFunds, so they must not be added again.
+ */
+export function withLegacyTotals(totals: ReadonlyMap<string, BoardTotals>, board: string, predecessor: string | null | undefined): BoardTotals {
+  const own = totals.get(board.toLowerCase())
+  const legacy = predecessor ? totals.get(predecessor.toLowerCase()) : undefined
+  return {
+    raised: (own?.raised ?? 0n) + (legacy?.raised ?? 0n),
+    raisedRate: (own?.raisedRate ?? 0n) + (legacy?.raisedRate ?? 0n),
+  }
+}
+
 // What one backer has put into a board, net of what the GDA refund pool has paid back to them.
 export interface BackerPosition {
   contributed: bigint
