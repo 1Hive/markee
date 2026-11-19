@@ -441,7 +441,7 @@ function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, current
   const [error, setError] = useState<string | null>(null)
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN_ID })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash: txHash, chainId: CANONICAL_CHAIN_ID })
   const MAX_LEN = DEFAULT_MAX_MESSAGE_BYTES
 
   useEffect(() => {

@@ -49,6 +49,8 @@ export interface DepositManagerStream {
   rateRaw: string
   /** On a migrated board's legacy original: offered only to stop, never to fund (see legacyStreams). */
   legacy?: boolean
+  /** The flow rate read failed; rateRaw is 0 and means unknown. */
+  rateUnknown?: boolean
 }
 
 export interface DepositManagerDeposit {
@@ -163,11 +165,14 @@ export async function GET(request: NextRequest) {
           rank,
           isTop: rank === 1,
           rateRaw: ((rateResults[i]?.result as bigint | undefined) ?? 0n).toString(),
+          // The rate couldn't be read. A legacy stream is still listed (backerMarkee says it exists),
+          // so it can always be stopped; stopping doesn't need the rate.
+          ...(rateResults[i]?.status === 'success' ? {} : { rateUnknown: true }),
         }
       })
         // Dropped if the markee fell off the returned top-N window. A legacy stream is kept while it
         // still flows, whatever its rank, so it can always be stopped.
-        .filter(s => s.legacy ? BigInt(s.rateRaw) > 0n : s.rank > 0)
+        .filter(s => s.legacy ? s.rateUnknown || BigInt(s.rateRaw) > 0n : s.rank > 0)
     }
 
     const heldBoards = streamingBoards
@@ -199,7 +204,8 @@ export async function GET(request: NextRequest) {
       legacyStreams: streams.filter(s => s.legacy),
       deposits,
     }
-    await kv.set(cacheKey, payload, { ex: CACHE_TTL })
+    // A payload with a failed read isn't cached, so the next load retries instead of serving it.
+    if (!streams.some(st => st.rateUnknown)) await kv.set(cacheKey, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[streaming/deposit-manager] error:', err)

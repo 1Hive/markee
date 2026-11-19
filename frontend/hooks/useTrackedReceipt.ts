@@ -64,10 +64,13 @@ function isResolved(tracking: ReceiptTracking) {
 
 const trackedByHash = createTrackedCache<TrackedState>(state => isResolved(state.tracking))
 
-export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }: {
+export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track, marksListings = false }: {
   hash: `0x${string}` | undefined
   chainId?: number
   track?: TrackedTxContext
+  /** The transaction changes what a board listing shows (create, activate, buy, bid, edit, admin
+   *  settings): once confirmed, /account's next load reads past the listing cache. */
+  marksListings?: boolean
 }) {
   const client = usePublicClient({ chainId })
   const key = hash ? `${chainId}:${hash.toLowerCase()}` : ''
@@ -122,10 +125,10 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
     if (hash && resolved) removePendingTx(hash)
   }, [hash, resolved])
 
-  // A confirmed transaction changed some board: /account's next load reads past the listing cache.
+  // A confirmed transaction that changed a listing: /account's next load reads past the listing cache.
   useEffect(() => {
-    if (hash && outcome === 'confirmed') markListingsStale()
-  }, [hash, outcome])
+    if (marksListings && hash && outcome === 'confirmed') markListingsStale()
+  }, [marksListings, hash, outcome])
 
   return useMemo(() => {
     const error = outcome === 'reverted' ? (data?.revertError ?? new Error(REVERTED_TX_MESSAGE))

@@ -219,6 +219,8 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
 
   const streams = data?.streams ?? []
   const winning = streams.filter(s => s.isTop)
+  // Winning streams left on old boards: shown beside the count, since Streaming Now includes them.
+  const legacyWinning = (data?.legacyStreams ?? []).filter(s => s.isTop).length
   const liveRate = winningRate(data)
   // Everything the wallet is streaming, old boards included, so it's never below Streaming Now.
   const totalRate = [...streams, ...(data?.legacyStreams ?? [])].reduce((s, x) => s + BigInt(x.rateRaw), 0n)
@@ -288,11 +290,11 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
           {data!.legacyStreams!.map(st => <StopLegacyStream key={`${st.boardAddress}-${st.markeeAddress}`} stream={st} onDone={onChanged} />)}
         </div>
       )}
-      {streams.length > 0 && (
+      {(streams.length > 0 || (data?.legacyStreams ?? []).length > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', borderTop: `1px solid ${BORDER}` }}>
           {[
             { l: 'Streaming Now', v: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{liveRate > 0n && <PulseDot />}{perMo(liveRate, liveRate > 0n ? GREEN : TEXT2)}</span> },
-            { l: 'Winning', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{winning.length}</span> },
+            { l: 'Winning', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{winning.length}{legacyWinning > 0 && <span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}> + {legacyWinning} old</span>}</span> },
             { l: 'Monthly Bid Total', v: perMo(totalRate, TEXT) },
             { l: 'Rent Bids', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{streams.length}</span> },
           ].map((c, i) => (
@@ -354,7 +356,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const { switchChain } = useSwitchChain()
   const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
   const messageModeration = useMessageModeration(draft.trim(), true, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)

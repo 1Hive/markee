@@ -9,6 +9,7 @@ import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions, type BackerPosition } from '@/lib/streaming/subgraph'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
+import { netStreamedWei, readLifetimeStreamed } from '@/lib/streaming/lifetime'
 import { markeeSuccessors } from '@/lib/contracts/migration'
 import { fundedSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
 import { readRateLimited } from '@/lib/rate-limit'
@@ -100,12 +101,17 @@ type Board = {
 }
 
 // Lump-sum boards: a backer is whoever emitted FundsAdded on a markee.
+//
+// Every part that reads is shown, so one failed read never hides the rest. `complete` says whether
+// every part read: only then is the wallet's funded total snapshotted.
 async function fixedFunded(
   client: ReturnType<typeof getClient>,
   owner: string,
   origin: string,
   headers: HeadersInit,
-): Promise<FundedMessage[]> {
+): Promise<{ rows: FundedMessage[]; complete: boolean }> {
+  let complete = true
+  const incomplete = (what: string, e?: unknown) => { complete = false; console.warn(`[account/funded] ${what} failed`, e ?? '') }
   const [sfData, ghData, oiData, fsData] = await Promise.all([
     fetch(`${origin}/api/superfluid/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
     fetch(`${origin}/api/github/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
@@ -124,7 +130,7 @@ async function fixedFunded(
     ...(fsData?.leaderboards ?? []),
   ].filter((lb: any, i, all) => lb.markeeCount > 0 && all.findIndex((x: any) => x.address.toLowerCase() === lb.address.toLowerCase()) === i)
 
-  if (leaderboards.length === 0) return []
+  if (leaderboards.length === 0) return { rows: [], complete }
 
   // Get all markee addresses from every leaderboard, and from each migrated board's legacy original:
   // payments made before the migration were logged on the original Markees, not their copies.
@@ -141,8 +147,8 @@ async function fixedFunded(
   const markeeListResults = allListResults.slice(0, leaderboards.length)
   const legacyMarkees = legacyBoards.flatMap((board, j) => {
     const read = allListResults[leaderboards.length + j]
-    // A legacy board that can't be listed would silently drop its contributions from the total.
-    if (read?.status !== 'success') throw new Error(`getMarkees failed on legacy board ${board}`)
+    // A legacy board that can't be listed leaves out its contributions, so the total is incomplete.
+    if (read?.status !== 'success') { incomplete(`getMarkees on legacy board ${board}`, read?.error); return [] }
     return (read.result as string[])
       .filter(a => a && a !== '0x0000000000000000000000000000000000000000')
       .map(a => a.toLowerCase() as `0x${string}`)
@@ -164,13 +170,13 @@ async function fixedFunded(
     lbRankMaps.set(i, ranks)
   }
 
-  if (entries.length === 0) return []
+  if (entries.length === 0) return { rows: [], complete }
 
   const allMarkeeAddresses = [...new Set([...entries.map(e => e.markeeAddress), ...legacyMarkees])]
   const allLeaderboardAddresses = [...leaderboards.map(lb => lb.address as `0x${string}`), ...legacyBoards]
 
-  // A failed scan rejects (fixedFunded resolves to null) instead of reading as "funded nothing", so
-  // the snapshot is skipped rather than recorded without the lump sums.
+  // A chunk whose scan fails is left out and makes the result incomplete, so the snapshot is skipped
+  // rather than recorded without those lump sums.
   // Query both FundsAdded shapes filtered by addedBy == owner: per-markee-contract (v1.1+ boards)
   // and per-leaderboard-contract keyed by markeeAddress (older partner-strategy boards).
   // Address lists are chunked: with each migrated board's legacy Markees added there are well over
@@ -183,17 +189,17 @@ async function fixedFunded(
       args: { addedBy: owner as `0x${string}` },
       fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
       toBlock: 'latest',
-    }))).then(r => r.flat()),
+    }).catch(e => { incomplete('FUNDS_ADDED_EVENT scan', e); return [] }))).then(r => r.flat()),
     Promise.all(chunks(allLeaderboardAddresses).map(address => client.getLogs({
       address,
       event: LEGACY_FUNDS_ADDED_EVENT,
       args: { addedBy: owner as `0x${string}` },
       fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
       toBlock: 'latest',
-    }))).then(r => r.flat()),
+    }).catch(e => { incomplete('LEGACY_FUNDS_ADDED_EVENT scan', e); return [] }))).then(r => r.flat()),
   ])
 
-  if (fundsAddedLogs.length === 0 && legacyFundsAddedLogs.length === 0) return []
+  if (fundsAddedLogs.length === 0 && legacyFundsAddedLogs.length === 0) return { rows: [], complete }
 
   // Aggregate total contributed by user per markee
   const markeeContribs = new Map<string, bigint>()
@@ -210,8 +216,13 @@ async function fixedFunded(
     markeeContribs.set(addr, (markeeContribs.get(addr) ?? 0n) + amount)
   }
 
-  // A contribution to a legacy Markee belongs to its copy on the successor board.
-  await moveToSuccessors(client, markeeContribs, new Set(legacyMarkees))
+  // A contribution to a legacy Markee belongs to its copy on the successor board. If the lookup
+  // fails, those contributions are left out (they'd point at no listed board) and the rest shown.
+  const legacySet = new Set<string>(legacyMarkees)
+  await moveToSuccessors(client, markeeContribs, legacySet).catch(e => {
+    incomplete('Markee successor lookup', e)
+    for (const markee of legacySet) markeeContribs.delete(markee)
+  })
 
   const fundedAddrs = [...markeeContribs.keys()]
 
@@ -230,7 +241,7 @@ async function fixedFunded(
     return markeeOwner !== owner
   })
 
-  if (externalAddrs.length === 0) return []
+  if (externalAddrs.length === 0) return { rows: [], complete }
 
   // Fetch message, name, totalFundsAdded for externally-funded markees
   const detailResults = await chunkedMulticall(
@@ -254,7 +265,7 @@ async function fixedFunded(
     }
   }
 
-  return externalAddrs.map((addr, i) => {
+  const rows = externalAddrs.map((addr, i) => {
     const b = i * 3
     const message = (detailResults[b]?.result as string) ?? ''
     const name = (detailResults[b + 1]?.result as string) ?? ''
@@ -283,6 +294,7 @@ async function fixedFunded(
       repoHtmlUrl: lb?.repoHtmlUrl ?? null,
     }
   })
+  return { rows, complete }
 }
 
 const LOG_ADDRESS_CHUNK = 500
@@ -310,16 +322,77 @@ async function streamingFunded(
   owner: string,
   origin: string,
   headers: HeadersInit,
-): Promise<FundedMessage[]> {
+): Promise<{ rows: FundedMessage[]; legacyOnly: bigint; complete: boolean }> {
   const data = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
     .then(r => r.ok ? r.json() : null).catch(() => null)
 
-  // A stream still open on a migrated board's legacy original isn't counted here: the subgraph only
-  // gives a per-board total, which can't be split by message, and the Buyer Hub lists that stream
-  // under "Streams on old boards" to stop.
-  const boards: Board[] = (data?.leaderboards ?? []).filter((lb: any) => lb.markeeCount > 0)
-  if (boards.length === 0) return []
-  return streamingFundedRows(client, owner, boards)
+  const listed: Board[] = data?.leaderboards ?? []
+  const boards = listed.filter((lb: any) => lb.markeeCount > 0)
+  const [rows, legacy] = await Promise.all([
+    boards.length ? streamingFundedRows(client, owner, boards) : Promise.resolve([] as FundedMessage[]),
+    legacyStreamedFunded(client, owner, listed),
+  ])
+  // What the wallet streamed to other people's messages on legacy originals belongs to each
+  // message's copy: added to that row when the wallet backs the copy now, otherwise only to the
+  // wallet's total (the copy's board is listed, but the wallet has no position on it to show).
+  let legacyOnly = 0n
+  for (const [successor, wei] of legacy.byCopy) {
+    const row = rows.find(r => r.address.toLowerCase() === successor)
+    if (row) row.totalContributed = (BigInt(row.totalContributed) + wei).toString()
+    else legacyOnly += wei
+  }
+  return { rows, legacyOnly: legacyOnly + legacy.uncopied, complete: legacy.complete }
+}
+
+const BACKER_UPDATED_EVENT = parseAbiItem('event BackerUpdated(address indexed backer, address indexed markee, uint256 flowRate, uint256 newAggregate)')
+
+// Net ETHx this wallet streamed to other people's messages on migrated boards' legacy originals,
+// exact per message: the board's own BackerUpdated events say which messages it streamed to, and
+// readLifetimeStreamed replays each one (checkpointed in KV). Its own messages are skipped: they
+// count as spend in /api/account/messages. Keyed by each message's copy; messages that weren't
+// copied are summed in `uncopied`. Any failed read makes it incomplete.
+async function legacyStreamedFunded(
+  client: ReturnType<typeof getClient>,
+  owner: string,
+  listed: Board[],
+): Promise<{ byCopy: Map<string, bigint>; uncopied: bigint; complete: boolean }> {
+  const byCopy = new Map<string, bigint>()
+  let uncopied = 0n
+  const legacyBoards = [...new Set(listed.flatMap(lb => lb.migratedFrom ? [lb.migratedFrom.toLowerCase() as `0x${string}`] : []))]
+  if (legacyBoards.length === 0) return { byCopy, uncopied, complete: true }
+  try {
+    const logs = await client.getLogs({
+      address: legacyBoards, event: BACKER_UPDATED_EVENT, args: { backer: owner as `0x${string}` },
+      fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK, toBlock: 'latest',
+    })
+    const pairs = [...new Map(logs.map(l => {
+      const board = l.address.toLowerCase(), markee = (l.args.markee as string).toLowerCase()
+      return [`${board}:${markee}`, { board, markee }] as const
+    })).values()]
+    if (pairs.length === 0) return { byCopy, uncopied, complete: true }
+    const owners = await chunkedMulticall(client, pairs.map(p => ({ address: p.markee as `0x${string}`, abi: MarkeeABI, functionName: 'owner' as const })))
+    const others = pairs.filter((_, i) => {
+      const read = owners[i]
+      if (read?.status !== 'success') throw new Error(`owner() failed on ${pairs[i].markee}`)
+      return (read.result as string).toLowerCase() !== owner
+    })
+    if (others.length === 0) return { byCopy, uncopied, complete: true }
+    const nowSec = Math.floor(Date.now() / 1000)
+    const [successors, lifetimes] = await Promise.all([
+      markeeSuccessors(client, others.map(p => p.markee), [BOARD_MIGRATORS.STREAMING]),
+      Promise.all(others.map(p => readLifetimeStreamed(p.board, p.markee, owner))),
+    ])
+    others.forEach((p, i) => {
+      const wei = netStreamedWei(lifetimes[i], nowSec)
+      const copy = successors.get(p.markee)
+      if (copy) byCopy.set(copy, (byCopy.get(copy) ?? 0n) + wei)
+      else uncopied += wei
+    })
+    return { byCopy, uncopied, complete: true }
+  } catch (e) {
+    console.warn('[account/funded] legacy streams read failed', e)
+    return { byCopy: new Map(), uncopied: 0n, complete: false }
+  }
 }
 
 async function streamingFundedRows(
@@ -413,16 +486,17 @@ export async function GET(request: Request) {
 
   // One strategy failing should not blank out the other's positions.
   const [fixed, streaming] = await Promise.all([
-    fixedFunded(client, owner, origin, headers).catch(() => null),
+    fixedFunded(client, owner, origin, headers).catch(e => { console.warn('[account/funded] lump-sum read failed', e); return null }),
     streamingFunded(client, owner, origin, headers).catch(() => null),
   ])
-  const funded = [...(fixed ?? []), ...(streaming ?? [])]
+  const funded = [...(fixed?.rows ?? []), ...(streaming?.rows ?? [])]
 
   // The wallet's running total put into other people's messages, for the Buyer Hub chart
   // (lib/stats/daily.ts). Skipped when either read failed, so a partial read can't look like a refund,
   // and for wallets that have never funded anything.
-  const total = funded.reduce((sum, m) => sum + BigInt(m.totalContributed || '0'), 0n)
-  if (fixed && streaming && total > 0n) {
+  // Includes what was streamed on legacy boards to messages the wallet no longer backs (no row).
+  const total = funded.reduce((sum, m) => sum + BigInt(m.totalContributed || '0'), 0n) + (streaming?.legacyOnly ?? 0n)
+  if (fixed?.complete && streaming?.complete && total > 0n) {
     await snapshotTotals([{ key: fundedSnapshotKey(owner), total }]).catch(e => console.error('[account/funded] snapshot failed', e))
   }
 

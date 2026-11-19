@@ -116,8 +116,12 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
   return (
     <div className="row-link" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
-        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
-          {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
+        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {/* The blur sits on this span, not the link: a filter on the link would confine its row-wide
+              click area (.row-link-target::after) to the link itself. */}
+          <span style={{ filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
+            {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
+          </span>
         </SignLink>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.automatic && <span>{item.automatic.siteState === 'visible' ? 'Approved on Markee only · Still hidden in SDK integrations' : `Automatic · ${item.automatic.reason || 'Matched automatic moderation rule'}`}</span>}

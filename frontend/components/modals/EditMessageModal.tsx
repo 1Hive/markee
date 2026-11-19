@@ -44,7 +44,7 @@ export function EditMessageModal({
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useSponsoredWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash })
 
   useEffect(() => {
     if (!isOpen) return

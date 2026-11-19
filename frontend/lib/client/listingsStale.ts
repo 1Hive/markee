@@ -9,13 +9,11 @@ export function markListingsStale(): void {
   try { sessionStorage.setItem(KEY, String(Date.now() + WINDOW_MS)) } catch { /* storage unavailable */ }
 }
 
-/** Whether a change was made recently in this tab; clears the flag, so one fresh read follows each change. */
-export function takeListingsStale(): boolean {
-  try {
-    const until = Number(sessionStorage.getItem(KEY) ?? 0)
-    sessionStorage.removeItem(KEY)
-    return until > Date.now()
-  } catch {
-    return false
-  }
+/** Whether a change was made recently in this tab. Clear it once a fresh read has succeeded. */
+export function peekListingsStale(): boolean {
+  try { return Number(sessionStorage.getItem(KEY) ?? 0) > Date.now() } catch { return false }
+}
+
+export function clearListingsStale(): void {
+  try { sessionStorage.removeItem(KEY) } catch { /* storage unavailable */ }
 }

@@ -38,7 +38,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
 
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
-    useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+    useTrackedReceipt({ marksListings: true, hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const openRef = useRef(isOpen)
   openRef.current = isOpen

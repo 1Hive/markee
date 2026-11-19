@@ -122,8 +122,13 @@ async function fetchStreamingOwned(
   ])
 
   const nowSec = Math.floor(Date.now() / 1000)
-  const spent = (await mapSettled(owned, RENT_SPEND_CONCURRENCY, ({ lb, m }) => readLifetimeStreamed(lb.address, m.address, owner)
-    .then(l => netStreamedWei(l, nowSec).toString())))
+  // The legacy spend (below) doesn't depend on these reads, so both run at once.
+  const [spendReads, legacy] = await Promise.all([
+    mapSettled(owned, RENT_SPEND_CONCURRENCY, ({ lb, m }) => readLifetimeStreamed(lb.address, m.address, owner)
+      .then(l => netStreamedWei(l, nowSec).toString())),
+    legacyRentSpend(client, owner, owned.map(({ lb }) => lb), nowSec),
+  ])
+  const spent = spendReads
     .map((r, i) => {
       if (r.status === 'fulfilled') return r.value
       console.warn('[account/messages] rent spend read failed', owned[i].lb.address, owned[i].m.address, r.reason)
@@ -134,7 +139,6 @@ async function fetchStreamingOwned(
   // what the wallet streamed to the original message there. Added to the copy, so the Buyer Hub keeps
   // showing what each message cost (lib/contracts/migration.ts). Only legacy boards the wallet ever
   // streamed to are replayed.
-  const legacy = await legacyRentSpend(client, owner, owned.map(({ lb }) => lb), nowSec)
   owned.forEach(({ lb, m }, i) => {
     if (!lb.migratedFrom) return
     // Unknown legacy spend leaves that message's spend unknown, so a partial read isn't snapshotted.

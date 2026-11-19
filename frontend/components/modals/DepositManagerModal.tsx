@@ -26,7 +26,7 @@ import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
-import type { DepositManagerDeposit } from '@/app/api/streaming/deposit-manager/route'
+import type { DepositManagerDeposit, DepositManagerStream } from '@/app/api/streaming/deposit-manager/route'
 import { LEGACY_STREAMS_NOTE, StopLegacyStream } from '@/components/account/StopLegacyStream'
 import { LiveDot } from '@/components/ui/LiveDot'
 
@@ -34,20 +34,9 @@ const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
 const RED = '#FF8E8E'
 
-export type { DepositManagerDeposit }
+export type { DepositManagerDeposit, DepositManagerStream }
 
-export interface DepositManagerStream {
-  boardAddress: string
-  boardName: string
-  markeeAddress: string
-  message: string
-  name: string
-  rank: number
-  isTop: boolean
-  rateRaw: string
-  /** On a migrated board's legacy original (returned in legacyStreams, not streams). */
-  legacy?: boolean
-}
+
 
 const labelStyle: React.CSSProperties = { fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center' }
 
@@ -121,6 +110,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const winning = streams.filter(s => s.isTop)
   const notStreaming = streams.filter(s => !s.isTop)
   // The balance drains for winning streams left open on old boards too.
+  const legacyWinning = legacyStreams.filter(s => s.isTop).length
   const streamingNowRate = [...winning, ...legacyStreams.filter(s => s.isTop)].reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
   const notStreamingRate = notStreaming.reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
 
@@ -442,7 +432,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                     <div style={{ fontFamily: MONO, fontSize: 17, fontWeight: 800, color: TEXT }}>
                       {parseFloat(formatEther(ratePerSecToMonthly(streamingNowRate))).toFixed(3)} <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>ETH/mo</span>
                     </div>
-                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 2 }}>{winning.length} message{winning.length === 1 ? '' : 's'} winning</div>
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 2 }}>{winning.length} message{winning.length === 1 ? '' : 's'} winning{legacyWinning > 0 ? ` + ${legacyWinning} on old board${legacyWinning === 1 ? '' : 's'}` : ''}</div>
                   </>
                 )}
               </div>

@@ -61,7 +61,7 @@ export function StopLegacyStream({ stream, onDone, compact = false }: { stream: 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stream.boardName}</div>
           <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {(Number(BigInt(stream.rateRaw) * SECONDS_PER_MONTH) / 1e18).toFixed(6)} ETHx/mo{stream.message ? ` · ${stream.message}` : ''}
+            {stream.rateUnknown ? 'Rate unavailable' : `${(Number(BigInt(stream.rateRaw) * SECONDS_PER_MONTH) / 1e18).toFixed(6)} ETHx/mo`}{stream.message ? ` · ${stream.message}` : ''}
           </div>
         </div>
         {busy ? <WalletPending label={isPending ? 'Confirm in wallet…' : 'Confirming…'} /> : (
