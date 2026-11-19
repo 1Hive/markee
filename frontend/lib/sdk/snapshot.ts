@@ -183,7 +183,14 @@ export async function applySnapshotModeration(result: Snapshot, severity: Modera
         const verdict = moderation[i];
         return { ...entry, moderation: verdict, moderated: verdict.state === 'unavailable' ? null : verdict.state !== 'visible' };
       }) };
-    } catch { result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })), warnings: [...result.warnings, 'Moderation check unavailable'] }; }
+    } catch (error) {
+      console.error('SDK_SNAPSHOT_MODERATION_FAILED', {
+        name: error instanceof Error ? error.name : typeof error,
+        code: typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined,
+        status: typeof error === 'object' && error !== null && 'status' in error ? String(error.status) : undefined,
+      });
+      result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })), warnings: [...result.warnings, 'Moderation check unavailable'] };
+    }
   }
   return result;
 }
