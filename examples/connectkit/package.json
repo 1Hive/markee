@@ -9,7 +9,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@markee_team/sdk": "0.1.0-beta.13",
+    "@markee_team/sdk": "0.1.0-beta.14",
     "@tanstack/react-query": "^5.90.0",
     "connectkit": "^1.9.1",
     "react": "^18.3.1",
