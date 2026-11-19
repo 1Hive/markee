@@ -29,7 +29,8 @@ test('rental WIN replaces the current wallet rate without counting a legacy floo
   const presets = fundingPresets(snapshot, own);
   const others = BigInt(own.aggregateRate) - BigInt(snapshot.wallet!.flowRate);
   assert.ok(others + presets.boost / MONTH > BigInt(leader.score));
-  assert.equal(presets.boost, (BigInt(leader.score) - others) * MONTH + 10n ** 15n);
+  assert.equal(presets.boost % 10n ** 15n, 0n);
+  assert.ok(presets.boost >= (BigInt(leader.score) - others) * MONTH + 10n ** 15n);
 });
 
 test('rental MIN rounds up and 2x doubles the wallet contribution, not other backers', () => {
@@ -39,6 +40,7 @@ test('rental MIN rounds up and 2x doubles the wallet contribution, not other bac
   snapshot.wallet = { backedMarkee: a, flowRate: '10000000000' } as Snapshot['wallet'];
   const presets = fundingPresets(snapshot, own);
   assert.equal(presets.minimum, 2n * 10n ** 15n);
-  assert.equal(presets.boost, 2n * BigInt(snapshot.wallet!.flowRate) * MONTH);
+  assert.equal(presets.boost, 53n * 10n ** 15n);
+  assert.ok(presets.boost >= 2n * BigInt(snapshot.wallet!.flowRate) * MONTH);
   assert.equal(presets.double, true);
 });

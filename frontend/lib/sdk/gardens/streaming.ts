@@ -215,16 +215,11 @@ export async function waitForMarkeeRegistration({
 export function getMarkeeStreamAmounts(
   monthlyWei: bigint,
   monthsFixed18: bigint,
-  minimumMonthlyRate?: bigint,
+  _minimumMonthlyRate?: bigint,
 ) {
-  const floorRatePerSecond = monthlyWei / MARKEE_SECONDS_IN_MONTH;
-  const ratePerSecond =
-    (
-      minimumMonthlyRate != null &&
-      floorRatePerSecond * MARKEE_SECONDS_IN_MONTH >= minimumMonthlyRate
-    ) ?
-      floorRatePerSecond
-    : (monthlyWei + MARKEE_SECONDS_IN_MONTH - 1n) / MARKEE_SECONDS_IN_MONTH;
+  // An integer wei/second stream must never pay less than the monthly bid the
+  // user approved. The refundable buffer is funded separately below.
+  const ratePerSecond = (monthlyWei + MARKEE_SECONDS_IN_MONTH - 1n) / MARKEE_SECONDS_IN_MONTH;
   const buffer = ratePerSecond * MARKEE_BUFFER_PERIOD;
   const prefund = (monthlyWei * monthsFixed18) / 10n ** 18n;
 

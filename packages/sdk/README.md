@@ -6,6 +6,10 @@ Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent 
 
 The package also includes a standalone **Markee sign button**. It shows the board's current winner, follows Markee's moderation decisions, and opens the payment modal when clicked.
 
+On For Rent boards, a new bid starts at the rounded-up WIN suggestion; an existing winner's bid stays at its current amount. Markee converts a requested monthly bid to the smallest whole-wei-per-second stream that meets or exceeds it. The payment review shows the precise stream rate and any separately funded, refundable buffer when the API supplies those details. Payment destinations and split percentages appear only when verified by Markee's API.
+
+Owners can edit a message and display name from one form. These are separate on-chain actions: when both change, the SDK confirms the message first and then offers a second wallet review for the name. It never submits that second transaction automatically. Pending transactions remain recoverable through the existing SDK flow.
+
 ## Installation
 
 ```sh

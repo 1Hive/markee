@@ -39,7 +39,7 @@ test('the sign shows the change amount for sale and monthly rate for rent; actio
   assert.match(sale, /class="logo-light" src="data:image\/png;base64,/);
   assert.doesNotMatch(sale, /<button[^>]*>.*<button/s);
   const rent = signHtml({ ...snapshot, strategy: 'rent' }, true);
-  assert.match(rent, /class="rate">0\.001 ETH\/mo to change<\/span>/);
+  assert.match(rent, /class="rate">0\.002 ETH\/mo to change<\/span>/);
   assert.match(signHtml(snapshot, false), /<div class="sign" aria-label="Sample Markee sign"/);
   assert.doesNotMatch(signHtml(snapshot, false), /class="watermark"/);
   assert.doesNotMatch(signHtml(snapshot, false), /class="rate"/);

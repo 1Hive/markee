@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { decodeAbiParameters, decodeFunctionData, parseAbi } from 'viem';
 import { parseAction, placement, assertTextLength } from '../lib/sdk/validation';
-import { signEnvelope, verifyEnvelope } from '../lib/sdk/transactions';
+import { paymentRoutingForReview, signEnvelope, verifyEnvelope } from '../lib/sdk/transactions';
 import { lifiStatus } from '../lib/sdk/bridge';
 import { buildMarkeeOpenStreamOperations, getMarkeeStreamAmounts, getMarkeeAutoFunding } from '../lib/sdk/gardens/streaming';
 import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests } from '../lib/sdk/gardens/challenge-store';
@@ -32,6 +32,15 @@ test('sale quote follows live board splits and terminal output', async () => {
   assert.equal(await quoteReward({ ...context, strategy: 'rent' } as never, 10n ** 18n, a), 42n);
   assert.equal(simulated?.value, 235600000000000000n, 'rental monthly quote uses rent splits, not deposit value');
   assert.equal(await quoteReward({ ...context, revnetEnabled: false } as never, 10n ** 18n, a), null);
+});
+test('payment routing uses verified board values and disappears when unavailable', async () => {
+  const context = { beneficiary: a, revnetEnabled: true,
+    r: async (name: string) => ({ percentToBeneficiary: 6200n, revNetTerminal: c } as Record<string, unknown>)[name] };
+  assert.deepEqual(await paymentRoutingForReview(context as never), {
+    beneficiary: a, beneficiaryBps: 6200, revnetTerminal: c, revnetBps: 3800,
+  });
+  assert.equal(await paymentRoutingForReview({ ...context, r: async () => { throw new Error('getter unavailable'); } } as never), undefined);
+  assert.equal(await paymentRoutingForReview({ ...context, r: async () => 10001n } as never), undefined);
 });
 
 test('API input validation rejects unsupported chains, arbitrary actions and UTF-8 overflow', () => {
@@ -70,6 +79,15 @@ test('rental minimum rounding and both buffer obligations are covered before str
   assert.ok(funding.prefund > ratePerSecond * 14400n);
   assert.equal(funding.depositTopUp, ratePerSecond * 14400n);
   assert.ok(funding.wrapValue < 10n ** 18n - 10n ** 15n);
+});
+test('a requested monthly bid is never rounded below its on-chain stream rate', () => {
+  const bid = 6n * 10n ** 15n;
+  // This used to floor when the floored rate still exceeded the board minimum.
+  const amounts = getMarkeeStreamAmounts(bid, 0n, 1n);
+  assert.ok(amounts.ratePerSecond * 2628000n >= bid);
+  assert.ok((amounts.ratePerSecond - 1n) * 2628000n < bid);
+  assert.equal(amounts.buffer, amounts.ratePerSecond * 14400n);
+  assert.equal(amounts.value, amounts.buffer, 'the buffer is separate from the bid');
 });
 test('authorization nonce can be consumed exactly once', async () => {
   clearMarkeeChallengesForTests();

@@ -72,7 +72,9 @@ export type Action =
 export interface PreparedAction {
   id: string; expiresAt: number; placement: Placement; action: Action;
   transaction: { from: Address; to: Address; chainId: number; data: Hex; value: Hex; gas: Hex };
-  review: { moderation?: MessageCheck; title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string };
+  review: { moderation?: MessageCheck; title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string;
+    paymentRouting?: { beneficiary?: Address; beneficiaryBps?: number; revnetTerminal?: Address; revnetBps?: number };
+    streamDetails?: { effectiveMonthlyWei: string; bufferTopUpWei: string } };
 }
 export interface TransactionResult {
   status: 'pending' | 'confirmed' | 'reverted'; hash: Hex; explorerUrl: string;
