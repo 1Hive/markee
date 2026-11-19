@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi'
 import { useWalletAuthFetch } from '@/hooks/useWalletAuthFetch'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { siteVerifyMessage } from '@/lib/openinternet/verify-site'
+import { markListingsStale } from '@/lib/client/listingsStale'
 
 export interface SiteVerifyResult {
   verified: boolean
@@ -37,6 +38,7 @@ export function useSiteVerify() {
       return { verified: false, unauthorized: true, error: 'Sign the request in your wallet to verify this site.' }
     }
     const body = await res.json().catch(() => null) as SiteVerifyResult | null
+    if (body?.verified) markListingsStale()
     return {
       verified: !!body?.verified,
       verifiedUrls: body?.verifiedUrls,

@@ -27,6 +27,7 @@ import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
 import type { DepositManagerDeposit } from '@/app/api/streaming/deposit-manager/route'
+import { LEGACY_STREAMS_NOTE, StopLegacyStream } from '@/components/account/StopLegacyStream'
 import { LiveDot } from '@/components/ui/LiveDot'
 
 const ETHX = STREAMING_BASE.ethx as Address
@@ -57,7 +58,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
-  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; deposits?: DepositManagerDeposit[] } | null>(null)
+  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; legacyStreams?: DepositManagerStream[]; deposits?: DepositManagerDeposit[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [action, setAction] = useState<'deposit' | 'withdraw' | 'reclaim' | null>(null)
   const [reclaimingBoard, setReclaimingBoard] = useState<string | null>(null)
@@ -116,9 +117,11 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const refreshingBalance = loading && !!data
   const ethxBalanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
   const streams = data?.streams ?? []
+  const legacyStreams = data?.legacyStreams ?? []
   const winning = streams.filter(s => s.isTop)
   const notStreaming = streams.filter(s => !s.isTop)
-  const streamingNowRate = winning.reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
+  // The balance drains for winning streams left open on old boards too.
+  const streamingNowRate = [...winning, ...legacyStreams.filter(s => s.isTop)].reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
   const notStreamingRate = notStreaming.reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
 
   // Decimals derived from the actual drain rate (same helper used for every other live balance on
@@ -487,6 +490,16 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 })}
               </div>
               {actionError && action === null && <p style={{ margin: '8px 0 0', fontFamily: MONO, fontSize: 11, color: RED }}>{actionError}</p>}
+            </div>
+            )}
+
+            {legacyStreams.length > 0 && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Streams on old boards</div>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>{LEGACY_STREAMS_NOTE}</p>
+              <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+                {legacyStreams.map(s => <StopLegacyStream key={`${s.boardAddress}-${s.markeeAddress}`} stream={s} compact onDone={() => { refresh(true); refetchBalance() }} />)}
+              </div>
             </div>
             )}
 

@@ -32,6 +32,14 @@ test('80 For Rent and 18 v1.3 For Sale boards existed at the v1.4 launch', () =>
   assert.equal(FOR_SALE_V13_BOARDS_BEFORE_V14, 18)
 })
 
+test('a live funded #1 counts as activated before the history scan records it', () => {
+  assert.equal(isActivated({ ...forRent, topMessage: 'gm', topFundsAddedRaw: '380517503' }, undefined), true)
+  assert.equal(isActivated({ ...forSale, topMessage: 'gm', topFundsAddedRaw: '1000' }, []), true)
+  // No message, or nothing funding it, is not enough on its own.
+  assert.equal(isActivated({ ...forRent, topMessage: '', topFundsAddedRaw: '380517503' }, undefined), false)
+  assert.equal(isActivated({ ...forRent, topMessage: 'gm', topFundsAddedRaw: '0' }, undefined), false)
+})
+
 test('For Rent is activated by its first #1 span', () => {
   assert.equal(isActivated(forRent, undefined), false)
   assert.equal(isActivated(forRent, []), false)

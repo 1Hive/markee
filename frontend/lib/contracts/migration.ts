@@ -96,6 +96,28 @@ export async function finishedBoardSuccessor(client: BaseClient, board: Address)
   return index === -1 ? null : successors[index]
 }
 
+/**
+ * Each Markee's copy on its successor board (lowercase, legacy -> successor), from whichever of
+ * `migrators` copied it. A Markee no migrator copied (an empty seed, or one the owner excluded) is
+ * absent. Throws if any read fails for a reason other than an undeployed migrator, so callers can
+ * tell "not copied" from "unknown".
+ */
+export async function markeeSuccessors(client: BaseClient, markees: readonly string[], migrators: readonly Address[] = MIGRATORS): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const unique = [...new Set(markees.map(m => m.toLowerCase()))] as Address[]
+  if (unique.length === 0) return out
+  const results = await client.multicall({
+    contracts: unique.flatMap(markee => migrators.map(migrator => ({ address: migrator, abi: MIGRATOR_ABI, functionName: 'markeeSuccessorOf' as const, args: [markee] }))),
+  })
+  unique.forEach((markee, i) => {
+    const successor = results.slice(i * migrators.length, (i + 1) * migrators.length)
+      .map(r => valueOrUndeployed<Address>(r as MulticallResult, zeroAddress))
+      .find(a => a !== zeroAddress)
+    if (successor) out.set(markee, successor.toLowerCase())
+  })
+  return out
+}
+
 export async function finishedMarkeeSuccessor(client: BaseClient, markee: Address): Promise<Address | null> {
   const successors = await readEveryMigrator(client, 'markeeSuccessorOf', markee) as Address[]
   const index = successors.findIndex(successor => successor !== zeroAddress)
