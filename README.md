@@ -1,4 +1,4 @@
-<!-- MARKEE:START:0x5e2d08d07b2c771abe15af29fb30826bfeef2151 -->
+<!-- MARKEE:START:0x33ed1789cc23bd38134f119c2402c2e08235bf07 -->
 ```
   ╔══════════════════════════════════════════════════════╗
   ║                  ⡷⢾ ⣎⣱ ⣏⡱ ⣇⠜ ⣏⡉ ⣏⡉                 ║
@@ -13,8 +13,8 @@
                  ││                      ││
    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 ```
-*Show the world you support this repo! [Change this message at markee.xyz](https://markee.xyz/markee/0x5e2d08d07b2c771abe15af29fb30826bfeef2151) ^*
-<!-- MARKEE:END:0x5e2d08d07b2c771abe15af29fb30826bfeef2151 -->
+*Show the world you support this repo! [Change this message at markee.xyz](https://markee.xyz/markee/0x33ed1789cc23bd38134f119c2402c2e08235bf07) ^*
+<!-- MARKEE:END:0x33ed1789cc23bd38134f119c2402c2e08235bf07 -->
 
 > **SDK alpha environment:** Published `@markee_team/sdk` currently defaults to
 > `https://staging.markee.xyz/api/sdk/v1`, as intended for our controlled rollout.
