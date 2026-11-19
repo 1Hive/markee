@@ -39,6 +39,7 @@ import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { buyerBoards, walletSpend } from '@/lib/account/spend'
 import { boardLabel } from '@/lib/leaderboards/label'
+import { takeListingsStale } from '@/lib/client/listingsStale'
 
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -1219,11 +1220,16 @@ function AccountDashboard() {
   }, [])
 
   useEffect(() => {
-    if (activeAddress) {
-      fetchAll(activeAddress)
-      fetchMyMessages(activeAddress)
-      fetchFundedMessages(activeAddress)
+    if (!activeAddress) return
+    // Something was activated, bought or verified elsewhere in this tab (e.g. on the board's page):
+    // read past the listing cache once, as after a transaction here, so it shows up straight away.
+    if (takeListingsStale()) {
+      void fetchAll(activeAddress, true).then(() => { fetchMyMessages(activeAddress); fetchFundedMessages(activeAddress) })
+      return
     }
+    fetchAll(activeAddress)
+    fetchMyMessages(activeAddress)
+    fetchFundedMessages(activeAddress)
   }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
 
   // A purchase can add a Markee, and the message routes find boards through the shared listings, so

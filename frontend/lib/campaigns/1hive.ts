@@ -93,20 +93,21 @@ export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string
 }
 
 /**
- * Whether the board's first real message has gone live, from its #1 history. False if it hasn't, or
- * the moderation scan hasn't recorded it yet (a just-activated board appears within one scan).
+ * Whether the board's first real message has gone live. Its current #1 having a message and funds
+ * (For Rent: a live stream; the listing's topFundsAddedRaw is the top rate) says so straight away;
+ * otherwise its #1 history does, once the 5-minute moderation scan has recorded it.
  *
- * For Rent: any #1 span (the first TopChanged).
- * For Sale: initialize() deploys an empty placeholder message that holds #1 from the moment the board
- * is created, so its span doesn't count; any other message reaching #1 does. So does the placeholder
- * itself being given a message and funds.
+ * For Rent history: any #1 span (the first TopChanged).
+ * For Sale history: initialize() deploys an empty placeholder message that holds #1 from the moment
+ * the board is created, so its span doesn't count; any other message reaching #1 does. The empty
+ * placeholder never has funds, so it never passes the current-#1 check either.
  */
 export function isActivated(row: CampaignListingRow, spans: CampaignTopSpan[] | undefined): boolean {
+  if (BigInt(row.topFundsAddedRaw || '0') > 0n && !!row.topMessage) return true
   if (!spans?.length) return false
   if (row.strategy === 'streaming') return true
   const placeholder = lower(spans[0].markee)
-  if (spans.some(s => lower(s.markee) !== placeholder)) return true
-  return BigInt(row.topFundsAddedRaw || '0') > 0n && !!row.topMessage && lower(row.topMarkeeAddress) === placeholder
+  return spans.some(s => lower(s.markee) !== placeholder)
 }
 
 /**

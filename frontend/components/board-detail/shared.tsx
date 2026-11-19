@@ -24,6 +24,7 @@ import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { VIEWS_UNAVAILABLE_TIP, fileIntegrationKey, urlIntegrationKey, orderIntegrations, onePerDomain, viewReporting, viewsUnavailable, type BoardIntegrations } from '@/lib/integrations/featured'
 import { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER } from '@/lib/design-tokens'
 import { logoDevUrl } from '@/lib/utils'
+import { markListingsStale } from '@/lib/client/listingsStale'
 export { MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER }
 export const BOARD_LB_COLS = '42px 150px 120px minmax(260px,1fr) 70px 170px'
 
@@ -826,6 +827,7 @@ export function GitHubVerify({ address }: { address: string }) {
       const data = await res.json()
       if (!data.success) { setSyncPhase('error'); setSyncError(data.error ?? 'Check failed'); return }
       setResult({ verified: data.verified, filePath: selectedFile })
+      if (data.verified) markListingsStale()
       if (!data.verified) {
         setSyncPhase('error')
         setSyncError(`Not found yet — make sure the delimiter is committed to ${selectedFile} on the default branch.`)

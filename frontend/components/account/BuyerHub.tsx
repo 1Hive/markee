@@ -19,7 +19,8 @@ import type { DepositManagerDeposit, DepositManagerStream } from '@/components/m
 import { parseEthInput, sanitizeDecimalInput } from '@/components/modals/StreamUI'
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
-import { STREAMING_BASE, ETHX_WRAP_ABI, CFA_FORWARDER_ABI, formatRunway, runwaySeconds } from '@/lib/superfluid/streaming'
+import { STREAMING_BASE, ETHX_WRAP_ABI, formatRunway, runwaySeconds } from '@/lib/superfluid/streaming'
+import { LEGACY_STREAMS_NOTE, StopLegacyStream } from '@/components/account/StopLegacyStream'
 import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG, PURPLE } from '@/lib/design-tokens'
 import type { BestBuy, FundedMessage, MyMessage } from '@/components/account/types'
@@ -42,66 +43,6 @@ export interface StreamSnapshot {
   legacyStreams?: DepositManagerStream[]
   deposits?: DepositManagerDeposit[]
   at: number
-}
-
-const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as Address
-const ETHX = STREAMING_BASE.ethx as Address
-
-// A stream left open on a migrated board's legacy original. The board moved, so its message isn't
-// shown anywhere any more, but the stream keeps paying until it's stopped. Stop is the only action.
-function StopLegacyStream({ stream, onDone }: { stream: DepositManagerStream; onDone: () => void }) {
-  const { chain } = useAccount()
-  const { switchChain } = useSwitchChain()
-  const { writeContractAsync, isPending } = useSponsoredWriteContract()
-  const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
-  const [error, setError] = useState<string | null>(null)
-  const toast = useToast()
-  const wrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id
-
-  useEffect(() => {
-    if (!isSuccess) return
-    toast(`Stopped your stream on ${stream.boardName}`)
-    onDone()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess])
-
-  useEffect(() => {
-    if (reverted && hash) setError(formatReceiptError(receiptError, 'BuyerHub.StopLegacyStream.receipt'))
-  }, [reverted, hash, receiptError])
-
-  const go = async () => {
-    if (wrongChain) { switchChain({ chainId: CANONICAL_CHAIN.id }); return }
-    setError(null)
-    try {
-      setHash(await writeContractAsync({ address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI, functionName: 'setFlowrate', args: [ETHX, stream.boardAddress as Address, 0n], chainId: CANONICAL_CHAIN.id }))
-    } catch (e) {
-      if (!isUserRejection(e)) setError(formatTransactionError(e))
-    }
-  }
-
-  const busy = isPending || confirming
-  return (
-    <div style={{ padding: '10px 18px', borderTop: `1px solid ${BORDER}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stream.boardName}</div>
-          <div style={{ fontFamily: MONO, fontSize: 11.5, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {(Number(BigInt(stream.rateRaw) * SECONDS_PER_MONTH) / 1e18).toFixed(6)} ETHx/mo{stream.message ? ` · ${stream.message}` : ''}
-          </div>
-        </div>
-        {busy ? <WalletPending label={isPending ? 'Confirm in wallet…' : 'Confirming…'} /> : (
-          <button
-            onClick={go}
-            style={{ background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 34, fontSize: 12.5, fontWeight: 600, fontFamily: SANS, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            {wrongChain ? 'Switch to Base' : 'Stop stream'}
-          </button>
-        )}
-      </div>
-      {error && <div style={{ fontSize: 12, color: DANGER, marginTop: 6, textAlign: 'right' }}>{error}</div>}
-    </div>
-  )
 }
 
 function ReclaimDeposit({ deposit, onDone }: { deposit: DepositManagerDeposit; onDone: () => void }) {
@@ -279,7 +220,8 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
   const streams = data?.streams ?? []
   const winning = streams.filter(s => s.isTop)
   const liveRate = winningRate(data)
-  const totalRate = streams.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+  // Everything the wallet is streaming, old boards included, so it's never below Streaming Now.
+  const totalRate = [...streams, ...(data?.legacyStreams ?? [])].reduce((s, x) => s + BigInt(x.rateRaw), 0n)
   const balanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
   const drained = liveRate * BigInt(Math.max(0, Math.floor((now - snapshotAt) / 1000)))
   const balance = balanceRaw > drained ? balanceRaw - drained : 0n
@@ -341,7 +283,7 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
           <div style={{ padding: '12px 18px 2px' }}>
             <div style={label}>Streams on old boards</div>
-            <div style={{ fontSize: 12, color: TEXT2, marginTop: 4, lineHeight: 1.5 }}>These boards moved to new contracts, and your messages moved with them. Streams can&apos;t move, so these still pay the old board. Stop them, then bid again on the new board if you like.</div>
+            <div style={{ fontSize: 12, color: TEXT2, marginTop: 4, lineHeight: 1.5 }}>{LEGACY_STREAMS_NOTE}</div>
           </div>
           {data!.legacyStreams!.map(st => <StopLegacyStream key={`${st.boardAddress}-${st.markeeAddress}`} stream={st} onDone={onChanged} />)}
         </div>
