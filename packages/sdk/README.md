@@ -6,6 +6,10 @@ Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent 
 
 The package also includes a standalone **Markee sign button**. It shows the board's current winner, follows Markee's moderation decisions, and opens the payment modal when clicked.
 
+On For Rent boards, a new bid starts at the rounded-up WIN suggestion; an existing winner's bid stays at its current amount. Markee converts a requested monthly bid to the smallest whole-wei-per-second stream that meets or exceeds it. The payment review shows the precise stream rate and any separately funded, refundable buffer when the API supplies those details. Payment destinations and split percentages appear only when verified by Markee's API.
+
+Owners can edit a message and display name from one form. These are separate on-chain actions: when both change, the SDK confirms the message first and then offers a second wallet review for the name. It never submits that second transaction automatically. Pending transactions remain recoverable through the existing SDK flow.
+
 ## Installation
 
 ```sh
@@ -20,6 +24,8 @@ To build from the source repository:
 npm ci --prefix packages/sdk
 npm run build --prefix packages/sdk
 ```
+
+Coding assistants can follow the packaged [Markee integration skill](https://unpkg.com/@markee_team/sdk@latest/skills/markee-integration/SKILL.md) at `skills/markee-integration/SKILL.md` in the installed package. Install the latest SDK first, then read its installed README and types. Commit the consumer app's lockfile.
 
 ## Create and connect your leaderboard
 
@@ -43,6 +49,8 @@ Markee fetches the public page and verifies that its HTML contains the matching 
 ```
 
 The marker must be present in the HTML returned by the server, not only injected by JavaScript. The supplied URL must use HTTPS, match the app's origin, and return the final HTML page without redirects. Localhost and private-network sites cannot be publicly verified. Registration currently supports Base boards. It verifies the board's presence, not legal domain ownership.
+
+For `multiBoard`, resolve the community's board address first and render the matching marker in that community page's server-returned HTML. Supplying `multiBoard` alone does not verify a domain; the SDK can request verification only after the board exists.
 
 For an explicit retry after deployment, call `new MarkeeClient().verifySite(placement, siteUrl)`. The endpoint is `POST /api/sdk/v1/sites/verify` with `{ placement, siteUrl }`. Unverified sites are never added to the verified list.
 
@@ -196,6 +204,27 @@ For Rent reviews show estimated **MARKEE/month while winning**, using the select
 Refunds flow automatically when connected to the message’s refund pool. **Collect refund** appears only when the loaded wallet snapshot reports a positive claimable balance for that message’s pool. Board-buffer recovery is separate. Community revenue actions are accessed through **Community accumulated revenue**.
 
 Community activation supports the current council Safe, a current Safe owner, or the configured authorized keeper. Revenue claims support the current Safe or its current owners and always pay the council treasury. Existing outbound Across, Squid and LI.FI routing lives on Markee's server.
+
+### Platform communities with many boards
+
+Use the three-value shorthand on the sign and the independently controlled modal. The equivalent plain JavaScript option works in `createMarkeeSign` and `markee.open`. Supply exactly one of `placement` or `multiBoard`.
+
+```tsx
+const multiBoard = {
+  platformId: 'revnet', // a Markee-registered platform ID
+  chainId: project.chainId, // identity chain, not the board chain
+  communityId: String(project.id), // current route's project ID
+};
+<MarkeeSign multiBoard={multiBoard} onOpen={() => setOpen(true)} />
+<MarkeeModal multiBoard={multiBoard} open={open} onClose={() => setOpen(false)} />
+```
+
+```ts
+createMarkeeSign(container, { multiBoard });
+markee.open({ multiBoard });
+```
+
+The API checks the Base registrar mapping for this identity. An **active** board displays its current moderated sign. An **unactivated** community can offer a dedicated activation screen when its platform is enabled and the connected account is authorized; activation collects one strategy and requires the person activating to enter a valid, nonzero Base beneficiary address. The field starts blank and is never inferred from the connected wallet or platform recipient. For Sale transfers native ETH on Base, so a contract beneficiary must accept native ETH. For Rent streams ETHx on Base, so the beneficiary must support an incoming Superfluid ETHx stream. Address validation cannot prove that a contract accepts either payment type; confirm its behavior before activation. A board **awaiting admin acceptance** shows setup until its activator accepts ownership on Base. **Disabled** platforms show no activation action, and an **unavailable** lookup withholds the message. This flow does not bridge. `allowedStrategies?: Array<'sale' | 'rent'>` restricts the visible options, while Markee's API independently checks identity and authorization. Gardens is a controlled pilot behind a server gate; Revnet and Giveth activation remain gated prototypes. Existing `board` and `gardens-community` placements remain supported, and the existing Gardens board is not migrated.
 
 ## Integration boundaries
 

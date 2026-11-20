@@ -1,0 +1,40 @@
+name: Revenue contracts
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'contracts/revenue/**'
+      - 'test/revenue/**'
+      - 'script/revenue/**'
+      - 'scripts/check-revenue-layout.mjs'
+      - 'foundry.toml'
+      - 'remappings.txt'
+      - 'package*.json'
+      - '.github/workflows/revenue-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  revenue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.0
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: forge fmt --check contracts/revenue test/revenue script/revenue
+      - run: npm run test:revenue
+      - run: npm run check:revenue-layout
+      - name: Legacy contracts still compile with the default profile
+        run: forge build --skip test

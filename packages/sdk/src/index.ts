@@ -1,4 +1,5 @@
 export * from './types.js';
+export { resolvePlacementInput } from './placement-input.js';
 export { MarkeeClient, MarkeeError, discoverWallets, DEFAULT_MARKEE_API_URL } from './client.js';
 export type { PendingTransaction, DiscoveredWallet } from './client.js';
 export { createMarkee, MarkeeModal } from './modal.js';
