@@ -24,8 +24,7 @@ import { checkoutEnabled, checkoutOrigin, createCheckout, checkoutRequest } from
 import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
 import { platformActivate } from '@/lib/sdk/platform-activate';
-import { platformCommunity } from '@/lib/sdk/platforms';
-import { getEnvPublicClient } from '@/lib/sdk/chains';
+import { platformAdminStatus } from '@/lib/sdk/platform-admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,28 +61,7 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
       }
       if (path === 'community') return cors(await community.GET(request), request);
       if (path === 'community/quote') return cors(await quote.GET(request), request);
-      if (path === 'platform/admin-status') {
-        let raw: unknown;
-        try { raw = JSON.parse(search.get('placement') || '{}'); }
-        catch { throw new SDKError('INVALID_PLACEMENT', 'Invalid platform placement.'); }
-        const p = placement(raw);
-        if (p.kind !== 'platform-community') throw new SDKError('INVALID_PLACEMENT', 'A platform community is required.');
-        const account = address(search.get('account'));
-        const transactionHash = hash(search.get('transactionHash'));
-        const communityState = await platformCommunity(p);
-        const board = communityState.integration.leaderboardAddress;
-        if (!board || communityState.platform?.boardOwner?.toLowerCase() !== account.toLowerCase()) throw new SDKError('NOT_FOUND', 'No pending board for this account.', 404);
-        const base = getEnvPublicClient(8453);
-        const transaction = await base.getTransaction({ hash: transactionHash }).catch(() => null);
-        if (!transaction) return cors(NextResponse.json({ status: 'pending' }), request);
-        if (transaction.from.toLowerCase() !== account.toLowerCase() || transaction.to?.toLowerCase() !== board.toLowerCase()
-          || transaction.input !== '0x0e18b681') throw new SDKError('TRANSACTION_MISMATCH', 'This is not the board-admin acceptance transaction.', 409);
-        const receipt = await base.getTransactionReceipt({ hash: transactionHash }).catch(() => null);
-        if (!receipt) return cors(NextResponse.json({ status: 'pending' }), request);
-        if (receipt.status !== 'success') return cors(NextResponse.json({ status: 'reverted' }), request);
-        const refreshed = await platformCommunity(p);
-        return cors(NextResponse.json({ status: refreshed.integration.status === 'active' ? 'confirmed' : 'pending' }), request);
-      }
+      if (path === 'platform/admin-status') return cors(NextResponse.json(await platformAdminStatus(search)), request);
       if (path === 'community/status') {
         const protocol = search.get('protocol');
         if (!['none', 'squid', 'lifi', 'across'].includes(protocol || '')) throw new SDKError('INVALID_PROTOCOL', 'Unknown bridge protocol.');

@@ -112,7 +112,7 @@ export async function prepare(p: Placement, account: Address, requested: Action,
     if (action.kind === 'stream') {
       const monthly = wei(action.monthlyAmount);
       if (monthly < c.minimum) throw new SDKError('BELOW_MINIMUM', `Minimum monthly rate is ${formatEther(c.minimum)} ETH.`);
-      const { ratePerSecond } = getMarkeeStreamAmounts(monthly, 0n, c.minimum);
+      const { ratePerSecond } = getMarkeeStreamAmounts(monthly, 0n);
       monthlyRewardAmount = ratePerSecond * 2628000n;
       if (ratePerSecond >= 2n ** 95n) throw new SDKError('INVALID_RATE', 'Stream rate is out of range.');
       const nativeBalance = await c.client.getBalance({ address: account });

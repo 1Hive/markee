@@ -67,6 +67,7 @@ export async function platformActivate(raw: unknown): Promise<Record<string, unk
     if (community.integration.status !== 'not_integrated' || legacy) throw new SDKError('ALREADY_ACTIVE', 'This community already has a Markee board.', 409);
     if (!authority.authorized) throw new SDKError('NOT_AUTHORIZED', 'The connected wallet cannot activate this community.', 403);
     if (!operatorEnabled || factory === zeroAddress) throw new SDKError('PLATFORM_NOT_CONFIGURED', 'Community creation is not enabled.', 503);
+    // EIP-712 activation nonces are nonzero, even if the random bytes are all zero.
     const nonce = BigInt(`0x${randomBytes(32).toString('hex')}`) || 1n;
     const deadline = Math.floor(Date.now() / 1000) + ttl;
     const challenge: Challenge = { ...request, registrar, factory,

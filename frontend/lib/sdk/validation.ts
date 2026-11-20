@@ -19,7 +19,13 @@ export function placement(value: unknown): Placement {
   if (p.kind === 'gardens-community') return { kind: p.kind, chainId: p.chainId, community: address(p.community) };
   if (p.kind === 'platform-community') {
     if (p.platformId === 'gardens') return { kind: p.kind, platformId: p.platformId, chainId: p.chainId, communityId: address(p.communityId) };
-    if ((p.platformId === 'revnet' || p.platformId === 'giveth') && typeof p.communityId === 'string' && p.communityId.length <= 78 && /^0*[1-9][0-9]*$/.test(p.communityId) && BigInt(p.communityId) < 2n ** 256n && (p.platformId !== 'giveth' || p.chainId === 8453)) return { kind: p.kind, platformId: p.platformId, chainId: p.chainId, communityId: BigInt(p.communityId).toString() };
+    const validIdentityChain = p.platformId !== 'giveth' || p.chainId === 8453;
+    const numericId = typeof p.communityId === 'string' && p.communityId.length <= 78
+      && /^0*[1-9][0-9]*$/.test(p.communityId) ? BigInt(p.communityId) : null;
+    if ((p.platformId === 'revnet' || p.platformId === 'giveth')
+      && validIdentityChain && numericId !== null && numericId < 2n ** 256n) {
+      return { kind: p.kind, platformId: p.platformId, chainId: p.chainId, communityId: numericId.toString() };
+    }
     throw new SDKError('INVALID_PLACEMENT', 'Unknown platform or community identifier.');
   }
   if (p.kind === 'board' && [8453, 11155111].includes(p.chainId)) return { kind: p.kind, chainId: p.chainId, address: address(p.address) };

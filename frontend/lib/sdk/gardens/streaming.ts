@@ -215,7 +215,6 @@ export async function waitForMarkeeRegistration({
 export function getMarkeeStreamAmounts(
   monthlyWei: bigint,
   monthsFixed18: bigint,
-  _minimumMonthlyRate?: bigint,
 ) {
   // An integer wei/second stream must never pay less than the monthly bid the
   // user approved. The refundable buffer is funded separately below.

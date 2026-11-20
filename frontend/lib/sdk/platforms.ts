@@ -59,6 +59,7 @@ const revnet: PlatformAdapter = {
     if (!permissionId || !/^[1-9][0-9]*$/.test(permissionId)) throw new SDKError('PLATFORM_NOT_CONFIGURED', 'Revnet v6 authorization is not configured.', 503);
     const client = getEnvPublicClient(p.chainId);
     const owner = await client.readContract({ address: projects, abi: projectsABI, functionName: 'ownerOf', args: [projectId(p)] });
+    // Root delegation follows the project owner; wildcard project grants would authorize unrelated communities.
     const delegated = same(owner, account) ? false : await client.readContract({ address: permissions, abi: permissionsABI, functionName: 'hasPermission', args: [account, owner, projectId(p), BigInt(permissionId), true, false] });
     // The beneficiary is selected on Base during activation; a Revnet terminal is not the payout route.
     return { authorized: same(owner, account) || delegated, recipient: null };

@@ -71,6 +71,8 @@ contract CommunityRevenueRouter is RevenueUpgradeable {
         maxBridgeLossBps = 100;
     }
 
+    /// @notice Accept vault releases and bridge refunds. Unsolicited ETH has no recovery path;
+    /// callers must send revenue to its community vault, not directly to this router.
     receive() external payable {}
 
     function setRegistrar(bytes32 platformId, address registrar) external onlyOwner {

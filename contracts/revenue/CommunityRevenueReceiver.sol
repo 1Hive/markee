@@ -140,6 +140,7 @@ contract CommunityRevenueReceiver is RevenueUpgradeable {
         if (!assets[token].enabled || amount == 0) revert InvalidAmount();
         // Across transfers tokens before invoking this hook. Never consume token escrow.
         if (IERC20(token).balanceOf(address(this)) < escrowed[token] + amount) revert InvalidAmount();
+        // Malformed Across messages revert before payout delivery is recorded.
         RevenueEnvelope memory envelope = abi.decode(message, (RevenueEnvelope));
         _normalizeAndRecord(envelope, token, amount);
     }

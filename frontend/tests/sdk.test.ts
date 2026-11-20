@@ -79,7 +79,7 @@ test('rental switch deletes the old stream, then creates the new tagged stream a
 });
 test('rental minimum rounding and both buffer obligations are covered before streaming', () => {
   const minimum = 10n ** 15n;
-  const { ratePerSecond } = getMarkeeStreamAmounts(minimum, 0n, minimum);
+  const { ratePerSecond } = getMarkeeStreamAmounts(minimum, 0n);
   assert.ok(ratePerSecond * 2628000n >= minimum);
   const funding = getMarkeeAutoFunding({ ethxAvailableBalance: 0n, nativeBalance: 10n ** 18n, ratePerSecond });
   assert.ok(funding.prefund > ratePerSecond * 14400n);
@@ -89,7 +89,7 @@ test('rental minimum rounding and both buffer obligations are covered before str
 test('a requested monthly bid is never rounded below its on-chain stream rate', () => {
   const bid = 6n * 10n ** 15n;
   // This used to floor when the floored rate still exceeded the board minimum.
-  const amounts = getMarkeeStreamAmounts(bid, 0n, 1n);
+  const amounts = getMarkeeStreamAmounts(bid, 0n);
   assert.ok(amounts.ratePerSecond * 2628000n >= bid);
   assert.ok((amounts.ratePerSecond - 1n) * 2628000n < bid);
   assert.equal(amounts.buffer, amounts.ratePerSecond * 14400n);
