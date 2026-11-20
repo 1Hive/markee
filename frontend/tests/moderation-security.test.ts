@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
+import { createPublicClient, http, decodeFunctionData, encodeFunctionResult, parseAbi, isAddress } from 'viem'
+import { base } from 'viem/chains'
 import { CONTRACTS, FACTORIES, V13_LEADERBOARDS } from '../lib/contracts/addresses'
 import { trustedMembership, membershipDeps } from '../lib/moderation/membership'
 import { automaticDeps, checkPublished, evaluateObserved, softRecords, softKey, SOFT_INDEX, AUTO_POLICY, contentHash } from '../lib/moderation/automatic'
@@ -17,6 +19,76 @@ const fake = '0x2222222222222222222222222222222222222222'
 const board = '0x3333333333333333333333333333333333333333'
 const attackerBoard = '0x4444444444444444444444444444444444444444'
 const moderator = '0x5555555555555555555555555555555555555555'
+
+// Exercise viem's real multicall encoding/splitting, rather than mocking
+// client.multicall and accidentally hiding extra eth_call/head requests.
+function membershipRpc() {
+  const abi = parseAbi([
+    'function factory() view returns (address)',
+    'function isFactoryLeaderboard(address) view returns (bool)',
+    'function isMarkeeOnLeaderboard(address) view returns (bool)',
+    'function markeeAddress() view returns (address)',
+  ])
+  const aggregate = parseAbi(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)'])
+  let heads = 0, calls = 0, active = 0, maximumActive = 0
+  let failedMarkee: string | undefined
+  const sizes: number[] = [], functions: string[] = []
+  const client = createPublicClient({ chain: base, transport: http('https://membership-rpc.test', {
+    async fetchFn(_input, init) {
+      const { method, params, id } = JSON.parse(String(init?.body))
+      const response = (result: unknown) => Response.json({ jsonrpc: '2.0', id, result })
+      if (method === 'eth_blockNumber') { heads++; return response('0x2710') }
+      assert.equal(method, 'eth_call')
+      assert.equal(params[1], '0x2710')
+      const decoded = decodeFunctionData({ abi: aggregate, data: params[0].data })
+      const contracts = decoded.args![0]
+      assert.ok((params[0].data.length - 2) / 2 < 64 * 1024)
+      calls++; sizes.push(contracts.length); active++; maximumActive = Math.max(maximumActive, active)
+      await new Promise<void>(resolve => setImmediate(resolve))
+      active--
+      return response(encodeFunctionResult({ abi: aggregate, functionName: 'aggregate3', result: contracts.map(contract => {
+        const read = decodeFunctionData({ abi, data: contract.callData })
+        functions.push(read.functionName)
+        if (read.functionName === 'isMarkeeOnLeaderboard' && read.args![0].toLowerCase() === failedMarkee) return { success: false, returnData: '0x' as const }
+        const result = read.functionName === 'factory' ? FACTORIES.GITHUB : read.functionName === 'markeeAddress' ? markee : true
+        return { success: true, returnData: encodeFunctionResult({ abi, functionName: read.functionName, result }) }
+      }) }))
+    },
+  }) })
+  return { client, sizes, functions, stats: () => ({ heads, calls, maximumActive }), fail: (id: string) => { failedMarkee = id.toLowerCase() } }
+}
+
+test('a 1,000-member scan shares its pinned head and board trust in ten sequential RPC calls', async () => {
+  const rpc = membershipRpc()
+  const pairs = Array.from({ length: 1000 }, (_, i) => ({ board, markee: `0x${(i + 100).toString(16).padStart(40, '0')}` }))
+  assert.deepEqual(await trustedMembership(pairs, rpc.client, 10000n), pairs.map(() => true))
+  assert.deepEqual(rpc.stats(), { heads: 0, calls: 10, maximumActive: 1 })
+  assert.ok(rpc.sizes.every(size => size <= 128))
+  assert.equal(rpc.functions.filter(fn => fn === 'factory').length, 1)
+  assert.equal(rpc.functions.filter(fn => fn === 'isFactoryLeaderboard').length, 1)
+  assert.equal(rpc.functions.filter(fn => fn === 'isMarkeeOnLeaderboard').length, 1000)
+})
+
+test('membership reuse is invocation-only, deduplicates pairs, and keeps failed members unknown', async () => {
+  const rpc = membershipRpc()
+  rpc.fail(fake)
+  const pairs = [{ markee, board }, { markee, board }, { markee: fake, board }]
+  assert.deepEqual(await trustedMembership(pairs, rpc.client, 10000n), [true, true, null])
+  assert.equal(rpc.functions.filter(fn => fn === 'isMarkeeOnLeaderboard').length, 2)
+  assert.deepEqual(await trustedMembership(pairs, rpc.client), [true, true, null])
+  assert.deepEqual(rpc.stats(), { heads: 1, calls: 6, maximumActive: 1 })
+})
+
+test('deduplication never promotes an invalid address from a valid case-insensitive duplicate', async () => {
+  const rpc = membershipRpc()
+  const invalid = '0x000000000000000000000000000000000000aAaA'
+  assert.equal(isAddress(invalid), false)
+  const valid = invalid.toLowerCase()
+  assert.deepEqual(await trustedMembership([
+    { markee: invalid, board }, { markee: valid, board },
+    { markee, board: invalid }, { markee, board: valid },
+  ], rpc.client, 10000n), [false, true, false, true])
+})
 function setup(t: any) {
   t.mock.method(boardPolicyDeps, 'get', async () => null)
   const old = process.env.FLAG_AUTO_MODERATION

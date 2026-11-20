@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { privateKeyToAccount } from 'viem/accounts'
-import { checkDraft, checkPublished, evaluateObserved, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, sharedOverrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
+import { checkDraft, checkPublished, evaluateObserved, evaluateObservedBatch, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, sharedOverrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
 import { approveMessage, falsePositiveMessage } from '../lib/moderation/automatic-message'
 import { POST } from '../app/api/moderation/false-positive/route'
 import { itemKey } from '../lib/moderation/server'
@@ -41,6 +41,38 @@ function storage(t: any) {
   })
   return { records, soft }
 }
+
+test('scan evaluation validates once at its server-pinned block and bounds writes to 25', async t => {
+  enable(t); storage(t)
+  const client = {} as any
+  const observations = Array.from({ length: 61 }, (_, i) => ({ markee: `0x${(i + 100).toString(16).padStart(40, '0')}`, board, message: 'shit', blockNumber: '999' }))
+  let membershipCalls = 0, active = 0, maximumActive = 0
+  t.mock.method(automaticDeps, 'membership', async (pairs: unknown[], received: unknown, block: bigint) => {
+    membershipCalls++; assert.deepEqual(pairs, observations); assert.equal(received, client); assert.equal(block, 100n)
+    return pairs.map(() => true)
+  })
+  t.mock.method(automaticDeps, 'get', async () => {
+    active++; maximumActive = Math.max(maximumActive, active)
+    await new Promise<void>(resolve => setImmediate(resolve)); active--; return null
+  })
+  const result = await evaluateObservedBatch(observations, { board: [], site: [] }, 'standard', { client, blockNumber: 100n })
+  assert.equal(membershipCalls, 1)
+  assert.equal(result.length, 61)
+  assert.ok(result.every(item => item.state === 'soft-flagged' && item.contentHash === contentHash('shit')))
+  assert.equal(maximumActive, 75, '25 evaluations each issue three bounded KV reads')
+})
+
+test('unknown scan membership fails before publishing any verdict; ordinary reads remain unavailable', async t => {
+  enable(t); const { records } = storage(t)
+  const observations = [{ markee: id, board, message: 'shit', blockNumber: '1' }]
+  const previous = { contentHash: contentHash('old text'), state: 'soft-flagged' }
+  records.set(softKey(id), previous)
+  t.mock.method(automaticDeps, 'membership', async () => [null])
+  await assert.rejects(evaluateObservedBatch(observations, { board: [], site: [] }, 'standard', { client: {} as any, blockNumber: 100n }), /retaining checkpoints/)
+  assert.deepEqual(records.get(softKey(id)), previous)
+  assert.equal(records.has('sdk:snapshots:generation'), false)
+  assert.equal((await evaluateObservedBatch(observations, { board: [], site: [] }))[0].state, 'unavailable')
+})
 test('automatic moderation defaults on, supports explicit opt-out, and preserves exact hashes', t => {
   const old = process.env.FLAG_AUTO_MODERATION; delete process.env.FLAG_AUTO_MODERATION
   t.after(() => old === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = old)
