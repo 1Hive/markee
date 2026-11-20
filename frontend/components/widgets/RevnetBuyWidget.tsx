@@ -8,7 +8,8 @@ import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { usePrivy } from '@privy-io/react-auth'
 import { REVNET_V6_CONFIG } from '@/lib/contracts/addresses'
-import { estimateDirectRevnetMarkeeTokens } from '@/lib/tokenPhases'
+import { markeeEstimateHeadline } from '@/lib/markee/quote'
+import { useDirectRevnetQuote } from '@/hooks/useMarkeeQuote'
 import { formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, BLUE, BORDER, DANGER } from '@/lib/design-tokens'
 import { sanitizeDecimalInput } from '@/components/modals/StreamUI'
@@ -16,23 +17,6 @@ import { sanitizeDecimalInput } from '@/components/modals/StreamUI'
 
 // Juicebox v4 uses this sentinel address for native ETH
 const ETH_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
-
-// M/B/T-abbreviated, NaN-safe MARKEE amount display -- shows extra decimal places for sub-10 amounts
-// instead of collapsing to "0" (matches MarkeeSignModal's ReceiveCard).
-function formatMarkeeAmount(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0'
-  if (n >= 999_999e12) return '>999,999T'
-  if (n >= 1e12) return `${(n / 1e12).toFixed(3)}T`
-  if (n >= 1e9) return `${(n / 1e9).toFixed(3)}B`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(3)}M`
-  if (n < 10) {
-    let decimals = 3
-    while (decimals < 12 && Number(n.toFixed(decimals)) === 0) decimals++
-    if (decimals > 3) decimals = Math.min(decimals + 2, 12)
-    return n.toLocaleString(undefined, { maximumFractionDigits: decimals })
-  }
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
-}
 
 const JB_TERMINAL_PAY_ABI = [
   {
@@ -70,7 +54,8 @@ export function RevnetBuyWidget({ compact = false }: Props) {
 
   const parsedEth  = parseFloat(amount)
   const eth        = Number.isFinite(parsedEth) ? parsedEth : 0
-  const receive    = estimateDirectRevnetMarkeeTokens(Math.max(0, eth))
+  const amountWei  = (() => { try { return eth > 0 ? parseEther(amount) : 0n } catch { return 0n } })()
+  const receive    = markeeEstimateHeadline(useDirectRevnetQuote(amountWei, address))
   const cfg        = REVNET_V6_CONFIG[base.id]
 
   const handleBuy = () => {
@@ -149,7 +134,8 @@ export function RevnetBuyWidget({ compact = false }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 4px 0' }}>
           <span style={{ color: '#8A8FBF', fontSize: 13 }}>You receive</span>
           <span style={{ color: '#F897FE', fontWeight: 800, fontFamily: MONO, fontSize: 18, letterSpacing: -0.3 }}>
-            {formatMarkeeAmount(receive)} MARKEE
+            {receive.headline} MARKEE
+            {receive.note && <span style={{ display: 'block', fontSize: 11, fontWeight: 400, textAlign: 'right' }}>{receive.note}</span>}
           </span>
         </div>
 

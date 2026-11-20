@@ -5,7 +5,7 @@ import { parseAction, placement, assertTextLength } from '../lib/sdk/validation'
 import { paymentRoutingForReview, signEnvelope, verifyEnvelope } from '../lib/sdk/transactions';
 import { lifiStatus } from '../lib/sdk/bridge';
 import { buildMarkeeOpenStreamOperations, getMarkeeStreamAmounts, getMarkeeAutoFunding } from '../lib/sdk/gardens/streaming';
-import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests } from '../lib/sdk/gardens/challenge-store';
+import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests, reserveMarkeeActivation, MarkeeChallengeRateLimitError } from '../lib/sdk/gardens/challenge-store';
 import { executeAdmin, operationStatus } from '../lib/sdk/operations';
 import { NextRequest } from 'next/server';
 import { GET, POST, OPTIONS } from '../app/api/sdk/v1/[...path]/route';
@@ -16,22 +16,28 @@ const a = '0x1111111111111111111111111111111111111111' as const;
 const b = '0x2222222222222222222222222222222222222222' as const;
 const c = '0x3333333333333333333333333333333333333333' as const;
 
-test('sale quote follows live board splits and terminal output', async () => {
+test('sale quote follows live board splits and simulates the fee payment before the buyer payment', async () => {
   assert.equal(buyerPayment(10n ** 18n, 6200n, 3800n, true), 235600000000000000n);
   assert.equal(buyerPayment(10n ** 18n, 6200n, 3800n, false), 380000000000000000n);
-  let simulated: Record<string, unknown> | undefined;
+  let simulated: { calls: { value: bigint; args: readonly unknown[] }[]; blockNumber?: bigint } | undefined;
   const context = {
-    strategy: 'sale', revnetEnabled: true, token: c, blockNumber: 123n,
+    strategy: 'sale', revnetEnabled: true, token: c, blockNumber: 123n, beneficiary: a,
     r: async (name: string) => ({ percentToBeneficiary: 6200n, percentToPlatformFeeReceiver: 3800n,
       platformFeeReceiver: b, revNetTerminal: c, revNetProjectId: 7n } as Record<string, unknown>)[name],
-    client: { simulateContract: async (args: Record<string, unknown>) => { simulated = args; return { result: 42n }; } },
+    client: { simulateCalls: async (args: typeof simulated) => {
+      simulated = args;
+      return { results: args!.calls.map((_, i) => ({ status: 'success', result: BigInt(40 + i) })) };
+    } },
   };
-  assert.equal(await quoteReward(context as never, 10n ** 18n, a), 42n);
-  assert.equal(simulated?.value, 235600000000000000n);
+  assert.equal(await quoteReward(context as never, 10n ** 18n, a), 41n);
+  assert.deepEqual(simulated?.calls.map(call => call.value), [144400000000000000n, 235600000000000000n]);
+  assert.equal(simulated?.calls[0].args[3], b);
+  assert.equal(simulated?.calls[1].args[3], a);
   assert.equal(simulated?.blockNumber, 123n);
-  assert.equal(await quoteReward({ ...context, strategy: 'rent' } as never, 10n ** 18n, a), 42n);
-  assert.equal(simulated?.value, 235600000000000000n, 'rental monthly quote uses rent splits, not deposit value');
+  assert.equal(await quoteReward({ ...context, strategy: 'rent' } as never, 10n ** 18n, a), 40n);
+  assert.deepEqual(simulated?.calls.map(call => call.value), [235600000000000000n, 144400000000000000n], 'rental settlement pays the backer before the fee');
   assert.equal(await quoteReward({ ...context, revnetEnabled: false } as never, 10n ** 18n, a), null);
+  assert.equal(await quoteReward({ ...context, beneficiary: '0x0000000000000000000000000000000000000000' } as never, 10n ** 18n, a), 0n);
 });
 test('payment routing uses verified board values and disappears when unavailable', async () => {
   const context = { beneficiary: a, revnetEnabled: true,
@@ -96,6 +102,14 @@ test('authorization nonce can be consumed exactly once', async () => {
   assert.equal(results.filter(Boolean).length, 1);
   assert.equal(results.find(Boolean)!.amount, 123n);
 });
+test('community activations stop at each daily limit without counting refused requests', async () => {
+  const reserve = (requester: string) => reserveMarkeeActivation({ namespace: 'sdk-activation-test', limits: [{ subject: 'global', max: 3 }, { subject: requester, max: 2 }] });
+  await reserve('a');
+  await reserve('a');
+  await assert.rejects(reserve('a'), MarkeeChallengeRateLimitError);
+  await reserve('b');
+  await assert.rejects(reserve('c'), MarkeeChallengeRateLimitError);
+});
 test('replaying an admin request returns its saved result without executing a second time', async () => {
   let calls = 0;
   const body = { nonce: '135', signature: '0x123456' };
@@ -117,14 +131,14 @@ test('HTTP boundary returns CORS errors and rejects oversized bodies before RPC 
   const preflight = OPTIONS(new NextRequest('http://localhost/api/sdk/v1/snapshot', { headers: { Origin: 'https://consumer.example' } }));
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), '*');
-  const invalid = await GET(new NextRequest('http://localhost/api/sdk/v1/snapshot?placement=%7B%7D'), { params: { path: ['snapshot'] } });
+  const invalid = await GET(new NextRequest('http://localhost/api/sdk/v1/snapshot?placement=%7B%7D'), { params: Promise.resolve({ path: ['snapshot'] }) });
   assert.equal(invalid.status, 400); assert.equal(invalid.headers.get('Cache-Control'), 'no-store');
-  const malformed = await GET(new NextRequest('http://localhost/api/sdk/v1/snapshot?placement=%7B'), { params: { path: ['snapshot'] } });
+  const malformed = await GET(new NextRequest('http://localhost/api/sdk/v1/snapshot?placement=%7B'), { params: Promise.resolve({ path: ['snapshot'] }) });
   assert.equal(malformed.status, 400);
   assert.deepEqual(await malformed.json(), { code: 'REQUEST_FAILED', error: 'Invalid placement JSON in query parameter.' });
-  const large = await POST(new NextRequest('http://localhost/api/sdk/v1/prepare', { method: 'POST', body: JSON.stringify({ message: 'a'.repeat(50000) }) }), { params: { path: ['prepare'] } });
+  const large = await POST(new NextRequest('http://localhost/api/sdk/v1/prepare', { method: 'POST', body: JSON.stringify({ message: 'a'.repeat(50000) }) }), { params: Promise.resolve({ path: ['prepare'] }) });
   assert.equal(large.status, 413);
-  const tampered = await POST(new NextRequest('http://localhost/api/sdk/v1/verify', { method: 'POST', body: JSON.stringify({ id: 'invalid.signature', hash: `0x${'a'.repeat(64)}` }) }), { params: { path: ['verify'] } });
+  const tampered = await POST(new NextRequest('http://localhost/api/sdk/v1/verify', { method: 'POST', body: JSON.stringify({ id: 'invalid.signature', hash: `0x${'a'.repeat(64)}` }) }), { params: Promise.resolve({ path: ['verify'] }) });
   assert.equal(tampered.status, 400);
 });
 test('production authorization and operation journals fail closed without durable storage', async () => {
@@ -187,4 +201,69 @@ test('local view forwarding preserves the payload and validates the upstream res
   assert.deepEqual(await recordPublicView(body), { totalViews: 42, messageViews: 12, counted: false });
   valid = false;
   await assert.rejects(recordPublicView(body), /invalid view counts/);
+});
+
+test('snapshots drop the empty seed Markee but keep funded or written ones', async t => {
+  const flag = process.env.FLAG_AUTO_MODERATION;
+  process.env.FLAG_AUTO_MODERATION = 'false';
+  t.after(() => flag === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = flag);
+  const { snapshot, snapshotReaders } = await import('../lib/sdk/snapshot');
+  const { getEnvPublicClient } = await import('../lib/sdk/chains');
+  const { zeroAddress, getAddress } = await import('viem');
+  t.mock.method(snapshotReaders, 'presentation', async () => ({ flags: [], views: [], metadata: null }));
+  const client = getEnvPublicClient(8453);
+  const board = '0x2768BC6e90266248BD8bCF5401C36D8049CdF671';
+  const [seed, funded, written] = [a, b, c].map(x => getAddress(x));
+  const markees: Record<string, { message: string; totalFundsAdded: bigint }> = {
+    [seed]: { message: '', totalFundsAdded: 0n },
+    [funded]: { message: '', totalFundsAdded: 5n },
+    [written]: { message: 'gm', totalFundsAdded: 0n },
+  };
+  t.mock.method(client, 'getBlockNumber', async () => 100n);
+  t.mock.method(client, 'readContract', async ({ address, functionName }: { address: string; functionName: string }) => {
+    const m = markees[getAddress(address)];
+    if (m) return ({ owner: a, message: m.message, name: '', totalFundsAdded: m.totalFundsAdded } as Record<string, unknown>)[functionName];
+    return ({ VERSION: '1.3.0', factory: zeroAddress, leaderboardName: 'Test', minimumPrice: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 3n,
+      getTopMarkees: [[funded, seed, written], [5n, 0n, 0n]], beneficiaryAddress: a } as Record<string, unknown>)[functionName];
+  });
+  const result = await snapshot({ kind: 'board', chainId: 8453, address: board });
+  assert.deepEqual(result.entries.map(entry => entry.address), [funded, written]);
+  assert.equal(result.count, 3);
+});
+
+test('the first snapshot page only asks for more when a real Markee is left off', async t => {
+  const flag = process.env.FLAG_AUTO_MODERATION;
+  process.env.FLAG_AUTO_MODERATION = 'false';
+  t.after(() => flag === undefined ? delete process.env.FLAG_AUTO_MODERATION : process.env.FLAG_AUTO_MODERATION = flag);
+  const { snapshot, snapshotReaders } = await import('../lib/sdk/snapshot');
+  const { getEnvPublicClient } = await import('../lib/sdk/chains');
+  const { zeroAddress, getAddress } = await import('viem');
+  t.mock.method(snapshotReaders, 'presentation', async () => ({ flags: [], views: [], metadata: null }));
+  const client = getEnvPublicClient(8453);
+  const addr = (i: number) => getAddress(`0x${(i + 1).toString(16).padStart(40, '0')}`);
+  const seed = addr(0);
+  const real = Array.from({ length: 20 }, (_, i) => addr(i + 1));
+  const unfundedReal = real[19];
+  let top: string[] = [];
+  t.mock.method(client, 'getBlockNumber', async () => 100n);
+  t.mock.method(client, 'readContract', async ({ address, functionName }: { address: string; functionName: string }) => {
+    const target = getAddress(address);
+    if (target === seed || real.includes(target)) {
+      const funds = target === seed || target === unfundedReal ? 0n : 1n;
+      return ({ owner: seed, message: target === seed ? '' : 'gm', name: '', totalFundsAdded: funds } as Record<string, unknown>)[functionName];
+    }
+    return ({ VERSION: '1.3.0', factory: zeroAddress, leaderboardName: 'Test', minimumPrice: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 21n,
+      getTopMarkees: [top, top.map(() => 1n)], getMarkees: all, beneficiaryAddress: seed } as Record<string, unknown>)[functionName];
+  });
+  let all = [seed, ...real];
+  top = real;
+  assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, null);
+  top = [...real.slice(0, 19), seed];
+  assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, 0);
+  // A board with no seed (pre-v1.2) still pages to its 21st real Markee.
+  const extra = addr(21);
+  real.push(extra);
+  all = real.slice();
+  top = real.slice(0, 20);
+  assert.equal((await snapshot({ kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' })).nextOffset, 0);
 });

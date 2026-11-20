@@ -5,10 +5,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, Eye, EyeOff } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Eye, EyeOff } from 'lucide-react'
 import { StrategyBadge } from '@/components/StrategyBadge'
+import { LiveDot } from '@/components/ui/LiveDot'
 import { useLiveBalance } from '@/hooks/useLiveBalance'
-import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, CARD_BG } from '@/lib/design-tokens'
+import { MONO, PINK, GREEN, BG, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG } from '@/lib/design-tokens'
 import type { AnyLeaderboard } from '@/components/account/types'
 import { ArchiveButton, AttnGroup, PanelHead, SECONDS_PER_MONTH, SegToggle, fmtAddr, fmtCount, fmtWeiUsd } from '@/components/account/primitives'
 import { PlatformGlyph, shownOn } from '@/components/account/sites'
@@ -92,7 +93,7 @@ function MarkeeTableHead() {
 }
 
 export function PulseDot() {
-  return <span className="acct-pulse" style={{ width: 7, height: 7, borderRadius: 99, background: GREEN, flexShrink: 0, display: 'inline-block' }} />
+  return <LiveDot color={GREEN} size={7} />
 }
 
 function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRestore, onManage }: {
@@ -116,6 +117,9 @@ function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRe
   const notReportingTip = notReporting === 1 && Object.keys(integrations?.views ?? {}).length === 1
     ? viewReportingTip(viewReporting(integrations, notReportingKeys[0]), integrations?.lastView[notReportingKeys[0]])
     : `${notReporting} of these embeds ${notReporting === 1 ? "isn't" : "aren't"} logging views. Open Manage to see which.`
+  // GitHub embeds whose last billboard sync failed; the Manage drawer lists which and why.
+  const syncFailed = archived ? 0 : Object.values(integrations?.sync ?? {}).filter(st => !st.ok).length
+  const syncFailedTip = `${syncFailed} GitHub ${syncFailed === 1 ? 'embed' : 'embeds'} failed to sync. Open Manage to see which.`
   const amount = (color: string = TEXT): React.CSSProperties => ({ textAlign: 'right', fontSize: 14, fontWeight: 700, color, whiteSpace: 'nowrap' })
   const dash = <span style={{ textAlign: 'right', color: MUTED, fontSize: 12.5 }}>-</span>
   const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 10px', height: 32, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }
@@ -143,6 +147,11 @@ function MarkeeRow({ lb, archived, selected, views, integrations, ethPrice, onRe
                   style={{ display: 'inline-flex', color: AMBER, flexShrink: 0 }}
                 >
                   <EyeOff size={13} aria-label="Not logging views" />
+                </span>
+              )}
+              {syncFailed > 0 && (
+                <span title={syncFailedTip} style={{ display: 'inline-flex', color: DANGER, flexShrink: 0 }}>
+                  <AlertTriangle size={13} aria-label={syncFailedTip} />
                 </span>
               )}
             </>

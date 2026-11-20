@@ -21,6 +21,7 @@ import { type Strategy } from '@/lib/strategy'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 const PURP = '#7B6AF4'
 const SECONDS_IN_MONTH = 2_628_000n
@@ -125,11 +126,6 @@ function EyeIcon({ size = 10, color = MUTED }: { size?: number; color?: string }
 }
 
 // ── Verified globe SVG ────────────────────────────────────────────────────────
-function LiveDot() {
-  return (
-    <span style={{ width: 6, height: 6, borderRadius: 99, background: GREEN, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
-  )
-}
 
 // ── Rocket SVG ────────────────────────────────────────────────────────────────
 function RocketIcon({ size = 12, color = PINK }: { size?: number; color?: string }) {
@@ -260,7 +256,7 @@ function RegularServedOnCell({ lb }: { lb: SuperfluidLeaderboard }) {
         <LightningIcon />
       </span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {lb.name}
+        {liveServedOnLabel(lb)}
       </span>
     </span>
   )
@@ -268,6 +264,7 @@ function RegularServedOnCell({ lb }: { lb: SuperfluidLeaderboard }) {
 
 // ── Shared grid ───────────────────────────────────────────────────────────────
 const ROW_COLS = '190px 110px 1fr 74px 120px 24px'
+const ROW_MIN_WIDTH = 780
 
 // ── Live (integrated) table row -- mirrors /marketplace's For Rent row ─────────
 function LiveTableRow({
@@ -294,7 +291,7 @@ function LiveTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: ROW_COLS,
+        gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -317,7 +314,7 @@ function LiveTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>
@@ -368,7 +365,7 @@ function BoostedTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: ROW_COLS,
+        gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -386,7 +383,7 @@ function BoostedTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>
@@ -434,7 +431,7 @@ function RegularTableRow({
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid',
-        gridTemplateColumns: ROW_COLS,
+        gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
         gap: 16,
         padding: '11px 14px',
         textDecoration: 'none',
@@ -452,7 +449,7 @@ function RegularTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>
@@ -480,7 +477,7 @@ function TableHeaders({ actionLabel = 'Action' }: { actionLabel?: string }) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: ROW_COLS,
+      gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH,
       gap: 16,
       padding: '11px 14px',
       borderBottom: `1px solid ${BORDER}`,
@@ -502,7 +499,7 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: ROW_COLS, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: ROW_COLS, minWidth: ROW_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
           {[1, 2, 3, 4, 5].map(j => (
             <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
           ))}
@@ -673,14 +670,7 @@ export default function SuperfluidCampaignPage() {
                     borderRadius: 99,
                     whiteSpace: 'nowrap',
                   }}>
-                    <span style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 99,
-                      background: GREEN,
-                      display: 'inline-block',
-                      animation: 'glowPulse 1.5s ease-in-out infinite',
-                    }} />
+                    <LiveDot color={GREEN} size={6} />
                     {campaign?.name ?? 'Superfluid Rewards'}
                   </span>
                 </div>
@@ -691,7 +681,7 @@ export default function SuperfluidCampaignPage() {
             </div>
 
             {/* Right CTAs */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <button
                 onClick={() => setRewardsOpen(true)}
                 style={{
@@ -738,7 +728,7 @@ export default function SuperfluidCampaignPage() {
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 32, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{activeSignsCount}</span>
               <span style={{ color: MUTED }}>active signs</span>
             </div>
@@ -784,7 +774,7 @@ export default function SuperfluidCampaignPage() {
             </span>
           </div>
 
-          <div style={{ background: BG, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ background: BG, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
             <TableHeaders />
             {loading ? (
               <SkeletonRows count={4} />
@@ -811,14 +801,14 @@ export default function SuperfluidCampaignPage() {
       <section style={{ padding: '44px 40px', borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1240, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <LiveDot />
+            <LiveDot color={GREEN} size={6} />
             <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>Live Superfluid Markees</span>
           </div>
           <p style={{ margin: '0 0 20px', color: MUTED, fontSize: 13.5 }}>
             Verified, embedded on a real site -- the same table shown for For Rent signs on /marketplace.
           </p>
 
-          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
             <TableHeaders actionLabel="Rate" />
             {loading ? (
               <SkeletonRows count={4} />
@@ -878,7 +868,7 @@ export default function SuperfluidCampaignPage() {
             <span style={{ fontWeight: 700, fontSize: 18, color: TEXT }}>All Superfluid Markees</span>
           </div>
 
-          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+          <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
             <TableHeaders />
             {loading ? (
               <SkeletonRows count={4} />

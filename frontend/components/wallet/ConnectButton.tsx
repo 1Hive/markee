@@ -1,7 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth'
-import { useAccount } from 'wagmi'
+import { useAccount, useConnections, useDisconnect } from 'wagmi'
+import { useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { ChevronDown, LogOut, RefreshCw, User } from 'lucide-react'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
@@ -75,11 +76,14 @@ export function AccountButton() {
   )
 }
 
-export function ConnectButton() {
+export function ConnectButton({ compactOnPhone = false }: { compactOnPhone?: boolean } = {}) {
   const { authenticated, ready, login, logout, user } = usePrivy()
   const { wallets } = useWallets()
   const { connectWallet } = useConnectWallet()
   const { address } = useAccount()
+  const connections = useConnections()
+  const { disconnectAsync } = useDisconnect()
+  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
@@ -132,7 +136,12 @@ export function ConnectButton() {
 
   const handleDisconnect = async () => {
     setMenuOpen(false)
+    await Promise.allSettled([
+      ...connections.map(({ connector }) => disconnectAsync({ connector })),
+      fetch('/api/github/me', { method: 'DELETE' }),
+    ])
     await logout()
+    queryClient.clear()
   }
 
   return (
@@ -142,6 +151,7 @@ export function ConnectButton() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
+        aria-label={displayName}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: 'transparent', color: '#B8B6D9',
@@ -162,7 +172,7 @@ export function ConnectButton() {
         }}
       >
         <GlowDot />
-        {displayName}
+        <span className={compactOnPhone ? 'hidden sm:inline' : undefined}>{displayName}</span>
         <ChevronDown size={14} style={{ transform: menuOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 160ms' }} />
       </button>
 

@@ -7,6 +7,9 @@ import { kv } from '@vercel/kv';
 import type { Placement } from '../../../packages/sdk/src/types';
 import { SDKError } from './validation';
 import { boardContext } from './snapshot';
+import { publicIPv4 } from '../net/public-address';
+
+export { publicIPv4 };
 
 export function siteUrl(value: unknown): URL {
   if (typeof value !== 'string' || value.length > 2048) throw new SDKError('INVALID_SITE', 'Provide a public HTTPS site URL.');
@@ -15,11 +18,6 @@ export function siteUrl(value: unknown): URL {
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') || isIP(url.hostname) || url.hostname.startsWith('[') || !url.hostname.includes('.')) throw new SDKError('INVALID_SITE', 'Provide a public HTTPS hostname using the default port.');
   url.hash = ''; url.search = '';
   return url;
-}
-export function publicIPv4(ip: string): boolean {
-  if (isIP(ip) !== 4) return false;
-  const [a,b,c] = ip.split('.').map(Number);
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0 || (b === 2) || (b === 88 && c === 99))) || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) || (a === 203 && b === 0 && c === 113));
 }
 export function hasSiteMarker(html: string, board: string): boolean {
   const visit = (node: DefaultTreeAdapterMap['node']): boolean => {
@@ -46,16 +44,16 @@ export async function fetchSiteHtml(url: URL): Promise<string> {
     req.on('error', reject); req.end();
   });
 }
-const MERGE = `local raw=redis.call('GET',KEYS[1]); local m=raw and cjson.decode(raw) or {}; local urls=m.verifiedUrls or {}; if m.verifiedUrl and #urls==0 then table.insert(urls,m.verifiedUrl) end; for _,u in ipairs(urls) do if u==ARGV[1] then return cjson.encode(urls) end end; if #urls>=100 then return redis.error_reply('Site limit reached') end; table.insert(urls,ARGV[1]); m.verifiedUrls=urls; m.verifiedUrl=urls[1]; m.status='verified'; redis.call('SET',KEYS[1],cjson.encode(m)); return cjson.encode(urls)`;
+const MERGE = `local raw=redis.call('GET',KEYS[1]) or (KEYS[2] and redis.call('GET',KEYS[2])); local m=raw and cjson.decode(raw) or {}; local urls=m.verifiedUrls or {}; if m.verifiedUrl and #urls==0 then table.insert(urls,m.verifiedUrl) end; for _,u in ipairs(urls) do if u==ARGV[1] then return cjson.encode(urls) end end; if #urls>=100 then return redis.error_reply('Site limit reached') end; table.insert(urls,ARGV[1]); m.verifiedUrls=urls; m.verifiedUrl=urls[1]; m.status='verified'; redis.call('SET',KEYS[1],cjson.encode(m)); return cjson.encode(urls)`;
 export async function verifySite(p: Placement, value: unknown, origin: string | null) {
   if (p.kind !== 'board' || p.chainId !== 8453) throw new SDKError('UNSUPPORTED_SITE', 'Website verification currently supports Base boards.');
   const url = siteUrl(value);
   if (origin && origin !== url.origin) throw new SDKError('SITE_ORIGIN_MISMATCH', 'The site must match the requesting app origin.', 403);
-  await boardContext(p.chainId, p.address);
+  const { board, legacyBoard } = await boardContext(p.chainId, p.address);
   let html: string;
   try { html = await fetchSiteHtml(url); } catch (e) { if (e instanceof SDKError) throw e; throw new SDKError('SITE_UNREACHABLE', 'Could not read this public site.', 422); }
-  if (!hasSiteMarker(html, p.address)) return { verified: false, url: url.href, message: 'Publish a data-markee-address attribute containing this board address in the page HTML, then retry.' };
-  const result = await kv.eval(MERGE, [`oi:meta:${p.address.toLowerCase()}`], [url.href]);
+  if (!hasSiteMarker(html, p.address) && !hasSiteMarker(html, board)) return { verified: false, url: url.href, message: 'Publish a data-markee-address attribute containing this board address in the page HTML, then retry.' };
+  const result = await kv.eval(MERGE, [`oi:meta:${board.toLowerCase()}`, ...(legacyBoard ? [`oi:meta:${legacyBoard.toLowerCase()}`] : [])], [url.href]);
   await kv.set('sdk:snapshots:generation', randomUUID());
   await Promise.all(['cache:openinternet:leaderboards', 'cache:forsale:leaderboards', 'cache:streaming:leaderboards', 'cache:ecosystem:leaderboards', ...['openinternet', 'forsale', 'streaming'].map(platform => `sdk:snapshots:v1:listings:cache:${platform}:leaderboards`)].map(key => kv.del(key)));
   return { verified: true, url: url.href, verifiedUrls: (typeof result === 'string' ? JSON.parse(result) : result) as string[] };

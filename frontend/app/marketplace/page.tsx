@@ -23,6 +23,7 @@ import { MarkeeWatermark } from '@/components/board-detail/shared'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { useBoardIntegrations } from '@/lib/integrations/useBoardIntegrations'
 import { logoDevUrl } from '@/lib/utils'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const PURP  = '#7B6AF4'
@@ -41,9 +42,8 @@ interface Leaderboard {
   streamedAt?: number
   topFundsAddedRaw: string
   markeeCount: number
-  // Both already come through in /api/ecosystem/leaderboards' response (every platform route
-  // returns them); only used for moderation eligibility (FlagButton/ModeratedContent's boardAdmin/
-  // boardCreator props), not currently displayed.
+  // Both come through in /api/ecosystem/leaderboards. admin gates moderation (FlagButton and
+  // ModeratedContent boardAdmin); neither is displayed.
   admin?: string
   creator?: string | null
   topMessage: string | null
@@ -56,6 +56,7 @@ interface Leaderboard {
   logoUrl?: string
   status?: string
   isLegacy?: boolean
+  disqualified?: boolean
   // Populated for boards with no inherent platform tag (the shared "For Sale" factory) so Served On
   // can be derived from actual verification instead of a creation-time tag.
   linkedFiles?: { verified: boolean; repoOwner?: string; repoFullName?: string }[]
@@ -135,6 +136,9 @@ function useCountUp(target: number, started: boolean, duration = 1600) {
   return val
 }
 
+const TABLE_COLS = '190px 110px 1fr 74px 64px 120px 100px'
+const TABLE_MIN_WIDTH = 940
+
 function useNarrow() {
   const [narrow, setNarrow] = useState(false)
   useEffect(() => {
@@ -167,7 +171,7 @@ function SkeletonStatCell() {
         <span className="skeleton" style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
         <div className="skeleton" style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
       </span>
-      <div className="skeleton" style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+      <div className="skeleton" style={{ width: 110, maxWidth: 'calc(100% - 17px)', height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
     </div>
   )
 }
@@ -438,7 +442,7 @@ function FeaturedHero({ lb, views, viewsLoading, ethPrice }: { lb: Leaderboard; 
           {/* bottom-right: author */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, fontSize: 13, color: TEXT2, flexWrap: 'wrap' }}>
             <span style={{ color: MUTED }}>-</span>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator}>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin}>
               {lb.topMessageOwner && <span style={{ color: TEXT }}>{lb.topMessageOwner}</span>}
               {lb.topMarkeeOwner && (
                 <span style={{ color: MUTED, fontFamily: MONO, fontSize: 11 }}>
@@ -559,7 +563,7 @@ function TableRow({ lb, featured, views, viewsLoading, ethPrice, position, onBuy
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px',
+        display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH,
         gap: 16, padding: '11px 14px', textDecoration: 'none', alignItems: 'center',
         borderBottom: `1px solid ${BORDER}`,
         background: isTop
@@ -656,13 +660,14 @@ export default function MarketplacePage() {
   // pagination -- see app/api/marketplace/positions.
   const { activeAddress } = useActiveWallet()
   const [positionsMap, setPositionsMap] = useState<Record<string, { rank: number; markeeAddress: string; fundedRaw?: string }>>({})
-  useEffect(() => {
+  const loadPositions = useCallback(() => {
     if (!activeAddress) { setPositionsMap({}); return }
     fetch(`/api/marketplace/positions?wallet=${activeAddress.toLowerCase()}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.positions) setPositionsMap(data.positions) })
       .catch(() => {})
   }, [activeAddress])
+  useEffect(() => { loadPositions() }, [loadPositions])
   const positionFor = useCallback((lb: Leaderboard): RowPosition | null => {
     const p = positionsMap[lb.address.toLowerCase()]
     if (!p) return null
@@ -679,8 +684,8 @@ export default function MarketplacePage() {
   const [page,    setPage]     = useState(0)
 
   // Fetch leaderboard list
-  useEffect(() => {
-    fetch(`/api/ecosystem/leaderboards?t=${Date.now()}`, { cache: 'no-store' })
+  const loadListings = useCallback((bust = false) =>
+    fetch(`/api/ecosystem/leaderboards?${bust ? 'bust=1' : `t=${Date.now()}`}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return
@@ -698,8 +703,10 @@ export default function MarketplacePage() {
         })
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false)),
+  [])
+  useEffect(() => { loadListings() }, [loadListings])
+  const refreshAfterTx = useCallback(() => { loadListings(true).then(loadPositions) }, [loadListings, loadPositions])
   const ecoStats = {
     markees: ecoTotals.markees,
     messages: ecoTotals.messages,
@@ -774,6 +781,7 @@ export default function MarketplacePage() {
       }
       // default (raised) — rank by cumulative funds: fixed boards' lump-sum total, streaming boards'
       // total streamed-in. One cumulative-$ axis so the "Total raised" column and its sort are honest.
+      if (!!a.disqualified !== !!b.disqualified) return a.disqualified ? 1 : -1
       const at = BigInt(a.totalFundsRaw || '0')
       const bt = BigInt(b.totalFundsRaw || '0')
       return (at > bt ? 1 : at < bt ? -1 : 0) * dir
@@ -795,7 +803,7 @@ export default function MarketplacePage() {
   const pageCount  = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
 
   // Top leaderboard for featured hero (by totalFunds, must have a message)
-  const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage).sort((a, b) => {
+  const featured = useMemo(() => leaderboards.filter(lb => lb.topMessage && !lb.disqualified).sort((a, b) => {
     const at = BigInt(a.totalFundsRaw || '0'), bt = BigInt(b.totalFundsRaw || '0')
     return bt > at ? 1 : bt < at ? -1 : 0
   })[0] ?? null, [leaderboards])
@@ -831,7 +839,7 @@ export default function MarketplacePage() {
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: MONO, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: PINK, marginBottom: 14 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               Marketplace
             </div>
             <h2 style={{ margin: 0, fontSize: 'clamp(26px,3.4vw,38px)', fontWeight: 800, color: TEXT, letterSpacing: -0.6 }}>
@@ -899,9 +907,9 @@ export default function MarketplacePage() {
         </div>
 
         {/* table */}
-        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+        <div style={{ background: BG2, borderRadius: 10, border: `1px solid ${BORDER}`, overflowX: 'auto' }}>
           {/* column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}`, background: BG, alignItems: 'center' }}>
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Served on</span>
             <SortHead label="Total raised"    col="raised" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', color: MUTED }}>Current Message</span>
@@ -916,7 +924,7 @@ export default function MarketplacePage() {
           {/* rows */}
           {loading ? (
             Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '190px 110px 1fr 74px 64px 120px 100px', gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: TABLE_COLS, minWidth: TABLE_MIN_WIDTH, gap: 16, padding: '11px 14px', borderBottom: `1px solid ${BORDER}` }}>
                 {[1, 2, 3, 4, 5, 6].map(j => (
                   <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.08)', borderRadius: 4 }} />
                 ))}
@@ -965,7 +973,7 @@ export default function MarketplacePage() {
           initialView={buyModal.initialView as 'addFunds' | undefined}
           initialTargetAddress={buyModal.initialTargetAddress}
           onClose={() => setBuyModal(null)}
-          onSuccess={() => setBuyModal(null)}
+          onSuccess={() => { setBuyModal(null); refreshAfterTx() }}
         />
       )}
 
@@ -976,7 +984,7 @@ export default function MarketplacePage() {
           initialView={streamCreate.initialView as 'manage' | undefined}
           initialTargetAddress={streamCreate.initialTargetAddress}
           onClose={() => setStreamCreate(null)}
-          onSuccess={() => setStreamCreate(null)}
+          onSuccess={() => { setStreamCreate(null); refreshAfterTx() }}
         />
       )}
     </div>

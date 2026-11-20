@@ -43,7 +43,7 @@ A full production build of the existing Markee frontend also needs its existing 
 
 Production fails closed when durable state or the transaction-signing secret is missing. Development may keep rate limits, challenges and admin operation records in process memory; this does not survive restart. Public reads require no signer. Keep the keeper configured only where community writes are intended to run.
 
-For an isolated local worktree without database credentials, put `MARKEE_SDK_PUBLIC_DATA_PROXY=true` in `frontend/.env.local`. The sample still uses only its configured SDK API; the backend contacts the fixed `https://www.markee.xyz/api` origin. Failed or malformed responses leave moderation/views unavailable. This mode uses the existing public moderation endpoint's semantics, and real view events are deduplicated by the local server's outbound IP. It is ignored outside development and does not replace production storage, authorization, or keeper configuration.
+For an isolated local worktree without database credentials, start the dev server with `MARKEE_SDK_PUBLIC_DATA_PROXY=true npm run dev`. The sample still uses only its configured SDK API; the backend contacts the fixed `https://www.markee.xyz/api` origin. Failed or malformed responses leave moderation/views unavailable. This mode uses the existing public moderation endpoint's semantics, and real view events are deduplicated by the local server's outbound IP. It is ignored outside development and does not replace production storage, authorization, or keeper configuration.
 
 ## API contract
 
@@ -104,7 +104,7 @@ Both For Sale and For Rent use the same Redis-backed display cache. Keys include
 placement kind, chain, board/community, wallet and page offset. Decimal amounts,
 pagination, moderation, views, themes and SDK wallet adapters keep their existing
 contracts. Optional `freshness` metadata uses epoch milliseconds. Public snapshots
-are fresh for 30 seconds with at most 300 additional stale seconds; wallet
+are fresh for 60 seconds with at most 300 additional stale seconds; wallet
 snapshots use 20 seconds plus 60 stale seconds. `/community` also caches its
 display-only integration/revenue result. Community permissions are read afresh;
 preparation, simulations, quotes, signatures and receipt verification bypass the

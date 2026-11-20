@@ -87,7 +87,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
     if (!readsReady || !markeeAddress) return
     if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
     if (opts.belowMin) { setError(`The minimum is ${opts.minMonthlyEth} ETH / month.`); return }
-    if (calc.prefund <= calc.buffer) { setError('Fund the stream for longer (a few hours minimum).'); return }
+    if (calc.prefund <= calc.buffer) { setError('Not enough ETH in your wallet to start this stream. Add funds, then try again.'); return }
 
     try {
       setSubmitting(true)

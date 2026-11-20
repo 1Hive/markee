@@ -157,19 +157,19 @@ test('platform activation challenge rejects unauthorized and duplicate boards; d
 });
 
 test('v1 HTTP boundary rejects unknown platforms and does not offer gated activation', async () => {
-  const invalid = await GET(new NextRequest(`http://localhost/api/sdk/v1/snapshot?placement=${encodeURIComponent(JSON.stringify({ ...revnetPlacement, platformId: 'unknown' }))}`), { params: { path: ['snapshot'] } });
+  const invalid = await GET(new NextRequest(`http://localhost/api/sdk/v1/snapshot?placement=${encodeURIComponent(JSON.stringify({ ...revnetPlacement, platformId: 'unknown' }))}`), { params: Promise.resolve({ path: ['snapshot'] }) });
   assert.equal(invalid.status, 400);
   const activated = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate-direct', {
     method: 'POST', body: JSON.stringify({ action: 'challenge', placement: revnetPlacement, strategy: 'sale', beneficiary: wallet, account: owner }),
-  }), { params: { path: ['platform', 'activate-direct'] } });
+  }), { params: Promise.resolve({ path: ['platform', 'activate-direct'] }) });
   assert.equal(activated.status, 503);
   assert.equal((await activated.json()).code, 'PLATFORM_DISABLED');
   const badBeneficiary = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate-direct', {
     method: 'POST', body: JSON.stringify({ action: 'challenge', placement: revnetPlacement, strategy: 'sale', beneficiary: empty, account: owner }),
-  }), { params: { path: ['platform', 'activate-direct'] } });
+  }), { params: Promise.resolve({ path: ['platform', 'activate-direct'] }) });
   assert.equal(badBeneficiary.status, 400);
   assert.equal((await badBeneficiary.json()).code, 'INVALID_ADDRESS');
-  const former = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate', { method: 'POST', body: '{}' }), { params: { path: ['platform', 'activate'] } });
+  const former = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate', { method: 'POST', body: '{}' }), { params: Promise.resolve({ path: ['platform', 'activate'] }) });
   assert.equal(former.status, 426);
   assert.equal((await former.json()).code, 'PLATFORM_UPGRADE_REQUIRED');
 });
@@ -181,7 +181,7 @@ test('old preview activation retains status recovery for a previously recorded o
   const saved = await previous.json();
   const response = await POST(new NextRequest('http://localhost/api/sdk/v1/platform/activate', {
     method: 'POST', body: JSON.stringify(body),
-  }), { params: { path: ['platform', 'activate'] } });
+  }), { params: Promise.resolve({ path: ['platform', 'activate'] }) });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).id, saved.id);
 });
@@ -193,7 +193,7 @@ test('disabled unactivated community remains a readable v1 snapshot', async () =
   delete process.env.MARKEE_PLATFORM_BOARD_REGISTRAR_ADDRESS_BASE;
   try {
     const url = `http://localhost/api/sdk/v1/snapshot?${new URLSearchParams({ placement: JSON.stringify(revnetPlacement) })}`;
-    const response = await GET(new NextRequest(url), { params: { path: ['snapshot'] } });
+    const response = await GET(new NextRequest(url), { params: Promise.resolve({ path: ['snapshot'] }) });
     assert.equal(response.status, 200);
     const snapshot = await response.json();
     assert.equal(snapshot.board, null);
@@ -223,7 +223,7 @@ test('admin-acceptance status binds transaction sender, board and calldata befor
     t.mock.method(client, 'getTransactionReceipt', async () => ({ status: receiptStatus }));
     const transactionHash = `0x${'a'.repeat(64)}`;
     const url = `http://localhost/api/sdk/v1/platform/admin-status?${new URLSearchParams({ placement: JSON.stringify(revnetPlacement), account: owner, transactionHash })}`;
-    const call = () => GET(new NextRequest(url), { params: { path: ['platform', 'admin-status'] } });
+    const call = () => GET(new NextRequest(url), { params: Promise.resolve({ path: ['platform', 'admin-status'] }) });
     assert.equal((await (await call()).json()).status, 'pending', 'receipt alone does not complete admin handoff');
     admin = owner;
     assert.equal((await (await call()).json()).status, 'confirmed');
@@ -248,7 +248,7 @@ test('registrar lookup outage fails closed rather than reporting an unactivated 
     t.mock.method(getEnvPublicClient(8453), 'readContract', async () => { throw Error('RPC unavailable'); });
     await assert.rejects(platformCommunity(revnetPlacement, owner), /RPC unavailable/);
     const url = `http://localhost/api/sdk/v1/snapshot?${new URLSearchParams({ placement: JSON.stringify(revnetPlacement) })}`;
-    const response = await GET(new NextRequest(url), { params: { path: ['snapshot'] } });
+    const response = await GET(new NextRequest(url), { params: Promise.resolve({ path: ['snapshot'] }) });
     assert.equal(response.status, 502);
     assert.equal((await response.json()).code, 'REQUEST_FAILED');
   });

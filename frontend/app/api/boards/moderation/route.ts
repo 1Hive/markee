@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { verifyMessage } from 'viem'
 import { metaWriteDeps } from '@/lib/openinternet/meta-deps'
 import { boardModerationPolicy, boardPolicyDeps, boardPolicyKey } from '@/lib/moderation/board-policy'
 import { versionedModerationPolicy } from '@/lib/moderation/severity'
 import { boardPolicyMessage } from '@/lib/moderation/board-policy-message'
 import { readLimitedJsonBody } from '@/lib/sdk/gardens/body'
+import { authorizeWallet } from '@/lib/auth/wallet-session'
 
 export const dynamic = 'force-dynamic'
 const ADDRESS = /^0x[0-9a-f]{40}$/i
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const body = await readLimitedJsonBody(request, 2048) as Record<string, unknown>
     const { board, owner, signature, timestamp } = body
     if (typeof board !== 'string' || !ADDRESS.test(board) || typeof owner !== 'string' || !ADDRESS.test(owner) ||
-      typeof signature !== 'string' || !/^0x[0-9a-f]+$/i.test(signature) || typeof timestamp !== 'number' ||
+      (signature !== undefined && (typeof signature !== 'string' || !/^0x[0-9a-f]+$/i.test(signature))) || typeof timestamp !== 'number' ||
       !Number.isSafeInteger(timestamp) || Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) {
       return NextResponse.json({ error: 'Invalid or expired request' }, { status: 400, headers: NO_CACHE })
     }
@@ -37,8 +37,8 @@ export async function POST(request: Request) {
     catch { return NextResponse.json({ error: 'Invalid moderation policy version or rules' }, { status: 400, headers: NO_CACHE }) }
     const [owners] = await metaWriteDeps.readBoardOwners([board.toLowerCase()])
     if (!owners.includes(owner.toLowerCase())) return NextResponse.json({ error: 'Only a board owner can change moderation' }, { status: 403, headers: NO_CACHE })
-    const valid = await verifyMessage({ address: owner as `0x${string}`, message: boardPolicyMessage(board, policy, timestamp), signature: signature as `0x${string}` }).catch(() => false)
-    if (!valid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401, headers: NO_CACHE })
+    const auth = await authorizeWallet(request, owner, signature, () => boardPolicyMessage(board, policy, timestamp))
+    if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status, headers: NO_CACHE })
     const previous = await boardPolicyDeps.get(boardPolicyKey(board))
     if (previous && previous.updatedAt >= timestamp) return NextResponse.json({ error: 'This update is stale' }, { status: 409, headers: NO_CACHE })
     await boardPolicyDeps.set(boardPolicyKey(board), { policy, updatedAt: timestamp })

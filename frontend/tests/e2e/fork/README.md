@@ -16,8 +16,13 @@ anything:
 
 ## Running
 
-Needs Docker, Foundry (`anvil`), and a Base RPC that serves historical state: `ALCHEMY_BASE_URL` in
-`.env.local`, or `E2E_FORK_RPC_URL`.
+Needs Docker, Foundry (`anvil`), and a Base RPC that serves historical state, from `E2E_FORK_RPC_URL`
+or `ALCHEMY_BASE_URL` in the process environment. Don't keep it in a `.env.local` file; either export
+`E2E_FORK_RPC_URL` for the shell, or run through Vercel so the key is injected at runtime:
+
+```bash
+npm run env:dev -- npm run test:e2e:fork
+```
 
 ```bash
 npm run test:e2e:fork             # starts Anvil, Redis/SRH and `next dev -p 3100` (.next-e2e)

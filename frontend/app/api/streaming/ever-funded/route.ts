@@ -8,24 +8,16 @@
 // that has never appeared in one has genuinely never received a single payment; that's the signal
 // used to drop dead-on-arrival markees from the leaderboard rather than showing them as "inactive".
 // The scan itself (and its permanent KV checkpoint) is lib/streaming/messages.ts getBackingHistory,
-// shared with the account routes.
+// shared with the account routes. Only boards the streaming factory recognizes are scanned.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicClient, http, isAddress } from 'viem'
-import { base } from 'viem/chains'
-import { kv } from '@vercel/kv'
-import { getBackingHistory, everFundedMarkees } from '@/lib/streaming/messages'
+import { isAddress, type Address } from 'viem'
+import { everFundedMarkees } from '@/lib/streaming/messages'
+import { everFundedDeps } from '@/lib/streaming/ever-funded-deps'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 const CACHE_TTL = 60 // seconds
-
-function getClient() {
-  return createPublicClient({
-    chain: base,
-    transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org', { fetchOptions: { cache: 'no-store' } }),
-  })
-}
 
 export async function GET(request: NextRequest) {
   const board = new URL(request.url).searchParams.get('board')?.toLowerCase().trim()
@@ -34,13 +26,20 @@ export async function GET(request: NextRequest) {
   }
 
   const cacheKey = `cache:streaming:ever-funded:${board}`
-  const cached = await kv.get<{ markees: string[] }>(cacheKey)
+  const cached = await everFundedDeps.get<{ markees: string[] }>(cacheKey).catch(() => null)
   if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
 
+  if (await everFundedDeps.rateLimited(request, 'streaming-ever-funded', 120)) {
+    return NextResponse.json({ error: 'Too many requests, try again shortly' }, { status: 429, headers: NO_CACHE })
+  }
+
   try {
-    const history = await getBackingHistory(getClient(), board)
+    if (!await everFundedDeps.isStreamingBoard(board as Address)) {
+      return NextResponse.json({ error: 'Not a streaming board' }, { status: 404, headers: NO_CACHE })
+    }
+    const history = await everFundedDeps.backingHistory(board)
     const payload = { markees: [...everFundedMarkees(history)] }
-    await kv.set(cacheKey, payload, { ex: CACHE_TTL })
+    await everFundedDeps.set(cacheKey, payload, CACHE_TTL)
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (error) {
     console.error('[streaming/ever-funded] error:', error)

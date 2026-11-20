@@ -15,7 +15,8 @@
 //      KV_REST_API_URL=... KV_REST_API_TOKEN=... node scripts/migrate-views.mjs
 //
 // Get KV_REST_API_URL + KV_REST_API_TOKEN from:
-//   Vercel dashboard → Storage → your KV store → .env.local tab
+//   Vercel dashboard → Storage → your KV store, or inject them without a file:
+//   cd frontend && npm run env:dev -- node ../scripts/migrate-views.mjs
 
 import { createClient } from '@vercel/kv'
 import { readFileSync } from 'fs'
@@ -43,7 +44,7 @@ const MIGRATIONS = results.migrations.flatMap(m =>
 if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
   console.error('Missing KV env vars.')
   console.error('  KV_REST_API_URL=...  KV_REST_API_TOKEN=...  node scripts/migrate-views.mjs')
-  console.error('Get them from: Vercel dashboard → Storage → KV store → .env.local tab')
+  console.error('Get them from: Vercel dashboard → Storage → KV store, or run via `npm run env:dev --` in frontend/')
   process.exit(1)
 }
 

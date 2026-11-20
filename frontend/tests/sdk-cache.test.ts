@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createDisplayCache, displayKey, INVALIDATE, snapshotStorage } from '../lib/sdk/cached-display'
+import { createDisplayCache, displayKey, stableDisplayKey, INVALIDATE, RETAIN, RETAIN_SECONDS, snapshotStorage } from '../lib/sdk/cached-display'
+import { SDKError } from '../lib/sdk/validation'
 import {
   BACKOFF,
   createSnapshotCache,
@@ -28,6 +29,13 @@ function database() {
       return 'OK'
     },
     async eval(script, keys, args) {
+      if (script === RETAIN) {
+        const previous = await store.get<{ updatedAt: number }>(keys[0])
+        const incoming = JSON.parse(String(args[0])) as { data: { blockNumber: string }; updatedAt: number }
+        if (previous && (previous.updatedAt >= Number(args[1]) || BigInt((previous as typeof incoming).data.blockNumber) > BigInt(incoming.data.blockNumber))) return 0
+        await store.set(keys[0], incoming, { ex: Number(args[2]) })
+        return 1
+      }
       if (script === INVALIDATE) {
         if (await store.get(keys[1])) return 0
         await store.set(keys[0], args[0], { ex: 100000000 })
@@ -60,7 +68,240 @@ test('display identities isolate boards, chains, accounts and paginated pages', 
   const p = { kind: 'board' as const, chainId: 8453, address: '0xAb' as const }
   const first = displayKey(p, '0xCd', 0)
   assert.equal(first, displayKey({ ...p, address: '0xab' }, '0xcd', 0))
+  assert.equal(stableDisplayKey(p, 0), displayKey(p, undefined, 0))
   assert.equal(new Set([first, displayKey(p), displayKey(p, '0xef', 0), displayKey(p, '0xCd', 20), displayKey({ ...p, chainId: 11155111 }, '0xCd', 0), displayKey({ ...p, address: '0xef' }, '0xCd', 0)]).size, 6)
+})
+
+test('a saved sale or rent board survives an RPC outage without retaining wallet state', async () => {
+  for (const strategy of ['sale', 'rent'] as const) {
+    const db = database()
+    const cache = createDisplayCache(db.store, db.now)
+    const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+    const account = '0x2222222222222222222222222222222222222222' as const
+    const key = displayKey(placement, account)
+    const boardKey = displayKey(placement)
+    const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+      strategy, name: 'Saved board', minimum: '1', maxMessageBytes: 222, maxNameBytes: 22,
+      revnetEnabled: true, token: null, entries: [], nextOffset: null, count: 0,
+      top: null, rankedTop: null, wallet: { address: account, eth: '100' },
+      warnings: [], blockNumber: '123' }
+    await cache.read(key, async () => data, true)
+    await cache.read(boardKey, async () => ({ ...data, wallet: null }))
+    db.advance(6 * 60 * 1000)
+    const unavailable = async (): Promise<typeof data> => { throw new Error('RPC capacity exhausted') }
+    const fallback = await cache.read(boardKey, unavailable)
+    assert.equal(fallback.stale, true)
+    assert.equal(fallback.data.strategy, strategy)
+    assert.equal(fallback.data.wallet, null)
+    assert.equal(fallback.updatedAt, 100000)
+    await cache.invalidate('8453:0xverified-receipt')
+    assert.equal((await cache.read(boardKey, unavailable)).data.wallet, null)
+    assert.equal((await cache.retained(boardKey))?.data.board, placement.address)
+  }
+})
+
+test('an account-selected off-page rent message never enters the public retained page', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const account = '0x2222222222222222222222222222222222222222' as const
+  const publicEntry = { address: '0x3333333333333333333333333333333333333333' as const, message: 'Public' }
+  const backedEntry = { address: '0x4444444444444444444444444444444444444444' as const, message: 'Off-page account selection' }
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'rent' as const, name: 'Rent', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [publicEntry], nextOffset: 20,
+    count: 40, top: publicEntry.address, rankedTop: publicEntry.address, wallet: null,
+    warnings: [], blockNumber: '123' }
+  const publicKey = stableDisplayKey(placement, 0)
+  await cache.read(displayKey(placement, account, 0), async () => ({ ...data,
+    entries: [publicEntry, backedEntry], wallet: { address: account, backedMarkee: backedEntry.address },
+  }), true)
+  assert.equal(await cache.retained(publicKey), null, 'an account-only read cannot seed public retention')
+  await cache.read(publicKey, async () => data)
+  const retained = await cache.retained(publicKey)
+  assert.deepEqual(retained?.data.entries, [publicEntry])
+  assert.equal(retained?.data.wallet, null)
+  assert.equal(retained?.data.nextOffset, 20)
+  await db.store.set(`sdk:snapshots:v1:retained:${stableDisplayKey(placement, 20)}`,
+    { data: { ...data, entries: [backedEntry] }, updatedAt: db.now() }, { ex: RETAIN_SECONDS })
+  assert.equal(await cache.retained(stableDisplayKey(placement, 20)), null, 'old retained records may contain account-selected entries')
+})
+
+test('stale community display still refreshes current owner permissions', async t => {
+  const { snapshot } = await import('../lib/sdk/snapshot')
+  const { markeeAdapter } = await import('../lib/sdk/gardens/revenue')
+  const { getEnvPublicClient } = await import('../lib/sdk/chains')
+  const { zeroAddress } = await import('viem')
+  const db = database()
+  t.mock.method(snapshotStorage, 'get', () => db.store)
+  t.mock.method(Date, 'now', () => db.now())
+  const previous = { KV_REST_API_URL: process.env.KV_REST_API_URL, KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN }
+  process.env.KV_REST_API_URL = 'https://unused.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  const account = '0x2222222222222222222222222222222222222222' as const
+  const placement = { kind: 'gardens-community' as const, chainId: 8453, community: '0x1111111111111111111111111111111111111111' as const }
+  let calls = 0
+  t.mock.method(markeeAdapter, 'getCommunityIntegration', async () => {
+    if (++calls > 1) throw new Error('RPC unavailable')
+    return { integration: { status: 'not_integrated', leaderboardAddress: null, vaultAddress: null }, markeeChainId: 8453,
+      revenue: { claimableAmount: '0', symbol: 'ETH' } }
+  })
+  let council: string = account
+  t.mock.method(getEnvPublicClient(8453), 'readContract', async () => council)
+  try {
+    const fresh = await snapshot(placement, account)
+    assert.equal(fresh.community?.permissions?.canClaim, true)
+    council = zeroAddress
+    db.advance(31000)
+    const stale = await snapshot(placement, account)
+    assert.equal(stale.freshness?.stale, true)
+    assert.equal(stale.community?.permissions?.canClaim, false)
+    assert.equal(stale.community?.permissions?.canActivate, false)
+  } finally {
+    for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value
+  }
+})
+
+test('a pre-deployment short-lived cache can seed the saved board during an outage', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'sale' as const, name: 'Existing board', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
+  await db.store.set(`sdk:snapshots:v1:initial:${key}`,
+    { data, updatedAt: db.now(), freshUntil: db.now() + 30000, staleUntil: db.now() + 330000 }, { ex: 330 })
+  db.advance(31000)
+  const unavailable = async (): Promise<typeof data> => { throw new Error('RPC unavailable') }
+  assert.equal((await cache.read(key, unavailable)).stale, true)
+  assert.equal((await cache.retained(key))?.data.name, 'Existing board')
+  db.advance(300000)
+  assert.equal((await cache.read(key, unavailable)).data.name, 'Existing board')
+})
+
+test('an untrusted board rejection cannot be hidden by an older saved snapshot', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'sale' as const, name: 'Previously trusted', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
+  await cache.read(key, async () => data)
+  db.advance(61000)
+  await assert.rejects(cache.read(key, async () => { throw new SDKError('UNTRUSTED_FACTORY', 'Board is not trusted', 422) }),
+    (error: unknown) => error instanceof SDKError && error.code === 'UNTRUSTED_FACTORY')
+})
+
+test('retained snapshots reject an older publisher and expire after the retention window', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const value = (name: string) => ({ apiVersion: 1 as const, placement, board: placement.address,
+    chainId: 8453, strategy: 'sale' as const, name, minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' })
+  await cache.read(key, async () => value('new'))
+  const current = await cache.retained(key)
+  assert.ok(current)
+  const old = { ...current, data: value('old'), updatedAt: current.updatedAt - 1 }
+  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v2:retained:${key}`],
+    [JSON.stringify(old), old.updatedAt, RETAIN_SECONDS]), 0)
+  const olderBlock = { ...current, data: { ...value('older block'), blockNumber: '122' }, updatedAt: current.updatedAt + 1 }
+  assert.equal(await db.store.eval(RETAIN, [`sdk:snapshots:v2:retained:${key}`],
+    [JSON.stringify(olderBlock), olderBlock.updatedAt, RETAIN_SECONDS]), 0)
+  assert.equal((await cache.retained(key))?.data.name, 'new')
+  db.advance((RETAIN_SECONDS + 1) * 1000)
+  assert.equal(await cache.retained(key), null)
+})
+
+test('fresh cache hits do not rewrite the retained board record', async () => {
+  const db = database()
+  let retains = 0
+  const store: SnapshotStore = { ...db.store, eval: async (script, keys, args) => {
+    if (script === RETAIN) retains++
+    return db.store.eval(script, keys, args)
+  } }
+  const cache = createDisplayCache(store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement)
+  const data = { apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+    strategy: 'sale' as const, name: 'Board', minimum: '1', maxMessageBytes: 222,
+    maxNameBytes: 22, revnetEnabled: false, token: null, entries: [], nextOffset: null,
+    count: 0, top: null, rankedTop: null, wallet: null, warnings: [], blockNumber: '123' }
+  await cache.read(key, async () => data)
+  assert.equal(retains, 1)
+  for (let i = 0; i < 5; i++) await cache.read(key, async () => { throw new Error('unexpected load') })
+  assert.equal(retains, 1, 'cache hits must not send the snapshot to storage again')
+})
+
+test('an ordinary stale response during a concurrent refresh is not marked as retained', async () => {
+  const db = database()
+  const cache = createDisplayCache(db.store, db.now)
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const key = displayKey(placement, '0x2222222222222222222222222222222222222222')
+  await cache.read(key, async () => 'first', true)
+  db.advance(21000)
+  let release!: () => void
+  let started = false
+  const refreshing = cache.read(key, async () => {
+    started = true
+    await new Promise<void>(resolve => { release = resolve })
+    return 'second'
+  }, true)
+  while (!started) await new Promise(resolve => setImmediate(resolve))
+  const concurrent = await cache.read(key, async () => 'unexpected', true)
+  assert.equal(concurrent.stale, true)
+  assert.equal(concurrent.refreshing, true)
+  assert.equal(concurrent.retained, undefined)
+  release()
+  assert.equal((await refreshing).data, 'second')
+})
+
+test('an RPC outage serves a saved board without wallet values and applies current manual flags', async t => {
+  const { snapshot } = await import('../lib/sdk/snapshot')
+  const { prepare } = await import('../lib/sdk/transactions')
+  const { getEnvPublicClient } = await import('../lib/sdk/chains')
+  const { automaticDeps } = await import('../lib/moderation/automatic')
+  const db = database()
+  t.mock.method(snapshotStorage, 'get', () => db.store)
+  const flagReader = t.mock.method(automaticDeps, 'flags', async () => ({ board: ['8453:0x3333333333333333333333333333333333333333'], site: [] }))
+  t.mock.method(getEnvPublicClient(8453), 'getBlockNumber', async () => { throw new Error('RPC unavailable') })
+  const previous = { KV_REST_API_URL: process.env.KV_REST_API_URL, KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN, FLAG_AUTO_MODERATION: process.env.FLAG_AUTO_MODERATION }
+  process.env.KV_REST_API_URL = 'https://unused.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  const placement = { kind: 'board' as const, chainId: 8453, address: '0x1111111111111111111111111111111111111111' as const }
+  const account = '0x2222222222222222222222222222222222222222' as const
+  const entry = { address: '0x3333333333333333333333333333333333333333' as const,
+    owner: account, message: 'Saved message', name: 'Name', score: '1', totalFunds: '1',
+    aggregateRate: '0', legacyFloor: '0', moderated: false, views: 1 }
+  try {
+    await createDisplayCache(db.store, db.now).read(displayKey(placement), async () => ({
+      apiVersion: 1 as const, placement, board: placement.address, chainId: 8453,
+      strategy: 'sale' as const, name: 'Saved board', minimum: '1', maxMessageBytes: 222,
+      maxNameBytes: 22, revnetEnabled: true, token: null, entries: [entry], nextOffset: null,
+      count: 1, top: entry.address, rankedTop: entry.address,
+      wallet: null, warnings: [], blockNumber: '123',
+    }))
+    await createDisplayCache(db.store, db.now).invalidate('8453:0xreceipt')
+    const result = await snapshot(placement, account)
+    assert.equal(result.freshness?.stale, true)
+    assert.equal(result.wallet, null)
+    assert.equal(result.entries[0].moderated, true)
+    assert.match(result.warnings.join(' '), /saved board data/)
+    await assert.rejects(prepare(placement, account, { kind: 'create', message: 'New message', name: '', amount: '1' }), /RPC unavailable/)
+    flagReader.mock.mockImplementation(async () => { throw new Error('Moderation database unavailable') })
+    const hidden = await snapshot(placement, account)
+    assert.equal(hidden.entries[0].moderated, null)
+    assert.match(hidden.warnings.join(' '), /Moderation check unavailable/)
+  } finally {
+    for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value
+  }
 })
 
 test('community display reads share the cache without caching authorization or quotes', async t => {
@@ -144,7 +385,7 @@ test('SDK snapshots preserve both sale and rent and reuse cached on-chain reads'
   t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
     reads++
     const results: Record<string, unknown> = { VERSION: version, factory: beaconVersions.has(version) ? factoryV14 : zeroAddress, isFactoryLeaderboard: true, beneficiaryAddress: account, leaderboardName: 'Test', minimumPrice: 1n, minimumMonthlyRate: 2n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: true, markeeCount: 0n, getTopMarkees: [[], []], topMarkee: zeroAddress,
-      ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council }
+      ETHX: getMarkeeEthxAddress(8453), HOST: zeroAddress, getAgreementClass: zeroAddress, realtimeBalanceOfNow: [100n, 0n, 0n, 123n], getFlow: [0n, 3n, 0n, 0n], backerMarkee: zeroAddress, backerDeposit: 4n, pendingSettlement: 5n, getNetFlow: -3n, balanceOf: 6n, councilSafe: council, status: 0, markeeSuccessorOf: zeroAddress }
     if (!(functionName in results)) throw new Error(`Unexpected read ${functionName}`)
     return results[functionName]
   })
@@ -355,16 +596,38 @@ test('forced listing refresh bypasses a fresh snapshot and concurrent refreshes 
   const db = database(), read = createSnapshotCache(db.store, db.now)
   let calls = 0
   await read('listing', async () => ++calls, 60, 300)
+  db.advance(1000)
   let release!: () => void
   const gate = new Promise<void>(resolve => { release = resolve })
+  const requestedAt = db.now()
   const owner = read('listing', async () => { calls++; await gate; return calls }, 60, 300, true)
   // Let the owner acquire its distributed lease and enter the loader.
   for (let i = 0; i < 10 && calls < 2; i++) await new Promise(resolve => setImmediate(resolve))
-  const contender = await read('listing', async () => ++calls, 60, 300, true)
-  assert.equal(contender.data, 1); assert.equal(contender.refreshing, true)
+  await assert.rejects(read('listing', async () => ++calls, 60, 300, requestedAt), (error: unknown) => error instanceof SnapshotUnavailable && error.retryAfter === 2)
   release(); assert.equal((await owner).data, 2)
+  assert.equal((await read('listing', async () => ++calls, 60, 300, requestedAt)).data, 2)
   assert.equal((await read('listing', async () => ++calls, 60, 300)).data, 2)
   assert.equal(calls, 2)
+})
+
+test('a forced refresh never settles for a load that began before it was requested', async () => {
+  const db = database(), read = createSnapshotCache(db.store, db.now)
+  let calls = 0
+  await read('listing', async () => ++calls, 60, 300)
+  db.advance(61000)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const background = read('listing', async () => { calls++; await gate; return 'before tx' }, 60, 300)
+  for (let i = 0; i < 10 && calls < 2; i++) await new Promise(resolve => setImmediate(resolve))
+  db.advance(1000)
+  const requestedAt = db.now()
+  const plain = await read('listing', async () => { throw new Error('Must not refresh') }, 60, 300)
+  assert.equal(plain.refreshing, true)
+  await assert.rejects(read('listing', async () => 'unexpected', 60, 300, requestedAt), SnapshotUnavailable)
+  release(); assert.equal((await background).data, 'before tx')
+  assert.equal((await read('listing', async () => { calls++; return 'after tx' }, 60, 300, requestedAt)).data, 'after tx')
+  assert.equal((await read('listing', async () => ++calls, 60, 300)).data, 'after tx')
+  assert.equal(calls, 3)
 })
 
 test('listing cache shares one full payload across address filters and rejects failed refreshes', async t => {
@@ -391,6 +654,29 @@ test('simultaneous cold listing requests wait for one loader instead of returnin
   const load = async () => { calls++; await new Promise(resolve => setTimeout(resolve, 10)); return NextResponse.json({ leaderboards: [{ address: '0xabc' }] }) }
   const results = await Promise.all(Array.from({ length: 3 }, () => cachedListing(new Request('https://markee.example/api'), 'cold', load, {})))
   assert.equal(calls, 1); assert.deepEqual(results.map(result => result.status), [200, 200, 200])
+})
+
+test('a post-transaction bust waits out an earlier in-flight refresh and reads chain state again', async t => {
+  const { cachedListing } = await import('../lib/leaderboards/cached')
+  const { NextResponse } = await import('next/server')
+  const db = database(); t.mock.method(snapshotStorage, 'get', () => db.store)
+  let calls = 0
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const load = async () => {
+    const call = ++calls
+    if (call === 1) await gate
+    return NextResponse.json({ leaderboards: [{ address: `0x${call}` }] })
+  }
+  const get = () => cachedListing(new Request('https://markee.example/api?bust=1'), 'post-tx', load, {})
+  const earlier = get()
+  while (calls === 0) await new Promise(resolve => setImmediate(resolve))
+  await new Promise(resolve => setTimeout(resolve, 5))
+  const afterTx = get()
+  release()
+  assert.deepEqual((await (await earlier).json()).leaderboards, [{ address: '0x1' }])
+  assert.deepEqual((await (await afterTx).json()).leaderboards, [{ address: '0x2' }])
+  assert.equal(calls, 2)
 })
 
 test('ecosystem refresh and concurrent marketplace read share one published listing', async t => {
@@ -429,4 +715,138 @@ test('ecosystem refresh and concurrent marketplace read share one published list
   assert.equal(saleReads, 1, 'a concurrent cold reader must not start a second aggregate loader')
   await GET(new Request('https://markee.example/api/ecosystem/leaderboards'))
   assert.equal(saleReads, 1, 'subsequent marketplace reads must reuse the published snapshot')
+})
+
+test('migration resolution caches finished successors permanently and rechecks unmigrated boards', async t => {
+  const { currentSdkBoard, migrationDeps, clearMigrationMemoryForTests } = await import('../lib/sdk/migration')
+  const db = database()
+  t.mock.method(snapshotStorage, 'get', () => db.store)
+  const previousUrl = process.env.KV_REST_API_URL, previousToken = process.env.KV_REST_API_TOKEN
+  process.env.KV_REST_API_URL = 'https://unused.example'
+  process.env.KV_REST_API_TOKEN = 'test'
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.KV_REST_API_URL; else process.env.KV_REST_API_URL = previousUrl
+    if (previousToken === undefined) delete process.env.KV_REST_API_TOKEN; else process.env.KV_REST_API_TOKEN = previousToken
+    clearMigrationMemoryForTests()
+  })
+  const legacy = '0x4444444444444444444444444444444444444444' as const
+  const successor = '0x5555555555555555555555555555555555555555' as const
+  const unmigrated = '0x6666666666666666666666666666666666666666' as const
+  let clock = 1_000_000
+  let lookups = 0
+  t.mock.method(migrationDeps, 'now', () => clock)
+  t.mock.method(migrationDeps, 'boardSuccessor', async (board: string) => { lookups++; return board === legacy ? successor : null })
+  clearMigrationMemoryForTests()
+  assert.equal(await currentSdkBoard(8453, legacy), successor)
+  assert.equal(await currentSdkBoard(8453, unmigrated), unmigrated)
+  assert.equal(lookups, 2)
+  clearMigrationMemoryForTests()
+  assert.equal(await currentSdkBoard(8453, legacy), successor, 'a fresh instance reads the shared finished result')
+  assert.equal(lookups, 2)
+  db.advance(61_000); clock += 61_000
+  clearMigrationMemoryForTests()
+  assert.equal(await currentSdkBoard(8453, legacy), successor)
+  assert.equal(await currentSdkBoard(8453, unmigrated), unmigrated)
+  assert.equal(lookups, 3, 'only the unmigrated board is looked up again')
+  assert.equal(await currentSdkBoard(11155111, legacy), legacy)
+  assert.equal(lookups, 3)
+})
+
+test('legacy board and Markee addresses prepare on the successor while echoing the caller input', async t => {
+  const { prepare, verifyEnvelope } = await import('../lib/sdk/transactions')
+  const { snapshot, snapshotReaders } = await import('../lib/sdk/snapshot')
+  const { getEnvPublicClient } = await import('../lib/sdk/chains')
+  const { migrationDeps, clearMigrationMemoryForTests } = await import('../lib/sdk/migration')
+  const { checkoutDeps } = await import('../lib/sdk/checkout')
+  const { V14_FACTORIES, BASE_STREAMING_FACTORY } = await import('../lib/contracts/addresses')
+  const { getMarkeeEthxAddress, CFA_V1_FORWARDER_ADDRESS, cfaV1ForwarderABI } = await import('../lib/sdk/gardens/streaming')
+  const { boardABI } = await import('../lib/sdk/abi')
+  const { decodeFunctionData, zeroAddress } = await import('viem')
+  const flag = process.env.FLAG_AUTO_MODERATION
+  process.env.FLAG_AUTO_MODERATION = 'false'
+  const previousUrl = process.env.KV_REST_API_URL
+  delete process.env.KV_REST_API_URL
+  t.after(() => {
+    if (flag === undefined) delete process.env.FLAG_AUTO_MODERATION; else process.env.FLAG_AUTO_MODERATION = flag
+    if (previousUrl !== undefined) process.env.KV_REST_API_URL = previousUrl
+    clearMigrationMemoryForTests()
+  })
+  clearMigrationMemoryForTests()
+  const account = '0x1111111111111111111111111111111111111111' as const
+  const legacySale = '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' as const
+  const successorSale = '0xe6fDab2eD2eE833b39d37504940A66695fb12f0B' as const
+  const legacyRent = '0x82cbe3BdFC4e01940D186Ac5EA151355647DE0d3' as const
+  const successorRent = '0x7F625449Bcda0E330B5C97312452F83F0e4b23ed' as const
+  const legacyMarkee = '0x7777777777777777777777777777777777777777' as const
+  const successorMarkee = '0x8888888888888888888888888888888888888888' as const
+  const legacyRentMarkee = '0x9999999999999999999999999999999999999999' as const
+  const successorRentMarkee = '0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa' as const
+  const ethx = getMarkeeEthxAddress(8453)!
+  const boards = new Set([successorSale, successorRent, legacyRent].map(a => a.toLowerCase()))
+  const markeeBoard: Record<string, string> = { [successorMarkee.toLowerCase()]: successorSale, [legacyRentMarkee.toLowerCase()]: legacyRent, [successorRentMarkee.toLowerCase()]: successorRent }
+  t.mock.method(migrationDeps, 'boardSuccessor', async (board: string) => ({ [legacySale]: successorSale, [legacyRent]: successorRent } as Record<string, string>)[board] ?? null)
+  t.mock.method(migrationDeps, 'markeeSuccessor', async (markee: string) => ({ [legacyMarkee]: successorMarkee, [legacyRentMarkee]: successorRentMarkee } as Record<string, string>)[markee] ?? null)
+  t.mock.method(snapshotReaders, 'presentation', async () => ({ flags: [], views: [], metadata: null }))
+  const client = getEnvPublicClient(8453)
+  t.mock.method(client, 'getBalance', async () => 10n ** 18n)
+  t.mock.method(client, 'getBlockNumber', async () => 100n)
+  t.mock.method(client, 'getGasPrice', async () => 1n)
+  t.mock.method(client, 'estimateGas', async () => 100_000n)
+  t.mock.method(client, 'readContract', async ({ address, functionName, args = [] }: { address: string; functionName: string; args?: readonly unknown[] }) => {
+    const target = address.toLowerCase()
+    const legacy = target === legacyRent.toLowerCase()
+    if (boards.has(target)) {
+      const rent = target !== successorSale.toLowerCase()
+      const values: Record<string, unknown> = { VERSION: rent ? 'streaming-1.0.0' : '1.4.0', factory: rent ? BASE_STREAMING_FACTORY : V14_FACTORIES.FOR_SALE, leaderboardName: 'Board', minimumPrice: 1n, minimumMonthlyRate: 1n, maxMessageLength: 100n, maxNameLength: 30n, revNetEnabled: false, markeeCount: 1n, getTopMarkees: [[], []], getMarkees: [], topMarkee: zeroAddress, beneficiaryAddress: account,
+        isMarkeeOnLeaderboard: markeeBoard[String(args[0]).toLowerCase()]?.toLowerCase() === target, ETHX: ethx, HOST: zeroAddress, backerMarkee: legacy ? legacyRentMarkee : zeroAddress, backerDeposit: legacy ? 10n ** 18n : 0n, pendingSettlement: 0n, poolOf: zeroAddress, aggregateRate: 0n, currentLegacyFloor: 0n, effectiveRate: 0n }
+      if (functionName in values) return values[functionName]
+    }
+    if (markeeBoard[target]) {
+      const values: Record<string, unknown> = { pricingStrategy: markeeBoard[target], owner: account, message: 'Hello', name: 'Name', totalFundsAdded: 0n }
+      if (functionName in values) return values[functionName]
+    }
+    if (functionName === 'isFactoryLeaderboard') return boards.has(String(args[0]).toLowerCase())
+    if (functionName === 'getAgreementClass') return zeroAddress
+    if (functionName === 'realtimeBalanceOfNow') return [10n ** 18n, 0n, 0n, 123n]
+    if (functionName === 'getFlow') return [0n, String(args[2]).toLowerCase() === legacyRent.toLowerCase() ? 5n : 0n, 0n, 0n]
+    if (functionName === 'getNetFlow') return 0n
+    if (functionName === 'allowance' || functionName === 'balanceOf') return 0n
+    throw new Error(`Unexpected read ${functionName} on ${address}`)
+  })
+
+  const sale = { kind: 'board' as const, chainId: 8453, address: legacySale }
+  const fund = { kind: 'fund' as const, markee: legacyMarkee, amount: '1000' }
+  const prepared = await prepare(sale, account, fund)
+  assert.equal(prepared.transaction.to, successorSale)
+  assert.deepEqual(decodeFunctionData({ abi: boardABI, data: prepared.transaction.data }).args, [successorMarkee])
+  assert.deepEqual(prepared.placement, sale, 'old clients match pending records on their own placement')
+  assert.deepEqual(prepared.action, fund)
+  assert.equal(verifyEnvelope(prepared.id).board, successorSale)
+
+  const saleView = await snapshot(sale)
+  assert.equal(saleView.board, successorSale)
+  assert.deepEqual(saleView.placement, sale)
+
+  const rent = { kind: 'board' as const, chainId: 8453, address: legacyRent }
+  const rentView = await snapshot(rent, account)
+  assert.equal(rentView.board, successorRent)
+  assert.equal(rentView.wallet?.flowRate, '5', 'an open legacy stream stays visible so the backer can exit it')
+  assert.equal(rentView.wallet?.backedMarkee, successorRentMarkee)
+  const stop = await prepare(rent, account, { kind: 'stop' })
+  assert.equal(stop.transaction.to, CFA_V1_FORWARDER_ADDRESS)
+  assert.deepEqual(decodeFunctionData({ abi: cfaV1ForwarderABI, data: stop.transaction.data }).args, [ethx, legacyRent, 0n])
+  const withdraw = await prepare(rent, account, { kind: 'withdraw-buffer' })
+  assert.equal(withdraw.transaction.to, legacyRent, 'buffers are recovered from the board holding them')
+  const claimTop = await prepare(rent, account, { kind: 'claim-top', markee: legacyRentMarkee })
+  assert.equal(claimTop.transaction.to, successorRent, 'new activity never reaches the legacy streaming board')
+  assert.deepEqual(decodeFunctionData({ abi: boardABI, data: claimTop.transaction.data }).args, [successorRentMarkee])
+
+  t.mock.method(checkoutDeps, 'create', async () => undefined)
+  const { boardPolicyDeps } = await import('../lib/moderation/board-policy')
+  t.mock.method(boardPolicyDeps, 'get', async () => null)
+  await assert.rejects(
+    (await import('../lib/sdk/checkout')).createCheckout({ placement: sale, action: fund }, 'https://sample.example'),
+    (e: unknown) => (e as { code?: string }).code === 'REWARDS_UNAVAILABLE',
+    'checkout membership passes on the successor before the rewards gate',
+  )
 })

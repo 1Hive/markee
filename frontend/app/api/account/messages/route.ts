@@ -10,7 +10,11 @@ import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { fetchBackerPositions } from '@/lib/streaming/subgraph'
 import { listBoardMessages } from '@/lib/streaming/messages'
 import { withWinTimes } from '@/lib/leaderboard/topHistory'
-import { boughtSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
+import { boughtSnapshotKey, rentSpentSnapshotKey, snapshotTotals } from '@/lib/stats/daily'
+import { netStreamedWei, readLifetimeStreamed } from '@/lib/streaming/lifetime'
+import { mapSettled } from '@/lib/concurrency'
+
+const RENT_SPEND_CONCURRENCY = 4
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +117,15 @@ async function fetchStreamingOwned(
     ).catch(() => new Map<string, { contributed: bigint; rate: bigint }>()),
   ])
 
+  const nowSec = Math.floor(Date.now() / 1000)
+  const spent = (await mapSettled(owned, RENT_SPEND_CONCURRENCY, ({ lb, m }) => readLifetimeStreamed(lb.address, m.address, owner)
+    .then(l => netStreamedWei(l, nowSec).toString())))
+    .map((r, i) => {
+      if (r.status === 'fulfilled') return r.value
+      console.warn('[account/messages] rent spend read failed', owned[i].lb.address, owned[i].m.address, r.reason)
+      return null
+    })
+
   const backsThis = (board: string) =>
     (backed[ownedBoards.indexOf(board.toLowerCase())]?.result as string | undefined)?.toLowerCase()
 
@@ -125,6 +138,8 @@ async function fetchStreamingOwned(
         message: m.message,
         name: m.name,
         totalFundsAdded: ((funds[i]?.result as bigint | undefined) ?? 0n).toString(),
+        // Net ETH this wallet streamed to its own message; null when the read failed.
+        rentSpentRaw: spent[i],
         strategyId: lb.address,
         strategyName: lb.name ?? 'Unknown Leaderboard',
         isTop,
@@ -149,9 +164,13 @@ async function fetchStreamingOwned(
 
 // The wallet's running total spent on its own messages, for the Buyer Hub chart (lib/stats/daily.ts).
 // Only written when every part of the read succeeded, so a partial read can't look like a refund.
-async function snapshotBought(owner: string, messages: { totalFundsAdded: string }[]) {
+async function snapshotBought(owner: string, messages: { totalFundsAdded: string }[], rent: { rentSpentRaw: string | null }[]) {
   const total = messages.reduce((sum, m) => sum + BigInt(m.totalFundsAdded || '0'), 0n)
-  await snapshotTotals([{ key: boughtSnapshotKey(owner), total }]).catch(e => console.error('[account/messages] snapshot failed', e))
+  const entries = [{ key: boughtSnapshotKey(owner), total }]
+  if (rent.every(m => m.rentSpentRaw !== null)) {
+    entries.push({ key: rentSpentSnapshotKey(owner), total: rent.reduce((sum, m) => sum + BigInt(m.rentSpentRaw ?? '0'), 0n) })
+  }
+  await snapshotTotals(entries).catch(e => console.error('[account/messages] snapshot failed', e))
 }
 
 export async function GET(request: Request) {
@@ -230,7 +249,7 @@ export async function GET(request: Request) {
 
   if (entries.length === 0) {
     const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => null)
-    if (streamingMsgs) await snapshotBought(owner, streamingMsgs)
+    if (streamingMsgs) await snapshotBought(owner, streamingMsgs, streamingMsgs)
     return NextResponse.json({ messages: await withWinTimes(streamingMsgs ?? []) })
   }
 
@@ -288,7 +307,7 @@ export async function GET(request: Request) {
   })
 
   const streamingMsgs = await fetchStreamingOwned(client, owner, origin, headers).catch(() => null)
-  if (streamingMsgs) await snapshotBought(owner, [...messages, ...streamingMsgs])
+  if (streamingMsgs) await snapshotBought(owner, [...messages, ...streamingMsgs], streamingMsgs)
 
   return NextResponse.json({ messages: await withWinTimes([...messages, ...(streamingMsgs ?? [])]) })
 }

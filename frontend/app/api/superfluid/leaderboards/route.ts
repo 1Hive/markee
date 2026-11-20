@@ -4,13 +4,14 @@ import { NextResponse } from 'next/server'
 import { createPublicClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { kv } from '@vercel/kv'
-import { BASE_MARKEE_EVENTS_FROM_BLOCK } from '@/lib/contracts/addresses'
+import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@/lib/contracts/addresses'
+import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
-import { resolveCreators } from '@/lib/leaderboards/resolveCreators'
+import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
+import { isDisqualifiedBoard } from '@/lib/leaderboards/disqualified'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
-const BASELINE_PREFIX = 'superfluid:s6:baseline:'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -26,22 +27,6 @@ const SF_MIGRATION_LEADERBOARD = '0xAa37d049DFBfc07f9e8526A4a9bde418DF9F1B79' as
 
 // Scopes getLogs to just creation events instead of every log the factory has ever emitted
 // (admin changes, fee changes, etc.) — verified against the deployed factory's ABI on Basescan.
-// Leaderboards excluded from totalPlatformFunds — clearly gamed with recycled ETH
-const GAMED_LEADERBOARD_ADDRESSES = new Set([
-  '0x1b4eb52953d865e0dde1c856c2ead826581e2904', // Vivek wants to play (120 ETH)
-  '0xb5451c1cb790367d0ddbcbf1249de22b9014ecdc', // @betonbangers (85 ETH)
-  '0x4e413915c0c1d86084e8dcb36d4dec6b66b45a24', // Banger (34 ETH)
-  '0x762c0484599d6a75636cc8cffd9fcb23793dc582', // Aeshii (9 ETH)
-  '0x8578915859912888407f72f102761b7d21b2e702', // My Sup Project (8 ETH)
-  '0x566f89accd7e6a497e7b4c9f7992f1fe67e564cb', // Ggh (4 ETH)
-  '0x1be900ecc09edd0590db88723dbcb3b1fea22fe3', // Gyralis is coming (2 ETH)
-  '0xe3ee8c369dc37e478bc4b0e7fbbecce5f1dc089f', // Bfhh (2 ETH)
-  '0x097b06f778ae2fb32a9a4251ccf04fdbebf3733c', // Bangerrrd (2 ETH)
-  '0x774d8d9ce01151fc5189c13e362f5061dab0fd8f', // billionaire0x (2 ETH)
-  '0x122140b7714a2aa4507d7742a28d0fd71117a729', // Jgfjj (2 ETH)
-  '0x4ad89044f5f3f324935747a4bce7ba7954d2aaa4', // Gvv (2 ETH)
-  '0xc936a036b7727865a696398de30f616be98e266b', // Sup (2 ETH)
-])
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 
@@ -49,7 +34,7 @@ function getClient() {
   return createPublicClient({
     chain: base,
     transport: http(
-      process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL || 'https://mainnet.base.org',
+      process.env.ALCHEMY_BASE_URL || process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org',
       { fetchOptions: { cache: 'no-store' } }, // prevent Next.js caching RPC responses
     ),
   })
@@ -68,15 +53,10 @@ async function loadListing(request: Request) {
 
     const client = getClient()
 
-    // Fetch S6 boosted list and any stored baselines in parallel with factory call
+    // Fetch S6 boosted list in parallel with factory call
     const boostedListPromise = kv.get<BoostedMarkee[]>(BOOSTED_KEY).then(b => b ?? [])
 
-    const addresses = await client.readContract({
-      address: SUPERFLUID_FACTORY_ADDRESS,
-      abi: LeaderboardFactoryABI,
-      functionName: 'getLeaderboards',
-      args: [0n, 1000n],
-    }) as `0x${string}`[]
+    const { boards: addresses, predecessorOf } = await listVisibleBoards(client, BOARD_MIGRATORS.SUPERFLUID, [SUPERFLUID_FACTORY_ADDRESS, V14_FACTORIES.SUPERFLUID])
 
     if (addresses.length === 0) {
       return NextResponse.json({ leaderboards: [], totalPlatformFunds: '0', featuredMessage: null }, {
@@ -124,13 +104,13 @@ async function loadListing(request: Request) {
         : []
     )
 
-    const [markeeResults, creators, boostedList] = await Promise.all([
+    const [markeeResults, origins, boostedList] = await Promise.all([
       markeeCalls.length > 0
         ? chunkedMulticall(markeeCalls as Parameters<typeof client.multicall>[0]['contracts'])
         : Promise.resolve([]),
-      resolveCreators(client, addresses, {
+      resolveBoardOrigins(client, addresses.map(a => originalBoard(a, predecessorOf)), {
         keyPrefix: 'sf',
-        factories: [SUPERFLUID_FACTORY_ADDRESS],
+        factories: [SUPERFLUID_FACTORY_ADDRESS, V14_FACTORIES.SUPERFLUID],
         fromBlock: BASE_MARKEE_EVENTS_FROM_BLOCK,
         logLabel: 'superfluid/leaderboards',
       }),
@@ -138,15 +118,6 @@ async function loadListing(request: Request) {
     ])
 
     const boostedAddrs = new Set(boostedList.map(b => b.address.toLowerCase()))
-
-    // Fetch baselines for any address that has one stored
-    const baselineKeys = addresses.map(a => `${BASELINE_PREFIX}${a.toLowerCase()}`)
-    const baselineValues = await kv.mget<(string | null)[]>(...baselineKeys)
-    const baselineMap = new Map<string, bigint>()
-    addresses.forEach((addr, i) => {
-      const val = baselineValues[i]
-      if (val) baselineMap.set(addr.toLowerCase(), BigInt(val))
-    })
 
     // 4. Assemble response
     let markeeCallIndex = 0
@@ -172,22 +143,21 @@ async function loadListing(request: Request) {
       }
 
       const addrLower = addr.toLowerCase()
-      const baseline = baselineMap.get(addrLower) ?? 0n
-      const adjustedTopFunds = topFunds0 > baseline ? topFunds0 - baseline : 0n
-      const adjustedTotalFunds = totalFunds > baseline ? totalFunds - baseline : 0n
 
       return {
         address: addr,
+        migratedFrom: predecessorOf.get(addr.toLowerCase()) ?? null,
         name,
-        totalFunds: formatEther(adjustedTotalFunds),
-        totalFundsRaw: adjustedTotalFunds.toString(),
+        totalFunds: formatEther(totalFunds),
+        totalFundsRaw: totalFunds.toString(),
         markeeCount: Number(markeeCount),
         admin,
         beneficiary,
-        creator: creators[i] ?? null,
+        creator: origins[i]?.creator ?? null,
+        initialAdmin: origins[i]?.initialAdmin ?? null,
         minimumPrice: formatEther(minimumPrice),
         minimumPriceRaw: minimumPrice.toString(),
-        topFundsAddedRaw: adjustedTopFunds.toString(),
+        topFundsAddedRaw: topFunds0.toString(),
         topMessage,
         topMessageOwner,
         topMarkeeAddress: topMarkeeAddresses[i] ?? null,
@@ -209,7 +179,8 @@ async function loadListing(request: Request) {
 
     let totalFundsRaw = 0n
     for (const l of leaderboards) {
-      if (!GAMED_LEADERBOARD_ADDRESSES.has(l.address.toLowerCase())) {
+      // Disqualified boards (lib/leaderboards/disqualified.ts) never count toward platform totals.
+      if (!isDisqualifiedBoard(originalBoard(l.address, predecessorOf))) {
         totalFundsRaw += BigInt(l.totalFundsRaw)
       }
     }
@@ -221,7 +192,7 @@ async function loadListing(request: Request) {
 
     // Derive featuredMessage from the SF migration leaderboard entry
     const migrationEntry = leaderboards.find(
-      l => l.address.toLowerCase() === SF_MIGRATION_LEADERBOARD.toLowerCase()
+      l => originalBoard(l.address, predecessorOf).toLowerCase() === SF_MIGRATION_LEADERBOARD.toLowerCase()
     )
     const featuredMessage = migrationEntry?.topMessage ? {
       message: migrationEntry.topMessage,
@@ -233,8 +204,9 @@ async function loadListing(request: Request) {
 
     // Build boostedLeaderboards: ordered by the boostedList order, with full metadata merged in
     const leaderboardMap = new Map(leaderboards.map(l => [l.address.toLowerCase(), l]))
+    const successorOf = new Map([...predecessorOf].map(([successor, predecessor]) => [predecessor.toLowerCase(), successor]))
     const boostedLeaderboards = boostedList.map(b => {
-      const lb = leaderboardMap.get(b.address.toLowerCase())
+      const lb = leaderboardMap.get(b.address.toLowerCase()) ?? leaderboardMap.get(successorOf.get(b.address.toLowerCase()) ?? '')
       return { ...b, leaderboard: lb ?? null }
     })
 

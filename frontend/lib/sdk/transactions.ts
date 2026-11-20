@@ -6,6 +6,7 @@ import type { Action, Placement, PreparedAction, TransactionResult } from '../..
 import { boardABI, gdaABI, messageABI, poolABI, tokenABI } from './abi';
 import { getEnvPublicClient, resolveClientChain } from './chains';
 import { boardContext, read, resolvePlacement, streamContext, type BoardContext } from './snapshot';
+import { currentSdkMarkee } from './migration';
 import { assertTextLength, SDKError, wei } from './validation';
 import { invalidateVerifiedDisplay } from './cached-display';
 import { buildMarkeeOpenStreamOperations, CFA_V1_FORWARDER_ADDRESS, cfaV1ForwarderABI, getMarkeeAutoFunding, getMarkeeStreamAmounts, getMarkeeWithdrawableDeposit, superfluidHostABI } from './gardens/streaming';
@@ -43,10 +44,34 @@ export function verifyEnvelope(id: string): Envelope {
   return value;
 }
 
-export async function prepare(p: Placement, account: Address, action: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
+const LEGACY_EXIT_ACTIONS = new Set<Action['kind']>(['stop', 'withdraw-buffer', 'settle', 'claim-refund', 'connect-refund']);
+type Stream = Awaited<ReturnType<typeof streamContext>>;
+function canExit(action: Action, s: Stream) {
+  if (action.kind === 'stop') return s.rate > 0n;
+  if (action.kind === 'withdraw-buffer') return getMarkeeWithdrawableDeposit(s.deposit, s.rate) > 0n;
+  if (action.kind === 'settle') return s.pendingSettlement > 0n;
+  return 'markee' in action && s.backed.toLowerCase() === action.markee.toLowerCase();
+}
+
+/** Exits target the migrated streaming board still holding the backer's stream; new activity targets its successor. */
+async function routeExit(c: BoardContext, account: Address, action: Action): Promise<{ c: BoardContext; action: Action; stream?: Stream }> {
+  if (c.strategy !== 'rent' || !LEGACY_EXIT_ACTIONS.has(action.kind)) return { c, action };
+  const stream = await streamContext(c, account);
+  if (!c.legacyBoard || canExit(action, stream)) return { c, action, stream };
+  const legacy = await boardContext(c.chainId, c.legacyBoard, true, false);
+  const legacyStream = await streamContext(legacy, account);
+  const legacyAction = 'markee' in action && legacyStream.backed !== zeroAddress
+    && (await currentSdkMarkee(c.chainId, legacyStream.backed)).toLowerCase() === action.markee.toLowerCase()
+    ? { ...action, markee: legacyStream.backed } : action;
+  return canExit(legacyAction, legacyStream) ? { c: legacy, action: legacyAction, stream: legacyStream } : { c, action, stream };
+}
+
+export async function prepare(p: Placement, account: Address, requested: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
   const resolved = await resolvePlacement(p);
   if (!resolved.board) throw new SDKError('INACTIVE_COMMUNITY', 'Activate the community Markee first.', 409);
-  const c = await boardContext(resolved.chainId, resolved.board, p.kind !== 'board');
+  const current = await boardContext(resolved.chainId, resolved.board, p.kind !== 'board');
+  const followed = 'markee' in requested ? { ...requested, markee: await currentSdkMarkee(current.chainId, requested.markee) } : requested;
+  const { c, action, stream } = await routeExit(current, account, followed);
   let to = c.board;
   let data: Hex;
   let value = 0n;
@@ -83,7 +108,7 @@ export async function prepare(p: Placement, account: Address, action: Action, se
     title = action.kind === 'edit-message' ? 'Update your message' : 'Update your name'; lines.push(text);
   } else {
     if (c.strategy !== 'rent') throw new SDKError('WRONG_STRATEGY', 'This action requires a rental board.');
-    const s = await streamContext(c, account);
+    const s = stream ?? await streamContext(c, account);
     if (action.kind === 'stream') {
       const monthly = wei(action.monthlyAmount);
       if (monthly < c.minimum) throw new SDKError('BELOW_MINIMUM', `Minimum monthly rate is ${formatEther(c.minimum)} ETH.`);
@@ -163,14 +188,14 @@ export async function prepare(p: Placement, account: Address, action: Action, se
   }
   const transaction = { from: account, to, data, chainId: c.chainId, value: toHex(value), gas: toHex(gas) };
   const expiresAt = Date.now() + 5 * 60_000;
-  const id = signEnvelope({ transaction, placement: p, action, expiresAt, token: c.token, board: c.board, issuedAt: Date.now() });
+  const id = signEnvelope({ transaction, placement: p, action: requested, expiresAt, token: c.token, board: c.board, issuedAt: Date.now() });
   lines.push(`Native ETH sent: ${formatEther(value)} ETH`, `Network: ${resolveClientChain(c.chainId).name}`, `Recipient: ${to}`);
   // Routing is display-only and optional. The signed payment is unchanged.
   let paymentRouting: PreparedAction['review']['paymentRouting'];
   if (action.kind === 'stream' || action.kind === 'fund' || action.kind === 'create' && value > 0n) {
     paymentRouting = await paymentRoutingForReview(c);
   }
-  return { id, expiresAt, placement: p, action, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
+  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {

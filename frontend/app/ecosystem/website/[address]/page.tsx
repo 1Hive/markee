@@ -15,11 +15,13 @@ import { NETWORK_PAUSED } from '@/lib/paused'
 import { VerifyIntegrationModal } from '@/components/modals/VerifyIntegrationModal'
 import { IntegrationModal } from '@/components/modals/IntegrationModal'
 import { useViews } from '@/hooks/useViews'
+import { useCurrentBoardAddress } from '@/hooks/useCurrentBoardAddress'
 import { IntegrationHealthStatus } from '@/components/IntegrationHealthStatus'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import type { Markee } from '@/types'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 
@@ -110,7 +112,19 @@ function MarkeeRowSkeleton({ rank }: { rank: number }) {
 
 export default function WebsiteLeaderboardPage() {
   const params = useParams()
-  const leaderboardAddress = (params.address as string) as `0x${string}`
+  const requestedAddress = params.address as string
+  const { ready } = useCurrentBoardAddress(requestedAddress, current => `/ecosystem/website/${current}`)
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-[#060A2A]">
+        <Header activePage="create-a-markee" />
+      </div>
+    )
+  }
+  return <WebsiteLeaderboard leaderboardAddress={requestedAddress as `0x${string}`} />
+}
+
+function WebsiteLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x${string}` }) {
 
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
@@ -291,7 +305,7 @@ export default function WebsiteLeaderboardPage() {
           ) : (
             <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <LiveDot />
                 <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? ''}</span>
                 <span className="text-[#8A8FBF]">messages</span>
               </div>

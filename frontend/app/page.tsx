@@ -19,10 +19,13 @@ import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { StrategyBadge } from '@/components/StrategyBadge'
 import { MarkeeWatermark } from '@/components/board-detail/shared'
+import { LiveDot } from '@/components/ui/LiveDot'
+import { Campaign1HiveBanner } from '@/components/campaigns/Campaign1HiveBanner'
 
 const MONO = "var(--font-jetbrains-mono), 'JetBrains Mono', monospace"
 const MARKETPLACE_TEASER_COLS = '190px 110px 1fr 74px 120px 100px'
 const MARKETPLACE_TEASER_ROW_HEIGHT = 36
+const MARKETPLACE_TEASER_MIN_WIDTH = 860
 
 function extractDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -42,7 +45,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
       fontFamily: MONO, fontSize: 11, letterSpacing: 2,
       textTransform: 'uppercase', color: '#F897FE',
     }}>
-      <span style={{ width: 8, height: 8, borderRadius: 99, background: '#F897FE', display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+      <LiveDot />
       {children}
     </div>
   )
@@ -145,7 +148,7 @@ function SkeletonStatCell() {
         <span className="skeleton" style={{ width: 9, height: 9, borderRadius: 99, background: 'rgba(138,143,191,0.15)', flexShrink: 0 }} />
         <div className="skeleton" style={{ width: 72, height: 28, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />
       </span>
-      <div className="skeleton" style={{ width: 110, height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
+      <div className="skeleton" style={{ width: 110, maxWidth: 'calc(100% - 17px)', height: 12, background: 'rgba(138,143,191,0.08)', borderRadius: 4, marginLeft: 17 }} />
     </div>
   )
 }
@@ -210,84 +213,6 @@ function SectionHead({ kicker, title, sub, action }: {
   )
 }
 
-// ── Platform glyphs ───────────────────────────────────────────────────────────
-function PlatformGlyph({ icon, size = 26, color }: { icon: string; size?: number; color: string }) {
-  const common = { width: size, height: size, viewBox: '0 0 24 24' as const, fill: 'none', stroke: color, strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-  if (icon === 'globe') return (
-    <svg {...common}>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M2 12h20" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  )
-  if (icon === 'github') return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z" />
-    </svg>
-  )
-  if (icon === 'zap') return (
-    <svg {...common}>
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  )
-  return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>
-}
-
-const PLATFORMS = [
-  { key: 'website', name: 'Website', blurb: 'Any site you own', icon: 'globe', color: '#F897FE', href: '/marketplace' },
-  { key: 'github', name: 'GitHub Repo', blurb: 'README, docs, any markdown', icon: 'github', color: '#EDEEFF', href: '/marketplace' },
-  { key: 'superfluid', name: 'Superfluid Project', blurb: 'Earn SUP incentives', icon: 'zap', color: '#1DB227', href: '/ecosystem/platforms/superfluid' },
-] as const
-
-function PlatformCard({ p, stats }: { p: typeof PLATFORMS[number]; stats?: { markees: number; usd: number } }) {
-  const [hover, setHover] = useState(false)
-  return (
-    <Link
-      href={p.href}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: 18, textDecoration: 'none',
-        background: 'rgba(6,10,42,0.5)',
-        border: `1px solid ${hover ? 'rgba(248,151,254,0.35)' : 'rgba(138,143,191,0.2)'}`,
-        borderRadius: 14, padding: 22, cursor: 'pointer',
-        transform: hover ? 'translateY(-2px)' : 'none',
-        transition: 'border-color 160ms, transform 160ms',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <span style={{
-          width: 48, height: 48, borderRadius: 12,
-          background: '#060A2A', border: '1px solid rgba(138,143,191,0.2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
-          <PlatformGlyph icon={p.icon} color={p.color} />
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: '#EDEEFF', fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>{p.name}</div>
-          <div style={{ color: '#8A8FBF', fontSize: 12.5, marginTop: 3 }}>{p.blurb}</div>
-        </div>
-      </div>
-      <div style={{ borderTop: '1px solid rgba(138,143,191,0.2)', paddingTop: 16 }}>
-        {stats && (stats.markees > 0 || stats.usd > 0) ? (
-          <div style={{ display: 'flex', gap: 28 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: '#EDEEFF', lineHeight: 1, letterSpacing: -0.5 }}>{stats.markees.toLocaleString()}</div>
-              <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 4 }}>Markees</div>
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: '#7C9CFF', lineHeight: 1, letterSpacing: -0.5 }}>${stats.usd.toLocaleString()}</div>
-              <div style={{ fontSize: 12, color: '#8A8FBF', marginTop: 4 }}>raised</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ color: '#8A8FBF', fontFamily: MONO, fontSize: 12 }}>Create a Markee →</div>
-        )}
-      </div>
-    </Link>
-  )
-}
-
 // ── Buttons ───────────────────────────────────────────────────────────────────
 function PrimaryButton({ href, children }: { href: string; children: React.ReactNode }) {
   const [hover, setHover] = useState(false)
@@ -340,14 +265,13 @@ export default function Home() {
   const [buyModal, setBuyModal] = useState<{ leaderboardAddress: `0x${string}` } | null>(null)
   const clientEthPrice = useEthPrice()
 
-  // Ecosystem stats for the metrics row + per-platform stats for platform cards.
+  // Ecosystem stats for the metrics row.
   // The listing and network views load in parallel, and the listing API prices the totals
   // server-side, so all four metrics appear together (no $0 while the price loads).
   const [listingEthPrice, setListingEthPrice] = useState<number | null>(null)
   const ethPrice = listingEthPrice ?? clientEthPrice
   const [ecoTotals, setEcoTotals] = useState({ domains: 0, markees: 0, messages: 0, totalEth: 0, serverUsd: null as number | null, views: 0 })
   const [ecoStatsLoaded, setEcoStatsLoaded] = useState(false)
-  const [platformEth, setPlatformEth] = useState<Record<string, { markees: number; eth: number }>>({})
   const [top5Eco, setTop5Eco] = useState<any[]>([])
   const [top5EcoLoading, setTop5EcoLoading] = useState(true)
   useEffect(() => {
@@ -359,31 +283,16 @@ export default function Home() {
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
         if (!data) return
-        const leaderboards: { address: string; platform: string; topFundsAddedRaw: string; totalFundsRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
+        const leaderboards: { address: string; topFundsAddedRaw: string; markeeCount: number; isLegacy?: boolean; [key: string]: any }[] = data.leaderboards ?? []
         const active = leaderboards.filter(lb => BigInt(lb.topFundsAddedRaw ?? '0') > 0n)
-        // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude gamed
-        setTop5Eco(leaderboards.filter(lb => !lb.gamed && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))
+        // Top 5 by effectiveRate across all strategies (API already sorts descending); exclude disqualified
+        setTop5Eco(leaderboards.filter(lb => !lb.disqualified && BigInt(lb.effectiveRateRaw ?? '0') > 0n).slice(0, 5))
         setTop5EcoLoading(false)
         if (typeof data.ethPriceUsd === 'number' && data.ethPriceUsd > 0) setListingEthPrice(data.ethPriceUsd)
         const messages = active.reduce(
           (sum, lb) => sum + (lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)),
           0
         )
-
-        // Per-platform stats for the Raise Funding section cards
-        const pAcc: Record<string, { markees: number; eth: number }> = {
-          website: { markees: 0, eth: 0 },
-          github: { markees: 0, eth: 0 },
-          superfluid: { markees: 0, eth: 0 },
-        }
-        for (const lb of leaderboards) {
-          const p = lb.platform
-          if (pAcc[p]) {
-            pAcc[p].markees += lb.isLegacy ? lb.markeeCount : Math.max(0, lb.markeeCount - 1)
-            pAcc[p].eth += parseFloat(formatEther(BigInt(lb.totalFundsRaw || '0')))
-          }
-        }
-        setPlatformEth(pAcc)
 
         // Network-wide total views (all markees, not just top per leaderboard)
         const totalViews = await viewsPromise
@@ -404,9 +313,6 @@ export default function Home() {
     ...ecoTotals,
     usd: ecoTotals.serverUsd ?? (ethPrice ? Math.round(ecoTotals.totalEth * ethPrice) : null),
   }
-  const platformStats: Record<string, { markees: number; usd: number }> = Object.fromEntries(
-    Object.entries(platformEth).map(([k, v]) => [k, { markees: v.markees, usd: ethPrice ? Math.round(v.eth * ethPrice) : 0 }]),
-  )
 
   // Track views for hero reader signs
   useEffect(() => {
@@ -493,175 +399,177 @@ export default function Home() {
             sub="Find your audience on Markee's global network, buy a message, and see it live instantly."
           />
 
-          {/* Column headers */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: MARKETPLACE_TEASER_COLS,
-            gap: 16, alignItems: 'center', padding: '0 14px 10px',
-            fontFamily: MONO, fontSize: 10, letterSpacing: 1,
-            color: '#8A8FBF', textTransform: 'uppercase', lineHeight: 1,
-          }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: 22 }}>
-              <span aria-hidden style={{ width: 22, flexShrink: 0 }} />
-              Served on
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Total raised</span>
-            <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Current message</span>
-            <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Views</span>
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: 22, textAlign: 'right' }}>Price to change</span>
-            <span />
-          </div>
+          <div style={{ overflowX: 'auto' }}>
+            {/* Column headers */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: MARKETPLACE_TEASER_COLS, minWidth: MARKETPLACE_TEASER_MIN_WIDTH,
+              gap: 16, alignItems: 'center', padding: '0 14px 10px',
+              fontFamily: MONO, fontSize: 10, letterSpacing: 1,
+              color: '#8A8FBF', textTransform: 'uppercase', lineHeight: 1,
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: 22 }}>
+                <span aria-hidden style={{ width: 22, flexShrink: 0 }} />
+                Served on
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Total raised</span>
+              <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Current message</span>
+              <span style={{ display: 'flex', alignItems: 'center', minHeight: 22 }}>Views</span>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: 22, textAlign: 'right' }}>Price to change</span>
+              <span />
+            </div>
 
-          {/* Partner rows */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {top5EcoLoading
-              ? [1, 2, 3, 4, 5].map(i => (
-                  <div key={i} style={{
-                    display: 'grid', gridTemplateColumns: MARKETPLACE_TEASER_COLS,
-                    gap: 16, padding: '11px 14px',
-                    borderBottom: '1px solid rgba(138,143,191,0.2)',
-                  }}>
-                    {[1, 2, 3, 4, 5].map(j => (
-                      <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4 }} />
-                    ))}
-                    <div />
-                  </div>
-                ))
-              : top5Eco.map((lb) => {
-                  const isStreaming = lb.strategy === 'streaming'
-                  const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw ?? '0')))
-                  const totalUsd = ethPrice ? Math.round(totalEth * ethPrice) : null
-                  const topFundsAdded = BigInt(lb.topFundsAddedRaw ?? '0')
-                  const priceToOvertakeEth = topFundsAdded > 0n
-                    ? parseFloat(formatEther(topFundsAdded + BigInt('1000000000000000')))
-                    : null
-                  const priceUsd = priceToOvertakeEth && ethPrice ? Math.round(priceToOvertakeEth * ethPrice) : null
+            {/* Partner rows */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {top5EcoLoading
+                ? [1, 2, 3, 4, 5].map(i => (
+                    <div key={i} style={{
+                      display: 'grid', gridTemplateColumns: MARKETPLACE_TEASER_COLS, minWidth: MARKETPLACE_TEASER_MIN_WIDTH,
+                      gap: 16, padding: '11px 14px',
+                      borderBottom: '1px solid rgba(138,143,191,0.2)',
+                    }}>
+                      {[1, 2, 3, 4, 5].map(j => (
+                        <div className="skeleton" key={j} style={{ height: 16, background: 'rgba(138,143,191,0.1)', borderRadius: 4 }} />
+                      ))}
+                      <div />
+                    </div>
+                  ))
+                : top5Eco.map((lb) => {
+                    const isStreaming = lb.strategy === 'streaming'
+                    const totalEth = parseFloat(formatEther(BigInt(lb.totalFundsRaw ?? '0')))
+                    const totalUsd = ethPrice ? Math.round(totalEth * ethPrice) : null
+                    const topFundsAdded = BigInt(lb.topFundsAddedRaw ?? '0')
+                    const priceToOvertakeEth = topFundsAdded > 0n
+                      ? parseFloat(formatEther(topFundsAdded + BigInt('1000000000000000')))
+                      : null
+                    const priceUsd = priceToOvertakeEth && ethPrice ? Math.round(priceToOvertakeEth * ethPrice) : null
 
-                  const logo = lb.platform === 'website' ? (lb.logoUrl || lb.repoAvatarUrl || null) : null
-                  const servedOnLabel = lb.platform === 'github'
-                    ? 'GitHub'
-                    : lb.platform === 'superfluid'
-                    ? 'Superfluid'
-                    : (lb.verifiedUrls?.[0] || lb.verifiedUrl)
-                      ? extractDomain(lb.verifiedUrls?.[0] || lb.verifiedUrl)
-                      : (lb.name || lb.address.slice(0, 8))
+                    const logo = lb.platform === 'website' ? (lb.logoUrl || lb.repoAvatarUrl || null) : null
+                    const servedOnLabel = lb.platform === 'github'
+                      ? 'GitHub'
+                      : lb.platform === 'superfluid'
+                      ? 'Superfluid'
+                      : (lb.verifiedUrls?.[0] || lb.verifiedUrl)
+                        ? extractDomain(lb.verifiedUrls?.[0] || lb.verifiedUrl)
+                        : (lb.name || lb.address.slice(0, 8))
 
-                  return (
-                    <Link
-                      key={lb.address}
-                      href={`/markee/${lb.address}`}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: MARKETPLACE_TEASER_COLS,
-                        gap: 16, alignItems: 'center', padding: '11px 14px',
-                        borderBottom: '1px solid rgba(138,143,191,0.2)',
-                        textDecoration: 'none',
-                        cursor: 'pointer',
-                        transition: 'background 120ms ease',
-                      }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(248,151,254,0.04)' }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                    >
-                      {/* Served on */}
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, fontSize: 12, lineHeight: 1, color: '#B8B6D9', minWidth: 0 }}>
-                        {lb.platform === 'github' ? (
-                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(237,238,255,0.08)' }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="#B8B6D9"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+                    return (
+                      <Link
+                        key={lb.address}
+                        href={`/markee/${lb.address}`}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: MARKETPLACE_TEASER_COLS, minWidth: MARKETPLACE_TEASER_MIN_WIDTH,
+                          gap: 16, alignItems: 'center', padding: '11px 14px',
+                          borderBottom: '1px solid rgba(138,143,191,0.2)',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          transition: 'background 120ms ease',
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(248,151,254,0.04)' }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      >
+                        {/* Served on */}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, fontSize: 12, lineHeight: 1, color: '#B8B6D9', minWidth: 0 }}>
+                          {lb.platform === 'github' ? (
+                            <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(237,238,255,0.08)' }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="#B8B6D9"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+                            </span>
+                          ) : lb.platform === 'superfluid' ? (
+                            <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(29,178,39,0.14)' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1DB227" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            </span>
+                          ) : logo ? (
+                            <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
+                              <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </span>
+                          ) : (
+                            <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(248,151,254,0.13)', color: '#F897FE', fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>
+                              {(servedOnLabel[0] || '?').toUpperCase()}
+                            </span>
+                          )}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
+                            {servedOnLabel}
                           </span>
-                        ) : lb.platform === 'superfluid' ? (
-                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(29,178,39,0.14)' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1DB227" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                          </span>
-                        ) : logo ? (
-                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', overflow: 'hidden' }}>
-                            <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          </span>
-                        ) : (
-                          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(138,143,191,0.2)', background: 'rgba(248,151,254,0.13)', color: '#F897FE', fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>
-                            {(servedOnLabel[0] || '?').toUpperCase()}
-                          </span>
-                        )}
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: MONO }}>
-                          {servedOnLabel}
                         </span>
-                      </span>
 
-                      {/* Total raised */}
-                      <span style={{
-                        display: 'flex', alignItems: 'center', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT,
-                        fontSize: 12.5, lineHeight: 1, color: '#7C9CFF',
-                        fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600,
-                      }}>
-                        {totalUsd != null ? `$${totalUsd.toLocaleString()}` : `${totalEth.toFixed(3)} ETH`}
-                      </span>
+                        {/* Total raised */}
+                        <span style={{
+                          display: 'flex', alignItems: 'center', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT,
+                          fontSize: 12.5, lineHeight: 1, color: '#7C9CFF',
+                          fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600,
+                        }}>
+                          {totalUsd != null ? `$${totalUsd.toLocaleString()}` : `${totalEth.toFixed(3)} ETH`}
+                        </span>
 
-                      {/* Current message */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
-                        {/* ModeratedContent only, no FlagButton -- this whole row is a Link and
-                            FlagButton's handler only stopPropagation()s, not preventDefault()s, so
-                            nesting it here would still navigate on click. The target page has a
-                            working FlagButton already. */}
-                        <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
-                          <div style={{
-                            fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                          }}>
-                            {lb.topMessage || '—'}
-                          </div>
-                        </ModeratedContent>
-                      </div>
+                        {/* Current message */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, minWidth: 0 }}>
+                          {/* ModeratedContent only, no FlagButton -- this whole row is a Link and
+                              FlagButton's handler only stopPropagation()s, not preventDefault()s, so
+                              nesting it here would still navigate on click. The target page has a
+                              working FlagButton already. */}
+                          <ModeratedContent placeholderLines={1} chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} className="min-w-0">
+                            <div style={{
+                              fontFamily: MONO, fontSize: 13, lineHeight: 1, color: '#EDEEFF', minWidth: 0,
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            }}>
+                              {lb.topMessage || '—'}
+                            </div>
+                          </ModeratedContent>
+                        </div>
 
-                      {/* Views */}
-                      <span style={{ minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, fontSize: 11, lineHeight: 1, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
-                        <Eye size={10} style={{ opacity: 0.7 }} />
-                        {(() => { const v = partnerViews.get((lb.topMarkeeAddress ?? '').toLowerCase()); return v ? formatViews(v) : '—' })()}
-                      </span>
+                        {/* Views */}
+                        <span style={{ minHeight: MARKETPLACE_TEASER_ROW_HEIGHT, fontSize: 11, lineHeight: 1, color: '#8A8FBF', display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO }}>
+                          <Eye size={10} style={{ opacity: 0.7 }} />
+                          {(() => { const v = partnerViews.get((lb.topMarkeeAddress ?? '').toLowerCase()); return v ? formatViews(v) : '—' })()}
+                        </span>
 
-                      {/* Price to change */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
-                        {isStreaming ? (
-                          <span style={{
-                            background: 'transparent', color: '#F897FE', border: '1px solid #F897FE',
-                            borderRadius: 7, padding: '8px 10px',
-                            fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-                            whiteSpace: 'nowrap', width: '100%', textAlign: 'center',
-                          }}>
-                            Stream →
-                          </span>
-                        ) : priceToOvertakeEth != null ? (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setBuyModal({
-                                leaderboardAddress: lb.address as `0x${string}`,
-                              })
-                            }}
-                            style={{
-                              background: '#F897FE', color: '#060A2A', border: 'none',
+                        {/* Price to change */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
+                          {isStreaming ? (
+                            <span style={{
+                              background: 'transparent', color: '#F897FE', border: '1px solid #F897FE',
                               borderRadius: 7, padding: '8px 10px',
                               fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
-                              cursor: 'pointer', whiteSpace: 'nowrap',
-                              width: '100%', textAlign: 'center',
-                              boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
-                            }}
-                          >
-                            {priceUsd != null
-                              ? `$${priceUsd.toLocaleString()}`
-                              : `${priceToOvertakeEth.toFixed(3)} ETH`}
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: 11, color: '#8A8FBF', fontFamily: MONO }}>—</span>
-                        )}
-                      </div>
+                              whiteSpace: 'nowrap', width: '100%', textAlign: 'center',
+                            }}>
+                              Stream →
+                            </span>
+                          ) : priceToOvertakeEth != null ? (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setBuyModal({
+                                  leaderboardAddress: lb.address as `0x${string}`,
+                                })
+                              }}
+                              style={{
+                                background: '#F897FE', color: '#060A2A', border: 'none',
+                                borderRadius: 7, padding: '8px 10px',
+                                fontFamily: MONO, fontWeight: 700, fontSize: 12.5,
+                                cursor: 'pointer', whiteSpace: 'nowrap',
+                                width: '100%', textAlign: 'center',
+                                boxShadow: '0 2px 10px rgba(248,151,254,0.28)',
+                              }}
+                            >
+                              {priceUsd != null
+                                ? `$${priceUsd.toLocaleString()}`
+                                : `${priceToOvertakeEth.toFixed(3)} ETH`}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#8A8FBF', fontFamily: MONO }}>—</span>
+                          )}
+                        </div>
 
-                      {/* Strategy */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
-                        <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
-                      </div>
-                    </Link>
-                  )
-                })
-            }
+                        {/* Strategy */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: MARKETPLACE_TEASER_ROW_HEIGHT }}>
+                          <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
+                        </div>
+                      </Link>
+                    )
+                  })
+              }
+            </div>
           </div>
 
           <div style={{ textAlign: 'center', marginTop: 28 }}>
@@ -678,9 +586,8 @@ export default function Home() {
             title="Create a Markee and start earning"
             sub="Add a Markee to your website or open source repo in just a few clicks."
           />
-          <div className="plat-grid-home">
-            {PLATFORMS.map(p => <PlatformCard key={p.key} p={p} stats={platformStats[p.key]} />)}
-          </div>
+          {/* 1Hive campaign promo */}
+          <Campaign1HiveBanner />
           <div style={{ textAlign: 'center', marginTop: 28 }}>
             <PrimaryButton href="/raise-funding">Create a Markee →</PrimaryButton>
           </div>

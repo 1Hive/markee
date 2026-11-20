@@ -16,6 +16,7 @@ export { dayOf, dailyViewsKey, VIEWS_SINCE_KEY } from './keys'
 export const raisedSnapshotKey = (board: string) => `stats:raised:${board.toLowerCase()}`
 export const boughtSnapshotKey = (wallet: string) => `stats:bought:${wallet.toLowerCase()}`
 export const fundedSnapshotKey = (wallet: string) => `stats:funded:${wallet.toLowerCase()}`
+export const rentSpentSnapshotKey = (wallet: string) => `stats:rent-spent:${wallet.toLowerCase()}`
 
 // Today's running total. Overwritten through the day, so the last write of the day is the day's close.
 export async function snapshotTotals(entries: { key: string; total: bigint }[]): Promise<void> {
@@ -32,7 +33,8 @@ export function lastDays(n: number, now: number = Date.now()): string[] {
 
 const CHUNK = 500
 
-async function hgetalls(keys: string[]): Promise<Record<string, string | number>[]> {
+// HGETALL for many keys, pipelined in chunks to stay under Upstash's request-size cap.
+export async function hgetalls(keys: string[]): Promise<Record<string, string | number>[]> {
   const out: Record<string, string | number>[] = []
   for (let i = 0; i < keys.length; i += CHUNK) {
     const pipeline = kv.pipeline()

@@ -13,6 +13,7 @@ import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 import { StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE, CFA_FORWARDER_ABI, BUFFER_PERIOD } from '@/lib/superfluid/streaming'
+import { boardLabel, type LabelledBoard } from '@/lib/leaderboards/label'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -26,11 +27,9 @@ const RATE_MAX_MISSES = 10
 const ETHX = STREAMING_BASE.ethx as `0x${string}`
 const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as `0x${string}`
 
-interface StreamingBoard {
+interface StreamingBoard extends LabelledBoard {
   address: string
   markeeCount: number
-  leaderboardName?: string
-  name?: string
 }
 
 export interface DepositManagerStream {
@@ -137,7 +136,7 @@ export async function GET(request: NextRequest) {
         const rank = idx !== -1 ? idx + 1 : 0
         return {
           boardAddress: l.address,
-          boardName: l.leaderboardName || l.name || 'Streaming board',
+          boardName: boardLabel(l, 'Streaming board'),
           markeeAddress: backer,
           message: (messageResults[i]?.result as string | undefined) ?? '',
           name: (nameResults[i]?.result as string | undefined) ?? '',
@@ -163,7 +162,7 @@ export async function GET(request: NextRequest) {
       const required = rate > 0n ? rate * BUFFER_PERIOD : 0n
       deposits.push({
         boardAddress: l.address,
-        boardName: l.leaderboardName || l.name || 'Streaming board',
+        boardName: boardLabel(l, 'Streaming board'),
         depositRaw: deposit.toString(),
         reclaimableRaw: (deposit > required ? deposit - required : 0n).toString(),
       })

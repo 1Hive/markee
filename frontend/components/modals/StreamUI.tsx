@@ -8,6 +8,7 @@ import { ModeratedContent } from '@/components/moderation'
 
 // ── Design tokens shared by the streaming modals ───────────────────────────────
 import { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 } from '@/lib/design-tokens'
+import { LiveDot } from '@/components/ui/LiveDot'
 export { MONO, BG, BG2, PINK, BLUE, GREEN, BORDER, MUTED, TEXT, TEXT2 }
 export const GOLD = '#FFD700'
 export const RED = '#FF8E8E'
@@ -167,7 +168,7 @@ export function Row({ label, value, bold, info }: { label: string; value: string
 // its own post-submit state. Pair with PaymentReviewFooter for the Back/Confirm controls.
 export function PaymentReviewCard({
   kind, message, amountLabel, amountUsd, depositLabel, runwayLabel, markeeEarnedLabel, willWin, minToWinLabel,
-  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin, boardCreator,
+  activating, editing, alreadyWinning, chainId, markeeId, boardAdmin,
 }: {
   kind: 'fixed' | 'rent'
   // The board's first message: there's nothing to beat yet, so the banner says what activation does.
@@ -192,7 +193,6 @@ export function PaymentReviewCard({
   chainId?: number | string
   markeeId?: string
   boardAdmin?: string | null
-  boardCreator?: string | null
 }) {
   const messageBox = (
     <div style={{
@@ -205,7 +205,7 @@ export function PaymentReviewCard({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 6 }}>
       {chainId !== undefined && markeeId ? (
-        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin} boardCreator={boardCreator}>
+        <ModeratedContent chainId={chainId} message={message ?? ''} markeeId={markeeId} boardAdmin={boardAdmin}>
           {messageBox}
         </ModeratedContent>
       ) : messageBox}
@@ -446,6 +446,32 @@ export function RatePriceCard({
   )
 }
 
+export function formatFundingNeeded(wei: bigint): string {
+  const eth = Number(formatEther(wei))
+  return (Math.ceil(eth * 10000) / 10000).toFixed(4)
+}
+
+export function FundingNeededNotice({ neededWei, ethPrice, onOpenDepositManager }: {
+  neededWei: bigint
+  ethPrice: number | null
+  onOpenDepositManager: () => void
+}) {
+  const usd = ethPrice ? ` (${formatUsd(Number(formatEther(neededWei)) * ethPrice)})` : ''
+  return (
+    <div style={{ border: `1px solid rgba(248,151,254,0.35)`, background: 'rgba(248,151,254,0.08)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 700, color: TEXT, marginBottom: 4 }}>Add funds to pay for this message</div>
+      Your wallet needs about {formatFundingNeeded(neededWei)} ETH{usd} more to stream at this rate. Use Add funds to buy or transfer ETH, then come back here to finish. You can also manage your ETHx balance in the{' '}
+      <button
+        type="button"
+        onClick={onOpenDepositManager}
+        style={{ background: 'transparent', border: 'none', color: PINK, fontFamily: MONO, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0 }}
+      >
+        Deposit Manager →
+      </button>
+    </div>
+  )
+}
+
 // Full-screen overlay + card + pulsing-dot header every streaming modal shares.
 export function ModalShell({ stepLabel, onClose, footer, children }: {
   stepLabel: string
@@ -479,7 +505,7 @@ export function ModalShell({ stepLabel, onClose, footer, children }: {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: MONO, fontSize: 12, color: MUTED, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+            <LiveDot />
             {stepLabel}
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: 4, fontFamily: 'inherit' }}>×</button>
@@ -512,7 +538,7 @@ export function TxSteps({ steps }: { steps: { label: string; done: boolean; acti
                 <path d="M5 13l4 4L19 7" stroke={BG} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             ) : s.active ? (
-              <span style={{ width: 7, height: 7, borderRadius: 99, background: PINK, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot size={7} />
             ) : (
               <span style={{ width: 6, height: 6, borderRadius: 99, background: MUTED }} />
             )}

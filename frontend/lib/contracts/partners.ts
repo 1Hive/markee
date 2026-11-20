@@ -1,12 +1,7 @@
-'use client'
-
-import { useReadContracts } from 'wagmi'
-import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
-import { LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
-import type { Markee } from '@/types'
-
+// Partner registry. Kept free of client-only imports so server routes can read it too.
 // Partner configuration.
-// leaderboardAddress — v1.1 Leaderboard to query and send new purchases to; null for unmigrated partners.
+// leaderboardAddress — original Leaderboard; null for unmigrated partners. Read and buy through the
+// leaderboardAddress /api/partner/board returns, which follows a finished board migration.
 // strategyAddress — kept for reference only (no longer queried).
 export const PARTNERS = [
   {
@@ -119,103 +114,16 @@ export const PARTNERS = [
   },
 ]
 
-interface PartnerData {
-  partner: typeof PARTNERS[number]
-  winningMarkee: Markee | null
-  totalFunds: bigint
-  markeeCount: bigint
-}
-
-export function usePartnerMarkees() {
-  const partnersWithLb = PARTNERS.filter(p => p.leaderboardAddress)
-
-  // Step 1: getTopMarkees(1) + totalLeaderboardFunds + markeeCount for each leaderboard
-  const step1Contracts = partnersWithLb.flatMap(p => [
-    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'getTopMarkees' as const, args: [1n] as const, chainId: CANONICAL_CHAIN_ID },
-    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'totalLeaderboardFunds' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: p.leaderboardAddress!, abi: LeaderboardV11ABI, functionName: 'markeeCount' as const, chainId: CANONICAL_CHAIN_ID },
-  ])
-
-  const { data: step1Data, isLoading: isLoadingStep1 } = useReadContracts({
-    contracts: step1Contracts,
-    query: { refetchInterval: 30_000 },
-  })
-
-  // Extract top markee addresses from step 1
-  const topAddresses: (`0x${string}` | null)[] = partnersWithLb.map((_, i) => {
-    const result = step1Data?.[i * 3]?.result as [string[], bigint[]] | undefined
-    return (result?.[0]?.[0] ?? null) as `0x${string}` | null
-  })
-
-  const validTopAddresses = topAddresses.filter((a): a is `0x${string}` => !!a)
-
-  // Step 2: message + name + owner + pricingStrategy for each top markee
-  const step2Contracts = validTopAddresses.flatMap(addr => [
-    { address: addr, abi: MarkeeABI, functionName: 'message' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: addr, abi: MarkeeABI, functionName: 'name' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: addr, abi: MarkeeABI, functionName: 'owner' as const, chainId: CANONICAL_CHAIN_ID },
-    { address: addr, abi: MarkeeABI, functionName: 'pricingStrategy' as const, chainId: CANONICAL_CHAIN_ID },
-  ])
-
-  const { data: step2Data, isLoading: isLoadingStep2 } = useReadContracts({
-    contracts: step2Contracts,
-    query: { enabled: validTopAddresses.length > 0, refetchInterval: 30_000 },
-  })
-
-  // Assemble results
-  let step2Index = 0
-  const lbResults: Map<string, {
-    winningMarkee: Markee | null
-    totalFunds: bigint
-    markeeCount: bigint
-  }> = new Map()
-
-  partnersWithLb.forEach((partner, i) => {
-    const topResult = step1Data?.[i * 3]?.result as [string[], bigint[]] | undefined
-    const topFunds0 = topResult?.[1]?.[0] ?? 0n
-    const totalFunds = (step1Data?.[i * 3 + 1]?.result as bigint) ?? 0n
-    const markeeCount = (step1Data?.[i * 3 + 2]?.result as bigint) ?? 0n
-    const topAddr = topAddresses[i]
-    const displayTotalFunds = totalFunds > topFunds0 ? totalFunds : topFunds0
-
-    let winningMarkee: Markee | null = null
-    if (topAddr && step2Data) {
-      const b = step2Index * 4
-      winningMarkee = {
-        address: topAddr,
-        message: (step2Data[b]?.result as string) ?? '',
-        name: (step2Data[b + 1]?.result as string) ?? '',
-        owner: (step2Data[b + 2]?.result as string) ?? '',
-        pricingStrategy: (step2Data[b + 3]?.result as string) ?? topAddr,
-        totalFundsAdded: topFunds0,
-        chainId: CANONICAL_CHAIN_ID,
-      }
-      step2Index++
-    }
-
-    lbResults.set(partner.slug, { winningMarkee, totalFunds: displayTotalFunds, markeeCount })
-  })
-
-  const partnerData: PartnerData[] = PARTNERS.map(partner => {
-    const r = lbResults.get(partner.slug)
-    return {
-      partner,
-      winningMarkee: r?.winningMarkee ?? null,
-      totalFunds: r?.totalFunds ?? 0n,
-      markeeCount: r?.markeeCount ?? 0n,
-    }
-  })
-
-  // Sort: Cooperative first, then by total funds
-  partnerData.sort((a, b) => {
-    if (a.partner.isCooperative) return -1
-    if (b.partner.isCooperative) return 1
-    return Number(b.totalFunds - a.totalFunds)
-  })
-
-  return {
-    partnerData,
-    isLoading: isLoadingStep1 || isLoadingStep2,
-    error: null,
-  }
+// Response shape of /api/partner/board (amounts are decimal strings). leaderboardAddress is the
+// board to read and buy on: the registry address, or its finished-migration successor.
+export interface PartnerBoardSnapshot {
+  leaderboardAddress: `0x${string}`
+  markees: {
+    address: `0x${string}`
+    message: string
+    name: string
+    owner: string
+    pricingStrategy: string
+    totalFundsAdded: string
+  }[]
 }

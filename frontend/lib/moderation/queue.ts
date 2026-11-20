@@ -110,6 +110,10 @@ export function notifyEmailMessage(chainId: number | string, wallet: string, ema
   return `markee-moderation:notify-email:${chainId}:${wallet.toLowerCase()}:${email.toLowerCase()}:${timestamp}`
 }
 
+export function notifyResendMessage(chainId: number | string, wallet: string, timestamp: number): string {
+  return `markee-moderation:notify-resend:${chainId}:${wallet.toLowerCase()}:${timestamp}`
+}
+
 // Lowercased, deduped and sorted by wallet, so the client and the server sign over the same list.
 // Accepts raw strings (wallet-only, legacy) or {wallet, email?} objects.
 export function normalizeModerators(raw: unknown[]): ModeratorEntry[] {

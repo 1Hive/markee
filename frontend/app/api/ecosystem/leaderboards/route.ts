@@ -16,27 +16,13 @@ import { internalOrigin, internalHeaders } from '@/lib/internal-origin'
 import { needsVerificationGate, isVerifiedLeaderboard } from '@/lib/leaderboards/verification'
 import { cachedListing } from '@/lib/leaderboards/cached'
 import { getEthPriceUsdWithin } from '@/lib/server/ethPrice'
+import { originalAddress } from '@/lib/contracts/successorAliases'
+import { isDisqualifiedBoard } from '@/lib/leaderboards/disqualified'
+import { verificationStatusFor } from '@/lib/leaderboards/verificationStatus'
 
 export const dynamic = 'force-dynamic'
 
 const CACHE_KEY = 'cache:ecosystem:leaderboards'
-
-// Excluded from totalPlatformFunds — leaderboards with clearly recycled/gamed ETH
-const GAMED_ADDRESSES = new Set([
-  '0x1b4eb52953d865e0dde1c856c2ead826581e2904',
-  '0xb5451c1cb790367d0ddbcbf1249de22b9014ecdc',
-  '0x4e413915c0c1d86084e8dcb36d4dec6b66b45a24',
-  '0x762c0484599d6a75636cc8cffd9fcb23793dc582',
-  '0x8578915859912888407f72f102761b7d21b2e702',
-  '0x566f89accd7e6a497e7b4c9f7992f1fe67e564cb',
-  '0x1be900ecc09edd0590db88723dbcb3b1fea22fe3',
-  '0xe3ee8c369dc37e478bc4b0e7fbbecce5f1dc089f',
-  '0x097b06f778ae2fb32a9a4251ccf04fdbebf3733c',
-  '0x774d8d9ce01151fc5189c13e362f5061dab0fd8f',
-  '0x122140b7714a2aa4507d7742a28d0fd71117a729',
-  '0x4ad89044f5f3f324935747a4bce7ba7954d2aaa4',
-  '0xc936a036b7727865a696398de30f616be98e266b',
-])
 
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 
@@ -96,7 +82,7 @@ async function loadListing(request: Request) {
     // the Verified section alongside Cooperative, Gardens, and Clawchemy.
     const SF_MIGRATION = '0xaa37d049dfbfc07f9e8526a4a9bde418df9f1b79'
     const sfLeaderboards = (sfData.leaderboards ?? []).map((l: any) => {
-      if (l.address.toLowerCase() === SF_MIGRATION) {
+      if (originalAddress(l) === SF_MIGRATION) {
         return {
           ...l,
           platform: 'website',
@@ -129,7 +115,7 @@ async function loadListing(request: Request) {
         const effectiveRateRaw = strategy === 'streaming'
           ? (l.effectiveRateRaw ?? '0')
           : imputeEffectiveRate(BigInt(l.totalFundsRaw ?? '0')).toString()
-        return { ...l, strategy, effectiveRateRaw, gamed: GAMED_ADDRESSES.has(l.address?.toLowerCase()) }
+        return { ...l, strategy, effectiveRateRaw, disqualified: isDisqualifiedBoard(originalAddress(l)) }
       })
 
     // A board that needs a verified integration (see needsVerificationGate -- every streaming board,
@@ -138,13 +124,10 @@ async function loadListing(request: Request) {
     // marketplace. Same address-based lookup /account itself uses (a platform-specific listing route
     // can't reliably know about an integration made through a different route -- streaming boards in
     // particular aren't split by platform at all), so the two stay consistent with each other.
-    const gatedAddrs = preFilterLeaderboards.filter(needsVerificationGate).map((l: any) => l.address as string)
-    const verificationMap: Record<string, { verifiedUrls: string[]; linkedFiles: { verified: boolean }[] }> = gatedAddrs.length > 0
-      ? await fetch(`${origin}/api/account/verification-status`, {
-          method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ addresses: gatedAddrs }), cache: 'no-store',
-        }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
-      : {}
+    // Looked up directly rather than through /api/account/verification-status, whose 200-address
+    // cap (it's public and rate limited) would leave every gated board past 200 unverified.
+    const gatedAddrs: string[] = [...new Set<string>(preFilterLeaderboards.filter(needsVerificationGate).map((l: any) => String(l.address).toLowerCase()))]
+    const verificationMap: Record<string, { verifiedUrls: string[]; linkedFiles: { verified: boolean }[] }> = await verificationStatusFor(gatedAddrs)
     const leaderboards = preFilterLeaderboards.filter((l: any) =>
       !needsVerificationGate(l) || isVerifiedLeaderboard(l, verificationMap[l.address?.toLowerCase()]))
 
@@ -156,10 +139,10 @@ async function loadListing(request: Request) {
       return bTotal > aTotal ? 1 : bTotal < aTotal ? -1 : 0
     })
 
-    // Compute aggregate total across all platforms, excluding gamed leaderboards
+    // Compute aggregate total across all platforms, excluding disqualified boards
     const totalFundsWei = leaderboards.reduce(
       (sum: bigint, l: any) =>
-        GAMED_ADDRESSES.has(l.address?.toLowerCase()) ? sum : sum + BigInt(l.totalFundsRaw ?? '0'),
+        l.disqualified ? sum : sum + BigInt(l.totalFundsRaw ?? '0'),
       0n,
     )
 

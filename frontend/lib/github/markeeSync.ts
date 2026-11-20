@@ -1,9 +1,12 @@
 import { kv } from '@vercel/kv'
 import { createPublicClient, http, formatEther, isAddress, parseAbi } from 'viem'
-import { BASE_STREAMING_FACTORY, FACTORIES } from '@/lib/contracts/addresses'
+import { fileSyncKey, fileSyncStatus, isGitHubRateLimited, isMissingFunction, isPermanentGitHubFailure, syncFailedKey, type SyncFileResult } from './syncSchedule'
+import { fileIntegrationKey } from '@/lib/integrations/featured'
+import { BASE_STREAMING_FACTORY, BOARD_MIGRATORS, FACTORIES, V14_FACTORIES } from '@/lib/contracts/addresses'
 import { base } from 'viem/chains'
 import { billboardLine } from '@/lib/github/billboardText'
-import { getLinkedFiles, startDelimiter, endDelimiter, legacyAddressesFor, encodedFilePath, encodedRepoPath } from '@/lib/github/linkedFiles'
+import { MIGRATION_FINISHED } from '@/lib/contracts/migration'
+import { getLinkedFiles, startDelimiter, endDelimiter, delimiterAliasesFor, encodedFilePath, encodedRepoPath } from '@/lib/github/linkedFiles'
 
 // ── Inline wcwidth — counts display columns for Unicode/emoji strings ─────────
 // Emoji and CJK characters occupy 2 columns; everything else occupies 1.
@@ -35,8 +38,11 @@ function wcwidth(str: string): number {
   return w
 }
 
+// Batched: reads issued together (the three parallel reads in readBillboardState, and reads of
+// boards synced concurrently) share one eth_call.
 const client = createPublicClient({
   chain: base,
+  batch: { multicall: true },
   transport: http(process.env.ALCHEMY_BASE_URL ?? undefined),
 })
 
@@ -188,22 +194,34 @@ ${endDelimiter(leaderboardAddress)}`
 
 const FACTORY_ABI = parseAbi(['function isFactoryLeaderboard(address) view returns (bool)'])
 const BOARD_FACTORIES = [...new Set(
-  [...Object.values(FACTORIES), BASE_STREAMING_FACTORY, process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '']
+  [...Object.values(FACTORIES), ...Object.values(V14_FACTORIES), BASE_STREAMING_FACTORY, process.env.NEXT_PUBLIC_STREAMING_FACTORY ?? '']
     .filter(a => isAddress(a)).map(a => a.toLowerCase()),
 )] as `0x${string}`[]
 
+const MIGRATOR_STATUS_ABI = parseAbi(['function status(address) view returns (uint8)'])
+
 export async function isLiveBoard(address: string): Promise<boolean | null> {
-  const reads = await client.multicall({
-    contracts: BOARD_FACTORIES.map(factory => ({ address: factory, abi: FACTORY_ABI, functionName: 'isFactoryLeaderboard' as const, args: [address as `0x${string}`] })),
-  })
-  if (reads.some(r => r.status === 'success' && r.result === true)) return true
-  return reads.every(r => r.status === 'success') ? false : null
+  const board = address as `0x${string}`
+  const [factoryReads, migrationReads] = await Promise.all([
+    client.multicall({
+      contracts: BOARD_FACTORIES.map(factory => ({ address: factory, abi: FACTORY_ABI, functionName: 'isFactoryLeaderboard' as const, args: [board] })),
+    }),
+    client.multicall({
+      contracts: Object.values(BOARD_MIGRATORS).map(migrator => ({ address: migrator, abi: MIGRATOR_STATUS_ABI, functionName: 'status' as const, args: [board] })),
+    }),
+  ])
+  if (migrationReads.some(r => r.status === 'success' && r.result === MIGRATION_FINISHED)) return false
+  if (!migrationReads.every(r => r.status === 'success')) return null
+  if (factoryReads.some(r => r.status === 'success' && r.result === true)) return true
+  return factoryReads.every(r => r.status === 'success') ? false : null
 }
 
 export interface BillboardState { message: string; footer: string }
 
 export async function readBillboardState(board: `0x${string}`): Promise<BillboardState> {
-  const version = await client.readContract({ address: board, abi: BOARD_STATE_ABI, functionName: 'VERSION' }).catch(() => '')
+  // Only a revert means "no VERSION" (a pre-streaming board). A failed RPC request must fail the
+  // board, not quietly read a streaming board as a fixed-price one.
+  const version = await client.readContract({ address: board, abi: BOARD_STATE_ABI, functionName: 'VERSION' }).catch(err => { if (isMissingFunction(err)) return ''; throw err })
   if (version.startsWith('streaming')) {
     const [top, topRate, minimumMonthlyRate] = await Promise.all([
       client.readContract({ address: board, abi: BOARD_STATE_ABI, functionName: 'topMarkee' }),
@@ -216,7 +234,7 @@ export async function readBillboardState(board: `0x${string}`): Promise<Billboar
   }
   const [[topAddresses, topFunds], minimumPrice] = await Promise.all([
     client.readContract({ address: board, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees', args: [1n] }),
-    client.readContract({ address: board, abi: BOARD_STATE_ABI, functionName: 'minimumPrice' }).catch(() => 0n),
+    client.readContract({ address: board, abi: BOARD_STATE_ABI, functionName: 'minimumPrice' }).catch(err => { if (isMissingFunction(err)) return 0n; throw err }),
   ])
   const topAddr = topAddresses[0]
   const message = topAddr ? await client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' }) : ''
@@ -233,6 +251,26 @@ export function billboardSignature(state: BillboardState): string {
 }
 
 export interface SyncOutcome { status: number; body: Record<string, unknown> }
+
+/** A failed GitHub read or write, worded for the board owner (shown per embed in the Manage drawer). */
+function githubFailure(action: 'Read' | 'Write', status: number, rateLimited: boolean): string {
+  if (status === 401) return 'GitHub access expired or was revoked (401). Reconnect GitHub'
+  if (status === 404) return 'File not found, or this GitHub account can no longer access it (404)'
+  if (rateLimited) return `GitHub rate limited the ${action.toLowerCase()} (${status}). It will retry automatically`
+  if (status === 403) return action === 'Write'
+    ? 'GitHub refused the write (403). This GitHub account needs write access to the repo'
+    : 'GitHub refused access to this file (403). Check this GitHub account can still read the repo'
+  return `${action} failed (GitHub ${status})`
+}
+
+/** A failed GitHub response as a sync result: whether it's lasting, and the owner-facing reason. */
+function githubFailureResult(file: { repoFullName: string; filePath: string }, action: 'Read' | 'Write', res: Response, body: string): SyncFileResult {
+  return {
+    repoFullName: file.repoFullName, filePath: file.filePath, success: false,
+    permanent: isPermanentGitHubFailure(res.status, res.headers, body),
+    error: githubFailure(action, res.status, isGitHubRateLimited(res.status, res.headers, body)),
+  }
+}
 
 export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownState?: BillboardState): Promise<SyncOutcome> {
   console.log(`[update-markee-file] triggered for ${normalizedAddress}`)
@@ -258,7 +296,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
   const START = startDelimiter(normalizedAddress)
   const END   = endDelimiter(normalizedAddress)
 
-  const results: Array<{ filePath: string; repoFullName: string; success: boolean; unchanged?: boolean; error?: string }> = []
+  const results: SyncFileResult[] = []
 
   for (const file of verifiedFiles) {
     console.log(`[update-markee-file] processing ${file.repoFullName}/${file.filePath} linkedByUid=${file.linkedByUid || '(empty)'}`)
@@ -275,13 +313,13 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
     }
 
     if (!accessToken) {
-      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `GitHub token not found (linkedByUid="${file.linkedByUid || ''}")` })
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: true, error: 'GitHub connection not found. Reconnect GitHub and sync again.' })
       continue
     }
 
     const repoPath = encodedRepoPath(file.repoFullName)
     if (!repoPath) {
-      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Invalid repository name' })
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: true, error: 'Invalid repository name' })
       continue
     }
 
@@ -291,7 +329,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
         { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' } }
       )
       if (!fileRes.ok) {
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `Fetch failed (${fileRes.status})` })
+        results.push(githubFailureResult(file, 'Read', fileRes, await fileRes.text().catch(() => '')))
         continue
       }
 
@@ -304,7 +342,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
 
       if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
         // Fall back to known legacy addresses from the migration map
-        for (const oldAddr of legacyAddressesFor(normalizedAddress)) {
+        for (const oldAddr of await delimiterAliasesFor(normalizedAddress)) {
           const legacyStart = startDelimiter(oldAddr)
           const legacyEnd   = endDelimiter(oldAddr)
           const si = currentContent.indexOf(legacyStart)
@@ -333,7 +371,7 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
       }
 
       if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Address-specific delimiters not found in file' })
+        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, permanent: true, error: 'Address-specific delimiters not found in file' })
         continue
       }
 
@@ -357,19 +395,33 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
       )
 
       if (!putRes.ok) {
-        const errBody = await putRes.text()
-        results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: `Write failed (${putRes.status}): ${errBody.slice(0, 200)}` })
+        const body = await putRes.text().catch(() => '')
+        console.error(`[update-markee-file] write failed for ${file.repoFullName}/${file.filePath}:`, putRes.status, body.slice(0, 500))
+        results.push(githubFailureResult(file, 'Write', putRes, body))
       } else {
         results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: true })
       }
     } catch (err) {
-      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: String(err) })
+      console.error(`[update-markee-file] sync failed for ${file.repoFullName}/${file.filePath}:`, err)
+      results.push({ repoFullName: file.repoFullName, filePath: file.filePath, success: false, error: 'Sync failed' })
     }
   }
 
   const succeeded = results.filter(r => r.success)
   const failed    = results.filter(r => !r.success)
   const delimiterFails = failed.filter(r => r.error?.toLowerCase().includes('delimiter'))
+  for (const r of failed) console.warn(`[update-markee-file] ${r.repoFullName}/${r.filePath} not synced: ${r.error}`)
+
+  // Each file's outcome, for the per-embed status in the Manage drawer. Best effort: a failed write
+  // here must not fail a sync that reached GitHub.
+  if (results.length > 0) {
+    const at = Date.now()
+    await kv.hset(fileSyncKey(normalizedAddress), Object.fromEntries(results.map(r => [fileIntegrationKey(r), JSON.stringify(fileSyncStatus(r, at))])))
+      .catch(err => console.warn('[update-markee-file] could not save file sync status:', err))
+  }
+
+  // A sync that worked (here or from the manual route) ends any cron backoff for this board.
+  if (succeeded.length > 0) await kv.del(syncFailedKey(normalizedAddress)).catch(() => {})
 
   let topLevelError: string | undefined
   if (succeeded.length === 0) {

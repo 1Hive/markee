@@ -14,12 +14,14 @@ import { HeroBackground } from '@/components/backgrounds/HeroBackground'
 import { type MarkeeSlot } from '@/components/modals/BuyMessageModal'
 import { MarkeeSignModal } from '@/components/modals/MarkeeSignModal'
 import { useViews } from '@/hooks/useViews'
+import { useCurrentBoardAddress } from '@/hooks/useCurrentBoardAddress'
 import { NETWORK_PAUSED } from '@/lib/paused'
 import { ExpandableMarkeeRow } from '@/components/leaderboard/ExpandableMarkeeRow'
 import { ModeratedContent, FlagButton, ModeratedAuthor } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { isLegacyFixedBoardVersion } from '@/lib/strategy'
 import type { Markee } from '@/types'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -267,14 +269,28 @@ const OLD_TO_NEW_SF_LEADERBOARDS: Record<string, string> = {
 export default function SuperfluidLeaderboardPage() {
   const params = useParams()
   const router = useRouter()
-  const leaderboardAddress = (params.address as string) as `0x${string}`
+  const requestedAddress = params.address as string
+  const v11Address = OLD_TO_NEW_SF_LEADERBOARDS[requestedAddress.toLowerCase()]
 
-  // Redirect v1.0 factory leaderboard addresses to their v1.1 counterparts
   useEffect(() => {
-    const newAddr = OLD_TO_NEW_SF_LEADERBOARDS[leaderboardAddress.toLowerCase()]
-    if (newAddr) router.replace(`/ecosystem/platforms/superfluid/${newAddr}`)
-  }, [leaderboardAddress, router])
+    if (v11Address) router.replace(`/ecosystem/platforms/superfluid/${v11Address}`)
+  }, [v11Address, router])
 
+  const { ready } = useCurrentBoardAddress(
+    v11Address ? undefined : requestedAddress,
+    current => `/ecosystem/platforms/superfluid/${current}`,
+  )
+  if (v11Address || !ready) {
+    return (
+      <div className="min-h-screen bg-[#060A2A]">
+        <Header activePage="create-a-markee" />
+      </div>
+    )
+  }
+  return <SuperfluidLeaderboard leaderboardAddress={requestedAddress as `0x${string}`} />
+}
+
+function SuperfluidLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x${string}` }) {
   const [buyModalOpen, setBuyModalOpen] = useState(false)
   const [selectedMarkee, setSelectedMarkee] = useState<MarkeeSlot | null>(null)
   const [initialMode, setInitialMode] = useState<'create' | 'addFunds' | 'updateMessage' | undefined>(undefined)
@@ -438,7 +454,7 @@ export default function SuperfluidLeaderboardPage() {
           ) : (
             <div className="flex flex-wrap items-center gap-8 mt-8">
               <div className="flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 rounded-full bg-[#F897FE] animate-pulse" />
+                <LiveDot />
                 <span className="text-[#F897FE] font-semibold">{displayMessageCount?.toString() ?? ''}</span>
                 <span className="text-[#8A8FBF]">messages</span>
               </div>

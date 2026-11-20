@@ -15,6 +15,7 @@ import { type Strategy } from '@/lib/strategy'
 import { MONO, PINK, BLUE, GREEN, BG2, BG, TEXT2, TEXT, MUTED, BORDER } from '@/lib/design-tokens'
 import { ModeratedContent } from '@/components/moderation'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
+import { LiveDot } from '@/components/ui/LiveDot'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -217,7 +218,7 @@ function BoostedTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>
@@ -283,7 +284,7 @@ function RegularTableRow({
       </span>
 
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>
-        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} boardCreator={lb.creator} className="min-w-0">
+        <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={lb.topMessage ?? ''} markeeId={lb.topMarkeeAddress ?? lb.address} boardAdmin={lb.admin} className="min-w-0">
           <div style={{ fontFamily: MONO, fontSize: 13, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {lb.topMessage || <span style={{ color: MUTED, fontStyle: 'italic' }}>No message yet</span>}
           </div>
@@ -484,14 +485,7 @@ export default function SuperfluidPlatformPage() {
                     borderRadius: 99,
                     whiteSpace: 'nowrap',
                   }}>
-                    <span style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 99,
-                      background: GREEN,
-                      display: 'inline-block',
-                      animation: 'glowPulse 1.5s ease-in-out infinite',
-                    }} />
+                    <LiveDot color={GREEN} size={6} />
                     {campaign?.name ?? 'Superfluid Rewards'}
                   </span>
                 </div>
@@ -549,7 +543,7 @@ export default function SuperfluidPlatformPage() {
           {/* Stats row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 32, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: PINK, display: 'inline-block', flexShrink: 0, animation: 'glowPulse 1.5s ease-in-out infinite' }} />
+              <LiveDot />
               <span style={{ color: PINK, fontWeight: 700, fontFamily: MONO }}>{activeSignsCount}</span>
               <span style={{ color: MUTED }}>active signs</span>
             </div>

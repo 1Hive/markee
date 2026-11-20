@@ -27,6 +27,21 @@ test('a held deposit is not pulled again, so the wallet keeps that ETHx', () => 
   assert.equal(reused.prefund, buffer * 10n)
 })
 
+test('an empty wallet is flagged with the ETH it needs to add', () => {
+  const empty = computeAutoDeposit(0n, rate, 0n)
+  assert.equal(empty.insufficientEth, true)
+  assert.equal(empty.wrapValue, 0n)
+  assert.ok(empty.fundingNeeded > 0n)
+  const funded = computeAutoDeposit(0n, rate, empty.fundingNeeded)
+  assert.equal(funded.insufficientEth, false)
+  assert.equal(funded.fundingNeeded, 0n)
+})
+
+test('a wallet that can fund the stream needs nothing added', () => {
+  assert.equal(computeAutoDeposit(0n, rate, 10n ** 18n).fundingNeeded, 0n)
+  assert.equal(computeAutoDeposit(bufferFor(rate) * 10n, rate, 0n).fundingNeeded, 0n)
+})
+
 test('the open batch skips depositBuffer when the board already holds enough', () => {
   const ops = (buffer: bigint) => buildOpenStreamOps({ ethx: a, board: a, markee: a, backer: a, ratePerSec: rate, buffer, cfaAgreement: a, gdaAgreement: a, pool: a, wrapValue: 0n })
   const abi = parseAbi(['function depositBuffer(address,uint256)'])

@@ -15,11 +15,17 @@ import { base } from 'viem/chains'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 import { readTopHistories, winningSince } from '@/lib/leaderboard/topHistory'
+import { createSnapshotCache, SnapshotUnavailable } from '@/lib/sdk/snapshot-cache'
+import { displayCacheConfigured, snapshotStorage } from '@/lib/sdk/cached-display'
 
 export const dynamic = 'force-dynamic'
 const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
 const RATE_WINDOW = 60
 const RATE_MAX = 30
+// Every viewer of a For Rent board polls this every 30 s, so the topMarkee() read is shared through
+// the snapshot cache: at most one chain read per board per 30 s, whoever is watching.
+const TOP_FRESH_SECONDS = 30
+const TOP_STALE_SECONDS = 300
 
 function getClient() {
   return createPublicClient({
@@ -36,10 +42,12 @@ export async function GET(request: Request) {
     if (!await underRateLimit('streaming:top-since', clientIp(request), RATE_MAX, RATE_WINDOW)) {
       return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_CACHE, 'Retry-After': String(RATE_WINDOW) } })
     }
-    const client = getClient()
-    const topMarkee = (await client.readContract({
+    const loadTop = async () => (await getClient().readContract({
       address: board as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'topMarkee',
     })) as string
+    const topMarkee = displayCacheConfigured()
+      ? (await createSnapshotCache(snapshotStorage.get())(`streaming-top-markee:${board}`, loadTop, TOP_FRESH_SECONDS, TOP_STALE_SECONDS)).data
+      : await loadTop()
 
     const spans = (await readTopHistories([board]).catch(() => new Map())).get(board)
     const recorded = spans ? winningSince(spans, topMarkee) : null
@@ -56,6 +64,9 @@ export async function GET(request: Request) {
     await kv.set(key, { address: topMarkee, since })
     return NextResponse.json({ address: topMarkee, since }, { headers: NO_CACHE })
   } catch (err) {
+    if (err instanceof SnapshotUnavailable) {
+      return NextResponse.json({ error: 'Refreshing' }, { status: 503, headers: { ...NO_CACHE, 'Retry-After': String(err.retryAfter) } })
+    }
     console.error('[streaming/top-since] error:', err)
     return NextResponse.json({ error: 'Failed to read top-since' }, { status: 500, headers: NO_CACHE })
   }

@@ -1,6 +1,6 @@
 // app/api/github/verify-markee-file/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getLinkedFiles, saveLinkedFiles, hasDelimiterPair, legacyAddressesFor, fetchGithubFileContent } from '@/lib/github/linkedFiles'
+import { getLinkedFiles, saveLinkedFiles, hasBoardDelimiters, fetchGithubFileContent } from '@/lib/github/linkedFiles'
 import { resolveSession, SESSION_COOKIE } from '@/lib/github/session'
 
 export async function POST(request: NextRequest) {
@@ -28,11 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const content = fileResult.content
-    const normalizedNew = leaderboardAddress.toLowerCase()
-    const legacyAddrs = legacyAddressesFor(normalizedNew)
-    const verified =
-      hasDelimiterPair(content, normalizedNew) ||
-      legacyAddrs.some(old => hasDelimiterPair(content, old))
+    const verified = await hasBoardDelimiters(content, leaderboardAddress.toLowerCase())
 
     const existing = await getLinkedFiles(leaderboardAddress)
     const idx = existing.findIndex(e => e.repoFullName === repoFullName && e.filePath === filePath)
