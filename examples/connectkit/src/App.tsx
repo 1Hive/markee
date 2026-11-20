@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ConnectKitButton } from 'connectkit';
 import { useAccount } from 'wagmi';
 import { MarkeeModal, MarkeeSign } from '@markee_team/sdk/react';
 import type { Address, MarkeeTheme, Placement } from '@markee_team/sdk';
 import { useMarkeeWallet } from './wallet';
+import { givethProjectIdentifier, resolveGivethProjectSlug } from './giveth';
 
 const sale = import.meta.env.VITE_SALE_BOARD || '0x80783947c9561EFa9BA484D44BBd5AAa03028242';
 const apiUrl = import.meta.env.VITE_MARKEE_API_URL || undefined;
@@ -41,7 +42,10 @@ export function App() {
   const [community, setCommunity] = useState(import.meta.env.VITE_COMMUNITY_ADDRESS || '');
   const [chainId, setChainId] = useState(Number(import.meta.env.VITE_COMMUNITY_CHAIN_ID || 100));
   const [platformId, setPlatformId] = useState<'gardens' | 'giveth'>('gardens');
-  const [givethProjectId, setGivethProjectId] = useState(import.meta.env.VITE_GIVETH_PROJECT_ID || '');
+  const [givethProjectInput, setGivethProjectInput] = useState(import.meta.env.VITE_GIVETH_PROJECT_ID || '');
+  const [givethProjectId, setGivethProjectId] = useState<string | null>(null);
+  const [givethProjectTitle, setGivethProjectTitle] = useState('');
+  const [givethLookup, setGivethLookup] = useState('');
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const wallet = useMarkeeWallet();
@@ -52,6 +56,22 @@ export function App() {
     sign: { hoverLogo: hoverEnabled },
   }), [signTheme, hoverEnabled]);
   const givethPrototype = mode === 'community' && platformId === 'giveth';
+  useEffect(() => {
+    const identifier = givethProjectIdentifier(givethProjectInput);
+    setGivethProjectId(null);
+    setGivethProjectTitle('');
+    if (!givethProjectInput.trim()) { setGivethLookup(''); return; }
+    if (!identifier) { setGivethLookup('Enter a Project ID, slug, or Giveth project URL.'); return; }
+    if (identifier.kind === 'id') { setGivethProjectId(identifier.value); setGivethLookup(''); return; }
+    const controller = new AbortController();
+    setGivethLookup('Looking up Project ID…');
+    const timer = window.setTimeout(() => {
+      resolveGivethProjectSlug(identifier.value, controller.signal)
+        .then(project => { setGivethProjectId(project.id); setGivethProjectTitle(project.title); setGivethLookup(''); })
+        .catch(error => { if (!controller.signal.aborted) setGivethLookup(error instanceof Error ? error.message : 'Giveth lookup is unavailable.'); });
+    }, 350);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [givethProjectInput]);
   const valid = !givethPrototype && /^0x[\da-fA-F]{40}$/.test(mode === 'community' ? community : mode === 'rent' ? rent : sale);
   return <div className="app">
     <header className="site-header"><a href="#" className="wordmark"><span>m</span> markee <i>×</i> <b>ConnectKit</b></a><ConnectKitButton /></header>
@@ -71,8 +91,9 @@ export function App() {
           <label htmlFor="community-address">Community address</label>
           <input id="community-address" value={community} onChange={event => setCommunity(event.target.value)} placeholder="0x…" spellCheck={false}/>
         </> : <>
-          <label htmlFor="giveth-project-id">Giveth Project ID</label>
-          <input id="giveth-project-id" value={givethProjectId} onChange={event => setGivethProjectId(event.target.value)} inputMode="numeric" placeholder="Project ID" spellCheck={false}/>
+          <label htmlFor="giveth-project-id">Giveth Project ID or slug</label>
+          <input id="giveth-project-id" value={givethProjectInput} onChange={event => setGivethProjectInput(event.target.value)} placeholder="Project ID, slug, or project URL" spellCheck={false}/>
+          <p className="config-note" role="status">{givethProjectId ? `Canonical Project ID: ${givethProjectId}${givethProjectTitle ? ` · ${givethProjectTitle}` : ''}` : givethLookup || 'A slug is resolved through Giveth to its numeric Project ID.'}</p>
           <p className="config-note">Giveth uses Base (8453) as its identity chain in this prototype. Activation is not available.</p>
         </>}
       </div>}
