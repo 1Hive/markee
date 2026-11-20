@@ -188,8 +188,8 @@ contract LiFiRevenueBridgeAdapter is RevenueBridgeBase, IRevenueBridgeAdapter {
     function _arguments(bytes memory data) internal pure returns (bytes memory result) {
         if (data.length < 4) revert InvalidRoute();
         result = new bytes(data.length - 4);
-        for (uint256 i; i < result.length; ++i) {
-            result[i] = data[i + 4];
+        assembly ("memory-safe") {
+            mcopy(add(result, 32), add(data, 36), sub(mload(data), 4))
         }
     }
 }

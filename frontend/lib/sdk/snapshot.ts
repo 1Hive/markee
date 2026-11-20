@@ -149,25 +149,29 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
 
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
   let result: Snapshot;
-  // Platform board existence and admin handoff must be current; never authorize from a display cache.
-  if (p.kind === 'platform-community') {
-    result = await loadSnapshot(p, account, offset);
-  } else if (displayCacheConfigured()) {
+  let platformFresh = false;
+  if (displayCacheConfigured()) {
     const cached = await displayCache().read(displayKey(p, account, offset), () => loadSnapshot(p, account, offset), !!account);
     result = { ...cached.data, freshness: { updatedAt: cached.updatedAt, freshUntil: cached.freshUntil, staleUntil: cached.staleUntil, stale: cached.stale, refreshing: cached.refreshing } };
   } else {
     if (process.env.NODE_ENV === 'production') throw new SDKError('NOT_CONFIGURED', 'Snapshot storage is not configured.', 503);
     result = await loadSnapshot(p, account, offset);
+    // loadSnapshot already read the platform integration and permissions for this account.
+    platformFresh = p.kind === 'platform-community';
   }
   // Permissions are never cached with display data. Preparation separately
   // resolves current routing; a display cache is never an authorization source.
-  if (p.kind !== 'board' && account) {
-    if (p.kind === 'gardens-community') {
-      const permissions = await communityPermissions(p.chainId, p.community, account);
-      if (result.community) result = { ...result, community: { ...result.community, permissions } };
+  if (p.kind === 'gardens-community' && account) {
+    const permissions = await communityPermissions(p.chainId, p.community, account);
+    if (result.community) result = { ...result, community: { ...result.community, permissions } };
+  } else if (p.kind === 'platform-community' && !platformFresh) {
+    // Platform board existence and admin handoff must be current: always re-read
+    // the integration, and reload uncached if the board changed since caching.
+    const current = await platformCommunity(p, account);
+    if ((current.integration.leaderboardAddress ?? null)?.toLowerCase() !== (result.board ?? null)?.toLowerCase()) {
+      result = await loadSnapshot(p, account, offset);
     } else {
-      const current = await platformCommunity(p, account);
-      if (result.community) result = { ...result, community: { ...result.community, permissions: current.permissions, platform: current.platform } };
+      result = { ...result, community: current };
     }
   }
   return applySnapshotModeration(result, severity);

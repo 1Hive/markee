@@ -32,6 +32,11 @@ interface ICommunityBoard {
     function isMarkeeOnLeaderboard(address markee) external view returns (bool);
 }
 
+interface ICommunityBoardAdmin {
+    function setAdmin(address newAdmin) external;
+    function transferMarkeeOwnership(address markee, address newOwner) external;
+}
+
 interface ICommunityBoardFactory {
     function isFactoryLeaderboard(address board) external view returns (bool);
 }
@@ -62,6 +67,8 @@ contract CommunityBoardRegistrar is RevenueUpgradeable {
     uint256[44] private __gap;
 
     event OperatorSet(address indexed operator, bool enabled);
+    event BoardAdminHandedOff(bytes32 indexed key, address indexed board, address indexed newAdmin);
+    event SeedMarkeeTransferred(bytes32 indexed key, address indexed seedMarkee, address indexed newOwner);
     event FactoriesSet(address indexed saleFactory, address indexed rentFactory);
     event BoardRegistered(
         bytes32 indexed key,
@@ -132,6 +139,25 @@ contract CommunityBoardRegistrar is RevenueUpgradeable {
         integration = Integration(vault, board, seedMarkee, strategy);
         integrations[key] = integration;
         emit BoardRegistered(key, platformId, chainId, communityId, strategy, vault, board, seedMarkee);
+    }
+
+    /// @notice Governance hands off admin of a board this registrar created (the factory made it the admin).
+    /// @dev The new admin can change the board beneficiary away from the vault; this is the same trust as an upgrade.
+    function setBoardAdmin(bytes32 key, address newAdmin) external onlyOwner nonReentrant {
+        address board = integrations[key].board;
+        if (board == address(0) || newAdmin == address(0)) revert InvalidConfiguration();
+        ICommunityBoardAdmin(board).setAdmin(newAdmin);
+        emit BoardAdminHandedOff(key, board, newAdmin);
+    }
+
+    /// @notice Governance transfers the registrar-owned seed Markee. Only For Rent boards support this.
+    function transferSeedMarkee(bytes32 key, address newOwner) external onlyOwner nonReentrant {
+        Integration memory integration = integrations[key];
+        if (integration.board == address(0) || integration.strategy != Strategy.Rent || newOwner == address(0)) {
+            revert InvalidConfiguration();
+        }
+        ICommunityBoardAdmin(integration.board).transferMarkeeOwnership(integration.seedMarkee, newOwner);
+        emit SeedMarkeeTransferred(key, integration.seedMarkee, newOwner);
     }
 
     /// @notice Prepare a deterministic vault before a separately governed board migration.

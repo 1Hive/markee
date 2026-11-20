@@ -11,10 +11,12 @@ contract DirectBoardMock {
     address public admin;
     address public pendingAdmin;
     address public beneficiaryAddress;
+    address public seedOwner;
     bool public immutable twoStep;
 
     constructor(address owner, address beneficiary, bool pending) {
         admin = owner;
+        seedOwner = owner;
         beneficiaryAddress = beneficiary;
         twoStep = pending;
     }
@@ -23,6 +25,11 @@ contract DirectBoardMock {
         require(msg.sender == admin);
         if (twoStep) pendingAdmin = next;
         else admin = next;
+    }
+
+    function transferMarkeeOwnership(address, address next) external {
+        require(msg.sender == seedOwner);
+        seedOwner = next;
     }
 
     function acceptAdmin() external {
@@ -115,6 +122,30 @@ contract PlatformBoardRegistrarTest is Test {
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
         registrar.createBoard(REVNET, 8453, bytes32(uint256(43)), PlatformBoardRegistrar.Strategy.Sale,
             ACTIVATOR, address(0), "No beneficiary", "Revnet", "43");
+    }
+
+    function testCurrentAdminClaimsRentSeedMarkee() public {
+        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(REVNET, 8453, PROJECT,
+            PlatformBoardRegistrar.Strategy.Rent, ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        bytes32 key = RevenueIdentity.key(REVNET, 8453, PROJECT);
+        assertEq(DirectBoardMock(created.board).seedOwner(), address(registrar));
+        vm.prank(address(0xBAD));
+        vm.expectRevert(RevenueUpgradeable.Unauthorized.selector);
+        registrar.transferSeedMarkee(key, address(0xBAD));
+        vm.prank(ACTIVATOR);
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.transferSeedMarkee(key, address(0));
+        vm.prank(ACTIVATOR);
+        registrar.transferSeedMarkee(key, ACTIVATOR);
+        assertEq(DirectBoardMock(created.board).seedOwner(), ACTIVATOR);
+    }
+
+    function testSaleSeedMarkeeHasNoTransfer() public {
+        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        vm.prank(ACTIVATOR);
+        vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
+        registrar.transferSeedMarkee(RevenueIdentity.key(REVNET, 8453, PROJECT), ACTIVATOR);
     }
 
     function testFactoryCannotRegisterWrongBeneficiaryOrLeavePartialMapping() public {

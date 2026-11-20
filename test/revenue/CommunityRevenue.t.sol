@@ -162,6 +162,21 @@ contract CommunityRevenueTest is RevenueTestBase {
         assertEq(router.payoutNonce(), 0);
     }
 
+    function testSweepOnlyInvalidatesItsOwnCommunityQuotes() public {
+        bytes32 otherId = bytes32(uint256(9));
+        bytes32 otherKey = RevenueIdentity.key(GARDENS, block.chainid, otherId);
+        router.registerCommunity(GARDENS, block.chainid, otherId);
+        bytes32 otherQuote = router.nextPayoutId(otherKey);
+        bytes32 ownQuote = router.nextPayoutId(key);
+        vm.deal(address(vault), 1 ether);
+        sweep(1 ether, 0);
+        assertEq(router.nextPayoutId(otherKey), otherQuote);
+        assertTrue(router.nextPayoutId(key) != ownQuote);
+        assertEq(router.communityPayoutNonce(key), 1);
+        assertEq(router.communityPayoutNonce(otherKey), 0);
+        assertEq(router.payoutNonce(), 1);
+    }
+
     function testLocalReplayRejectedButFundedBridgeIdsCannotBePoisoned() public {
         receiver.setLocalRouter(address(this), true);
         RevenueEnvelope memory e = envelope(1);

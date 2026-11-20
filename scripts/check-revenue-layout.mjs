@@ -13,7 +13,8 @@ execFileSync('forge', ['build', '--quiet'], {
 // Initial v1 layout. A change requires an explicit upgrade compatibility review;
 // do not regenerate these merely to make CI green. AST ids are intentionally ignored.
 const baselines = {
-  CommunityRevenueRouter: '9917263104f89504df4b5c3715fee3dfad64e78289e3b5a2205ac24e04ca3b97',
+  // Pre-deployment review: communityPayoutNonce appended at slot 10, __gap 40 -> 39 (total unchanged).
+  CommunityRevenueRouter: '2322918cd35eb13c3d940af44e5cbc742c3a57db2643fa4895f807a39767278f',
   CommunityRevenueReceiver: '07e8976018e7c273c0ad362658ed951d177c00892fc7bb7b02bf7762ce8f95df',
   GardensCommunityAdapter: 'ebff8e786aacc1c368307f5feb82e16c0371de3aff3e50fa6a5eb00674955db1',
   RevnetCommunityAdapter: 'cce22a236ca92e7c5c97b2a297e5320b10bb177309009ec54737c56f297eb76c',

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { keccak256, stringToHex } from 'viem';
 import { placement } from '../lib/sdk/validation';
-import { givethProjectPrototype, platformCommunity, platformEnabled, platformKey } from '../lib/sdk/platforms';
+import { givethProjectPrototype, platformAdapter, platformCommunity, platformEnabled, platformKey, platformTag } from '../lib/sdk/platforms';
+import { markeeAdapter } from '../lib/sdk/gardens/revenue';
 import { platformActivate } from '../lib/sdk/platform-activate';
 import { getEnvPublicClient } from '../lib/sdk/chains';
 import { NextRequest } from 'next/server';
@@ -251,4 +252,48 @@ test('registrar lookup outage fails closed rather than reporting an unactivated 
     assert.equal(response.status, 502);
     assert.equal((await response.json()).code, 'REQUEST_FAILED');
   });
+});
+
+test('factory platform tags fit the 31-byte rent factory limit', () => {
+  const gardens = { kind: 'platform-community' as const, platformId: 'gardens', chainId: 100, communityId: '0xE2396fe2169ca026962971d3B2E373Ba925B6257' };
+  assert.equal(platformTag(gardens), '0xe2396fe2169ca026962971d3b2e37');
+  assert.ok(new TextEncoder().encode(platformTag(gardens)).length <= 31);
+  assert.equal(platformTag(revnetPlacement), '42');
+});
+
+test('Gardens activation requires the council Safe itself and no existing gardens-community board', async t => {
+  const council = nextWallet;
+  const community = '0xE2396fe2169ca026962971d3B2E373Ba925B6257';
+  const gardensPlacement = { kind: 'platform-community', platformId: 'gardens', chainId: 8453, communityId: community } as const;
+  const names = ['MARKEE_PLATFORM_GARDENS_ENABLED', 'MARKEE_GARDENS_REGISTRY_FACTORY_8453'];
+  const old = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  Object.assign(process.env, { MARKEE_PLATFORM_GARDENS_ENABLED: 'true', MARKEE_GARDENS_REGISTRY_FACTORY_8453: factory });
+  try {
+    await withPlatformEnv(async () => {
+      t.mock.method(getEnvPublicClient(8453), 'readContract', async ({ functionName }: { functionName: string }) => {
+        switch (functionName) {
+          case 'getCommunityValidity': return true;
+          case 'councilSafe': return council;
+          case 'isOwner': return true;
+          case 'integrations': return [empty, empty, 0, empty, empty];
+          case 'operators': return true;
+          case 'saleFactory': case 'rentFactory': return factory;
+          default: throw Error(`Unexpected read ${functionName}`);
+        }
+      });
+      let legacyBoard: string | null = null;
+      t.mock.method(markeeAdapter, 'getCommunityIntegration', async () => ({ integration: { leaderboardAddress: legacyBoard, vaultAddress: null, status: legacyBoard ? 'active' : 'not_integrated' } }));
+      const adapter = platformAdapter(gardensPlacement);
+      assert.deepEqual(await adapter.authority(gardensPlacement, owner), { authorized: false, recipient: council }, 'a single Safe owner cannot activate');
+      assert.deepEqual(await adapter.authority(gardensPlacement, council), { authorized: true, recipient: council });
+      const request = (account: string) => ({ action: 'challenge', placement: gardensPlacement, strategy: 'rent', beneficiary: wallet, account });
+      await assert.rejects(platformActivate(request(owner)), /cannot activate/);
+      const challenge = await platformActivate(request(council));
+      assert.equal((challenge.typedData as { message: { activator: string } }).message.activator, council);
+      legacyBoard = board;
+      await assert.rejects(platformActivate(request(council)), /already has/);
+    });
+  } finally {
+    for (const name of names) if (old[name] === undefined) delete process.env[name]; else process.env[name] = old[name];
+  }
 });

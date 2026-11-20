@@ -26,6 +26,8 @@ export function moderationParams(moderation?: ModerationOptions): { severity?: M
 /** Markee-hosted API used by integrations unless overridden for local development. */
 export const DEFAULT_MARKEE_API_URL = PRODUCTION_API_URL;
 
+const PLATFORM_ADMIN_RETRY_MS = 10 * 60_000;
+
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }
 }
@@ -60,7 +62,7 @@ export class MarkeeClient {
   private inMemoryPending: PendingTransaction[] = [];
   private adminMemory: PendingAuthorization | null = null;
   private communityReceipts: Record<string, AdminResult> = {};
-  private adminAcceptanceMemory = new Map<string, Hex>();
+  private adminAcceptanceMemory = new Map<string, { hash: Hex; at: number }>();
   constructor(readonly options: SDKOptions = {}) {
     const url = new URL(options.apiUrl ?? DEFAULT_MARKEE_API_URL);
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new MarkeeError('Use an HTTPS Markee API URL (HTTP is allowed on localhost).');
@@ -228,8 +230,16 @@ export class MarkeeClient {
       throw new MarkeeError('This wallet is not the pending board owner.', 'NOT_AUTHORIZED');
     }
     if (this.pendingPlatformAdmin(placement, account)) {
-      const status = await this.platformAdminStatus(placement, account);
-      if (status === 'pending') throw new MarkeeError('Board ownership acceptance is still pending. Check its status before retrying.', 'ADMIN_PENDING');
+      // The board is still pending_admin (checked above), so a stored hash that
+      // is not confirmed after the window was dropped, replaced or is a Safe hash.
+      const status = await this.platformAdminStatus(placement, account).catch(error => {
+        if (error instanceof MarkeeError && error.code === 'TRANSACTION_MISMATCH') { this.savePlatformAdmin(placement, account, null); return 'reverted' as const; }
+        throw error;
+      });
+      if (status === 'pending' && Date.now() - this.platformAdminSavedAt(placement, account) < PLATFORM_ADMIN_RETRY_MS) {
+        throw new MarkeeError('Board ownership acceptance is still pending. Check its status before retrying.', 'ADMIN_PENDING');
+      }
+      this.savePlatformAdmin(placement, account, null);
     }
     const provider = await this.ensureWallet(account, 8453);
     const hash = await provider.request({ method: 'eth_sendTransaction', params: [{ from: account, to: board, data: '0x0e18b681' }] });
@@ -242,16 +252,26 @@ export class MarkeeClient {
   }
   private savePlatformAdmin(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address, hash: Hex | null) {
     const key = this.platformAdminKey(placement, account);
-    if (hash) this.adminAcceptanceMemory.set(key, hash); else this.adminAcceptanceMemory.delete(key);
-    try { if (typeof localStorage !== 'undefined') hash ? localStorage.setItem(key, hash) : localStorage.removeItem(key); } catch { /* In-memory fallback. */ }
+    const record = hash ? { hash, at: Date.now() } : null;
+    if (record) this.adminAcceptanceMemory.set(key, record); else this.adminAcceptanceMemory.delete(key);
+    try { if (typeof localStorage !== 'undefined') record ? localStorage.setItem(key, JSON.stringify(record)) : localStorage.removeItem(key); } catch { /* In-memory fallback. */ }
   }
-  pendingPlatformAdmin(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): Hex | null {
+  private platformAdminRecord(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): { hash: Hex; at: number } | null {
     const key = this.platformAdminKey(placement, account);
     try { if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(key);
-      if (isHash(saved)) return saved;
+      // Earlier SDK versions stored the bare hash; treat it as old enough to retry.
+      if (isHash(saved)) return { hash: saved, at: 0 };
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (parsed && isHash(parsed.hash) && typeof parsed.at === 'number') return parsed;
     } } catch { /* In-memory fallback. */ }
     return this.adminAcceptanceMemory.get(key) || null;
+  }
+  private platformAdminSavedAt(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): number {
+    return this.platformAdminRecord(placement, account)?.at ?? 0;
+  }
+  pendingPlatformAdmin(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): Hex | null {
+    return this.platformAdminRecord(placement, account)?.hash ?? null;
   }
   async platformAdminStatus(placement: Extract<Placement, { kind: 'platform-community' }>, account: Address): Promise<'pending' | 'confirmed' | 'reverted'> {
     const transactionHash = this.pendingPlatformAdmin(placement, account);
@@ -300,7 +320,14 @@ export class MarkeeClient {
     if (!pending) throw new MarkeeError('There is no pending community authorization.');
     const route = pending.kind === 'platform-activate-direct' ? 'platform/activate-direct'
       : pending.kind === 'platform-activate' ? 'platform/activate' : `community/${pending.kind}`;
-    const op = await this.recoveryClient(this.adminOrigin).request<AdminOperation>(route, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
+    let op: AdminOperation;
+    try {
+      op = await this.recoveryClient(this.adminOrigin).request<AdminOperation>(route, { action: 'verify', nonce: pending.nonce, signature: pending.signature });
+    } catch (error) {
+      // The retired preview flow has no operation to resume; drop it so it cannot block new authorizations.
+      if (error instanceof MarkeeError && error.code === 'PLATFORM_UPGRADE_REQUIRED') this.saveAuthorization(null);
+      throw error;
+    }
     if (op.status === 'complete' && op.result && pending.community) {
       const key = `${pending.chainId}:${pending.community.toLowerCase()}`;
       this.communityReceipts[key] = op.result;

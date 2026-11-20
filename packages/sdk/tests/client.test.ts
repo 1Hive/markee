@@ -184,3 +184,37 @@ test('a configured moderation policy never treats an unsupported check endpoint 
   const client = new MarkeeClient({ moderation: { severity: 'strict' }, fetch: async () => Response.json({ error: 'Not found' }, { status: 404 }) });
   await assert.rejects(client.checkMessage('hello'), { status: 404 });
 });
+
+test('a stale or mismatched admin-acceptance hash does not block a retry forever', async () => {
+  const placement = { kind: 'platform-community' as const, platformId: 'revnet', chainId: 8453, communityId: '42' };
+  const state = { community: { integration: { status: 'pending_admin' }, platform: { boardOwner: account } }, board: other };
+  let reply: () => Response = () => Response.json({ status: 'pending' });
+  let sends = 0;
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (method === 'eth_sendTransaction') { sends++; return hash; }
+    throw new Error(`Unexpected wallet method ${method}`);
+  } };
+  const client = new MarkeeClient({ apiUrl: 'http://localhost:3000/api/sdk/v1', wallet: { getProvider: async () => provider },
+    fetch: async url => String(url).includes('admin-status') ? reply() : Response.json(state) });
+  await client.acceptPlatformAdmin(placement, other);
+  await assert.rejects(client.acceptPlatformAdmin(placement, other), /still pending/);
+  const realNow = Date.now;
+  Date.now = () => realNow() + 11 * 60_000;
+  try { assert.equal(await client.acceptPlatformAdmin(placement, other), hash, 'dropped or replaced hash can be retried'); }
+  finally { Date.now = realNow; }
+  assert.equal(sends, 2);
+  reply = () => Response.json({ error: 'mismatch', code: 'TRANSACTION_MISMATCH' }, { status: 409 });
+  assert.equal(await client.acceptPlatformAdmin(placement, other), hash, 'a Safe or mismatched hash is discarded');
+  assert.equal(sends, 3);
+});
+
+test('a retired preview authorization is cleared instead of blocking new authorizations', async () => {
+  const client = new MarkeeClient({ apiUrl: 'http://localhost:3000/api/sdk/v1',
+    fetch: async () => Response.json({ error: 'Upgrade', code: 'PLATFORM_UPGRADE_REQUIRED' }, { status: 426 }) });
+  (client as unknown as { adminMemory: unknown }).adminMemory = { kind: 'platform-activate', nonce: '1', signature: '0x12', account,
+    chainId: 8453, placement: { kind: 'platform-community', platformId: 'revnet', chainId: 8453, communityId: '42' } };
+  await assert.rejects(client.resumeAuthorization(), /Upgrade/);
+  assert.equal(client.pendingAuthorization(), null);
+});

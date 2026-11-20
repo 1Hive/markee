@@ -30,7 +30,9 @@ contract CommunityRevenueRouter is RevenueUpgradeable {
     mapping(bytes32 => Community) public communities;
     mapping(uint256 => address) public receivers;
     mapping(uint256 => mapping(bytes32 => address)) public bridgeAdapters;
-    uint256[40] private __gap;
+    /// @notice Per-community nonce so one community's sweep never invalidates another's quotes.
+    mapping(bytes32 => uint256) public communityPayoutNonce;
+    uint256[39] private __gap;
 
     event RegistrarSet(bytes32 indexed platformId, address indexed registrar);
     event KeeperSet(address indexed keeper, bool enabled);
@@ -129,9 +131,9 @@ contract CommunityRevenueRouter is RevenueUpgradeable {
     }
 
     /// @notice Preview the next ID before asking providers to construct destination calldata.
-    /// A concurrent sweep changes the nonce and invalidates, rather than silently alters, a quote.
+    /// A concurrent sweep of the same community changes its nonce and invalidates, rather than silently alters, a quote.
     function nextPayoutId(bytes32 key) public view returns (bytes32) {
-        return keccak256(abi.encode(block.chainid, address(this), payoutNonce, key));
+        return keccak256(abi.encode(block.chainid, address(this), communityPayoutNonce[key], key));
     }
 
     function sweep(
@@ -152,7 +154,8 @@ contract CommunityRevenueRouter is RevenueUpgradeable {
         if (grossAmount == 0 || keeperFee > grossAmount * maxKeeperFeeBps / 10_000) revert InvalidAmount();
         uint256 amount = grossAmount - keeperFee;
         RevenueEnvelope memory envelope = RevenueEnvelope(expectedPayoutId, key, c.platformId, c.communityId);
-        payoutNonce++;
+        payoutNonce++; // Total sweeps across all communities.
+        communityPayoutNonce[key]++;
         CommunityRevenueVault(payable(c.vault)).releaseRevenue(grossAmount);
         bytes32 transferId;
         uint256 output;
