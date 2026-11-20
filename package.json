@@ -2,8 +2,13 @@
   "name": "markee-contracts",
   "version": "0.0.0",
   "private": true,
+  "scripts": {
+    "test:revenue": "FOUNDRY_PROFILE=revenue forge test",
+    "check:revenue-layout": "node scripts/check-revenue-layout.mjs"
+  },
   "description": "Foundry contract dependencies for Markee (Solidity remappings only).",
   "devDependencies": {
+    "@openzeppelin/contracts-upgradeable": "5.6.1",
     "@openzeppelin/contracts": "^5.6.1",
     "@superfluid-finance/ethereum-contracts": "^1.15.1"
   }
