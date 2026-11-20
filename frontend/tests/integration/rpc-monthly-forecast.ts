@@ -25,8 +25,8 @@ function cu(value: unknown, label: string): number {
 export function monthlyForecast(input: unknown, config: { monthlyLimitCU: number; maxInputAgeHours: number }, now = Date.now()) {
   assert.ok(Number.isSafeInteger(config.monthlyLimitCU) && config.monthlyLimitCU > 0, 'Invalid monthly CU limit')
   assert.ok(Number.isFinite(config.maxInputAgeHours) && config.maxInputAgeHours > 0, 'Invalid freshness limit')
-  const source = object(input, 'MCP export')
-  assert.equal(source.source, 'alchemy-mcp', 'Usage must come from Alchemy MCP')
+  const source = object(input, 'Alchemy usage export')
+  assert.ok(['alchemy-mcp', 'alchemy-admin-api'].includes(source.source), 'Usage must come from Alchemy MCP or Admin API')
   assert.equal(source.account, 'Markee', 'Expected the Markee connection')
   assert.equal(source.scope, 'all-apps', 'Forecast must include all apps sharing the limit')
   const summary = object(source.summary, 'summary')
@@ -67,7 +67,7 @@ export function monthlyForecast(input: unknown, config: { monthlyLimitCU: number
   const projectedMonthEndCU = Math.ceil(usedCU + selectedRate * remainingHours)
   return {
     status: projectedMonthEndCU <= config.monthlyLimitCU ? 'passed' as const : 'over-limit' as const,
-    source: 'alchemy-mcp', account: 'Markee', scope: 'all-apps', asOf: new Date(asOf).toISOString(),
+    source: source.source as string, account: 'Markee', scope: 'all-apps', asOf: new Date(asOf).toISOString(),
     billingPeriod: { startTime: period.startTime, endTime: period.endTime },
     monthlyLimitCU: config.monthlyLimitCU, usedCU, remainingHours, last24HoursCU,
     ratesCUPerHour, selectedRateCUPerHour: selectedRate,

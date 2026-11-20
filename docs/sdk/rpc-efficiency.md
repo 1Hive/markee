@@ -63,7 +63,7 @@ Run `npm run test:rpc:usage --prefix frontend -- --alchemy-usage /path/to/usage.
 before merging RPC-related changes.
 CI runs `npm run test:rpc:usage -- --fixtures-only` in the frontend job and uploads
 the JSON report as the `mocked-rpc-usage` artifact, including after test failures.
-The real monthly account forecast remains manual and requires a fresh MCP export.
+The monthly account forecast can also run in the separate account-budget workflow.
 The integration check executes
 the real scan, automatic evaluation, membership verifier and viem HTTP/multicall
 encoding against deterministic chain responses and isolated in-memory storage.
@@ -118,6 +118,29 @@ fixture savings or treats a forecast as a spending guarantee.
 the report status is `fixtures-only`, not an account-budget pass. No arguments
 cannot silently skip the monthly check. Refresh the MCP export for every manual
 budget review. The account forecast is not a scheduled monitoring task.
+
+### Account budget via the Alchemy Admin API
+
+Add a GitHub Actions **secret** named `ALCHEMY_ADMIN_ACCESS_KEY`, created for the
+Markee Alchemy team with **Usage read** permission. This is an Admin API access
+key, not an app RPC key. Do not put it in plain repository variables or Vercel.
+The separate `Alchemy account budget` workflow runs on pushes to `main`, or via
+Run workflow on `main` after the workflow is merged. It never runs on PR code.
+Keep this separate workflow out of required PR checks: current deployed account
+spend is not a forecast of an unmerged feature's incremental RPC cost.
+
+The runner calls `GET /v1/usage/summary` and `POST /v1/usage/time-series` on
+`https://admin-api.alchemy.com`, follows pagination, and uses the 24 complete hours
+ending at the summary's latest complete hour. It uses the same unfiltered all-app
+forecast validation and CU limit as MCP exports. Missing credentials, invalid or
+incomplete data, API errors and over-limit forecasts fail this separate workflow;
+none are treated as a budget pass. The summary and `alchemy-account-forecast`
+artifact (14 days) show the result. Request credentials and raw responses are not
+logged or uploaded. No blockchain RPCs or transactions are issued by this check.
+
+Local command with the access key injected into the environment:
+`node --import tsx tests/integration/alchemy-account-budget.ts` from `frontend`.
+Reference: https://www.alchemy.com/docs/reference/admin-api/quickstart
 As a regression control, running this manual check on unchanged main failed the
 cold budget with 40 extra head reads and 128 eth_calls. The optimized cold core
 scan used zero extra head reads and 18 eth_calls; its subsequent warm scan used
