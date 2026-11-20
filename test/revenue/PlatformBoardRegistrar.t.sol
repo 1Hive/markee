@@ -40,7 +40,10 @@ contract DirectBoardMock {
 }
 
 contract DirectSaleFactoryMock {
-    function createLeaderboard(address beneficiary, string calldata) external returns (address board, address seedMarkee) {
+    function createLeaderboard(address beneficiary, string calldata)
+        external
+        returns (address board, address seedMarkee)
+    {
         board = address(new DirectBoardMock(msg.sender, beneficiary, true));
         seedMarkee = address(0xA11);
     }
@@ -48,7 +51,9 @@ contract DirectSaleFactoryMock {
 
 contract DirectRentFactoryMock {
     function createLeaderboard(address beneficiary, string calldata, string calldata, string calldata)
-        external returns (address board, address seedMarkee) {
+        external
+        returns (address board, address seedMarkee)
+    {
         board = address(new DirectBoardMock(msg.sender, beneficiary, false));
         seedMarkee = address(0xB11);
     }
@@ -62,15 +67,25 @@ contract WrongBeneficiaryFactoryMock {
 }
 
 contract InvalidSaleFactoryMock {
-    enum Failure { NoBoard, NoSeed, WrongAdmin }
+    enum Failure {
+        NoBoard,
+        NoSeed,
+        WrongAdmin
+    }
     Failure public immutable failure;
 
-    constructor(Failure failure_) { failure = failure_; }
+    constructor(Failure failure_) {
+        failure = failure_;
+    }
 
-    function createLeaderboard(address beneficiary, string calldata) external returns (address board, address seedMarkee) {
+    function createLeaderboard(address beneficiary, string calldata)
+        external
+        returns (address board, address seedMarkee)
+    {
         if (failure != Failure.NoBoard) {
-            board = address(new DirectBoardMock(
-                failure == Failure.WrongAdmin ? address(this) : msg.sender, beneficiary, true));
+            board = address(
+                new DirectBoardMock(failure == Failure.WrongAdmin ? address(this) : msg.sender, beneficiary, true)
+            );
         }
         if (failure != Failure.NoSeed) seedMarkee = address(0xA11);
     }
@@ -84,15 +99,32 @@ contract PlatformBoardRegistrarTest is Test {
     PlatformBoardRegistrar registrar;
 
     function setUp() public {
-        registrar = PlatformBoardRegistrar(address(new ERC1967Proxy(address(new PlatformBoardRegistrar()),
-            abi.encodeCall(PlatformBoardRegistrar.initialize,
-                (address(this), address(new DirectSaleFactoryMock()), address(new DirectRentFactoryMock()))))));
+        registrar = PlatformBoardRegistrar(
+            address(
+                new ERC1967Proxy(
+                    address(new PlatformBoardRegistrar()),
+                    abi.encodeCall(
+                        PlatformBoardRegistrar.initialize,
+                        (address(this), address(new DirectSaleFactoryMock()), address(new DirectRentFactoryMock()))
+                    )
+                )
+            )
+        );
         registrar.setOperator(address(this), true);
     }
 
     function testSaleDirectBeneficiaryAndPendingAdmin() public {
-        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(REVNET, 8453, PROJECT,
-            PlatformBoardRegistrar.Strategy.Sale, ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         DirectBoardMock board = DirectBoardMock(created.board);
         assertEq(board.beneficiaryAddress(), BENEFICIARY);
         assertEq(board.admin(), address(registrar));
@@ -101,32 +133,77 @@ contract PlatformBoardRegistrarTest is Test {
         board.acceptAdmin();
         assertEq(board.admin(), ACTIVATOR);
         bytes32 key = RevenueIdentity.key(REVNET, 8453, PROJECT);
-        (address stored,, , address activator, address initialBeneficiary) = registrar.integrations(key);
+        (address stored,,, address activator, address initialBeneficiary) = registrar.integrations(key);
         assertEq(stored, created.board);
         assertEq(activator, ACTIVATOR);
         assertEq(initialBeneficiary, BENEFICIARY);
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Rent,
-            ACTIVATOR, BENEFICIARY, "Duplicate", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Rent,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Duplicate",
+            "Revnet",
+            "42"
+        );
     }
 
     function testRentImmediateAdminAndAuthorization() public {
-        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(REVNET, 8453, PROJECT,
-            PlatformBoardRegistrar.Strategy.Rent, ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Rent,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         assertEq(DirectBoardMock(created.board).admin(), ACTIVATOR);
         assertEq(DirectBoardMock(created.board).beneficiaryAddress(), BENEFICIARY);
         vm.prank(address(0xBAD));
         vm.expectRevert(RevenueUpgradeable.Unauthorized.selector);
-        registrar.createBoard(REVNET, 8453, bytes32(uint256(43)), PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Unauthorized", "Revnet", "43");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            bytes32(uint256(43)),
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Unauthorized",
+            "Revnet",
+            "43"
+        );
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, bytes32(uint256(43)), PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, address(0), "No beneficiary", "Revnet", "43");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            bytes32(uint256(43)),
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            address(0),
+            "No beneficiary",
+            "Revnet",
+            "43"
+        );
     }
 
     function testCurrentAdminClaimsRentSeedMarkee() public {
-        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(REVNET, 8453, PROJECT,
-            PlatformBoardRegistrar.Strategy.Rent, ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        PlatformBoardRegistrar.Integration memory created = registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Rent,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         bytes32 key = RevenueIdentity.key(REVNET, 8453, PROJECT);
         assertEq(DirectBoardMock(created.board).seedOwner(), address(registrar));
         vm.prank(address(0xBAD));
@@ -141,8 +218,17 @@ contract PlatformBoardRegistrarTest is Test {
     }
 
     function testSaleSeedMarkeeHasNoTransfer() public {
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         vm.prank(ACTIVATOR);
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
         registrar.transferSeedMarkee(RevenueIdentity.key(REVNET, 8453, PROJECT), ACTIVATOR);
@@ -151,19 +237,39 @@ contract PlatformBoardRegistrarTest is Test {
     function testFactoryCannotRegisterWrongBeneficiaryOrLeavePartialMapping() public {
         registrar.setFactories(address(new WrongBeneficiaryFactoryMock()), address(new DirectRentFactoryMock()));
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         (address stored,,,,) = registrar.integrations(RevenueIdentity.key(REVNET, 8453, PROJECT));
         assertEq(stored, address(0));
     }
 
     function testInvalidFactoryResultsDoNotRegisterBoard() public {
         for (uint256 i; i < 3; i++) {
-            registrar.setFactories(address(new InvalidSaleFactoryMock(InvalidSaleFactoryMock.Failure(i))),
-                address(new DirectRentFactoryMock()));
+            registrar.setFactories(
+                address(new InvalidSaleFactoryMock(InvalidSaleFactoryMock.Failure(i))),
+                address(new DirectRentFactoryMock())
+            );
             vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-            registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-                ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+            registrar.createBoard(
+                REVNET,
+                8453,
+                PROJECT,
+                PlatformBoardRegistrar.Strategy.Sale,
+                ACTIVATOR,
+                BENEFICIARY,
+                "Project",
+                "Revnet",
+                "42"
+            );
             (address stored,,,,) = registrar.integrations(RevenueIdentity.key(REVNET, 8453, PROJECT));
             assertEq(stored, address(0));
         }
@@ -171,23 +277,61 @@ contract PlatformBoardRegistrarTest is Test {
 
     function testRejectsInvalidIdentityStrategyAndActivator() public {
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(bytes32(0), 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            bytes32(0),
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 0, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET, 0, PROJECT, PlatformBoardRegistrar.Strategy.Sale, ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42"
+        );
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, bytes32(0), PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            bytes32(0),
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.None,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.None,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            address(0), BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Sale,
+            address(0),
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
         vm.expectRevert(RevenueUpgradeable.InvalidConfiguration.selector);
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "", "Revnet", "42");
+        registrar.createBoard(
+            REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale, ACTIVATOR, BENEFICIARY, "", "Revnet", "42"
+        );
     }
 
     function testOwnerControlsOperatorsAndFactories() public {
@@ -205,7 +349,16 @@ contract PlatformBoardRegistrarTest is Test {
         registrar.setFactories(address(0), rent);
         registrar.setOperator(address(this), false);
         vm.expectRevert(RevenueUpgradeable.Unauthorized.selector);
-        registrar.createBoard(REVNET, 8453, PROJECT, PlatformBoardRegistrar.Strategy.Sale,
-            ACTIVATOR, BENEFICIARY, "Project", "Revnet", "42");
+        registrar.createBoard(
+            REVNET,
+            8453,
+            PROJECT,
+            PlatformBoardRegistrar.Strategy.Sale,
+            ACTIVATOR,
+            BENEFICIARY,
+            "Project",
+            "Revnet",
+            "42"
+        );
     }
 }

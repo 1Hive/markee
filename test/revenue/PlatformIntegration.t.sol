@@ -154,7 +154,12 @@ contract PlatformIntegrationTest is RevenueTestBase {
                     address(new CommunityBoardRegistrar()),
                     abi.encodeCall(
                         CommunityBoardRegistrar.initialize,
-                        (address(this), address(router), address(new MockSaleFactory()), address(new MockAdministeredRentFactory()))
+                        (
+                            address(this),
+                            address(router),
+                            address(new MockSaleFactory()),
+                            address(new MockAdministeredRentFactory())
+                        )
                     )
                 )
             )

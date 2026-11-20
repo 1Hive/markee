@@ -6,17 +6,25 @@ import {RevenueIdentity} from "./RevenueTypes.sol";
 
 interface IPlatformSaleFactory {
     function createLeaderboard(address beneficiary, string calldata name)
-        external returns (address board, address seedMarkee);
+        external
+        returns (address board, address seedMarkee);
 }
+
 interface IPlatformRentFactory {
-    function createLeaderboard(address beneficiary, string calldata name, string calldata platformName, string calldata platformKey)
-        external returns (address board, address seedMarkee);
+    function createLeaderboard(
+        address beneficiary,
+        string calldata name,
+        string calldata platformName,
+        string calldata platformKey
+    ) external returns (address board, address seedMarkee);
 }
+
 interface IPlatformBoard {
     function admin() external view returns (address);
     function beneficiaryAddress() external view returns (address);
     function setAdmin(address newAdmin) external;
 }
+
 interface IPlatformRentBoard {
     function transferMarkeeOwnership(address markee, address newOwner) external;
 }
@@ -24,7 +32,12 @@ interface IPlatformRentBoard {
 /// @notice One Base leaderboard per registered platform identity. No vault or bridge is involved.
 /// @dev Markee's API verifies the platform owner's signed activation before its operator calls createBoard.
 contract PlatformBoardRegistrar is RevenueUpgradeable {
-    enum Strategy { None, Sale, Rent }
+    enum Strategy {
+        None,
+        Sale,
+        Rent
+    }
+
     struct Integration {
         address board;
         address seedMarkee;
@@ -42,8 +55,17 @@ contract PlatformBoardRegistrar is RevenueUpgradeable {
     event OperatorSet(address indexed operator, bool enabled);
     event FactoriesSet(address indexed saleFactory, address indexed rentFactory);
     event SeedMarkeeTransferred(bytes32 indexed key, address indexed seedMarkee, address indexed newOwner);
-    event BoardRegistered(bytes32 indexed key, bytes32 indexed platformId, uint256 chainId, bytes32 communityId,
-        Strategy strategy, address board, address seedMarkee, address activator, address beneficiary);
+    event BoardRegistered(
+        bytes32 indexed key,
+        bytes32 indexed platformId,
+        uint256 chainId,
+        bytes32 communityId,
+        Strategy strategy,
+        address board,
+        address seedMarkee,
+        address activator,
+        address beneficiary
+    );
 
     function initialize(address owner_, address saleFactory_, address rentFactory_) external initializer {
         if (saleFactory_.code.length == 0 || rentFactory_.code.length == 0) revert InvalidConfiguration();
@@ -65,13 +87,23 @@ contract PlatformBoardRegistrar is RevenueUpgradeable {
         emit FactoriesSet(saleFactory_, rentFactory_);
     }
 
-    function createBoard(bytes32 platformId, uint256 chainId, bytes32 communityId, Strategy strategy,
-        address activator, address beneficiary, string calldata name, string calldata platformName,
-        string calldata platformKey) external nonReentrant returns (Integration memory integration) {
+    function createBoard(
+        bytes32 platformId,
+        uint256 chainId,
+        bytes32 communityId,
+        Strategy strategy,
+        address activator,
+        address beneficiary,
+        string calldata name,
+        string calldata platformName,
+        string calldata platformKey
+    ) external nonReentrant returns (Integration memory integration) {
         if (!operators[msg.sender]) revert Unauthorized();
-        if (platformId == bytes32(0) || chainId == 0 || communityId == bytes32(0)
-            || (strategy != Strategy.Sale && strategy != Strategy.Rent)
-            || activator == address(0) || beneficiary == address(0) || bytes(name).length == 0) {
+        if (
+            platformId == bytes32(0) || chainId == 0 || communityId == bytes32(0)
+                || (strategy != Strategy.Sale && strategy != Strategy.Rent) || activator == address(0)
+                || beneficiary == address(0) || bytes(name).length == 0
+        ) {
             revert InvalidConfiguration();
         }
         bytes32 key = RevenueIdentity.key(platformId, chainId, communityId);
@@ -81,12 +113,14 @@ contract PlatformBoardRegistrar is RevenueUpgradeable {
         if (strategy == Strategy.Sale) {
             (board, seedMarkee) = IPlatformSaleFactory(saleFactory).createLeaderboard(beneficiary, name);
         } else {
-            (board, seedMarkee) = IPlatformRentFactory(rentFactory).createLeaderboard(
-                beneficiary, name, platformName, platformKey);
+            (board, seedMarkee) =
+                IPlatformRentFactory(rentFactory).createLeaderboard(beneficiary, name, platformName, platformKey);
         }
-        if (board.code.length == 0 || seedMarkee == address(0)
-            || IPlatformBoard(board).beneficiaryAddress() != beneficiary
-            || IPlatformBoard(board).admin() != address(this)) revert InvalidConfiguration();
+        if (
+            board.code.length == 0 || seedMarkee == address(0)
+                || IPlatformBoard(board).beneficiaryAddress() != beneficiary
+                || IPlatformBoard(board).admin() != address(this)
+        ) revert InvalidConfiguration();
         IPlatformBoard(board).setAdmin(activator);
         // Some sale boards require the new admin to accept on Base. Others transfer immediately.
         address admin = IPlatformBoard(board).admin();

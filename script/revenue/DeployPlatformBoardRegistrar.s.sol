@@ -15,8 +15,10 @@ contract DeployPlatformBoardRegistrar is Script {
         require(owner != address(0) && saleFactory.code.length > 0 && rentFactory.code.length > 0, "invalid inputs");
         vm.startBroadcast();
         PlatformBoardRegistrar implementation = new PlatformBoardRegistrar();
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation),
-            abi.encodeCall(PlatformBoardRegistrar.initialize, (owner, saleFactory, rentFactory)));
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(PlatformBoardRegistrar.initialize, (owner, saleFactory, rentFactory))
+        );
         vm.stopBroadcast();
         console2.log("Owner", owner);
         console2.log("Registrar implementation", address(implementation));
