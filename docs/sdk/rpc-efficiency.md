@@ -57,11 +57,14 @@ within the existing five-minute cadence, and unavailable/checkpoint behavior hol
 Production-only route logs cannot attribute staging usage of the same key. Keep
 the missing-usage fraction provisional until the same app/time window reconciles.
 
-### Manual integration budget
+### Integration budget
 
 Run `npm run test:rpc:usage --prefix frontend -- --alchemy-usage /path/to/usage.json`
 before merging RPC-related changes.
-This is intentionally manual and is not added to CI or a schedule. It executes
+CI runs `npm run test:rpc:usage -- --fixtures-only` in the frontend job and uploads
+the JSON report as the `mocked-rpc-usage` artifact, including after test failures.
+The real monthly account forecast remains manual and requires a fresh MCP export.
+The integration check executes
 the real scan, automatic evaluation, membership verifier and viem HTTP/multicall
 encoding against deterministic chain responses and isolated in-memory storage.
 It needs no credentials, does not call Alchemy, and cannot write production KV.
@@ -114,7 +117,7 @@ fixture savings or treats a forecast as a spending guarantee.
 `--fixtures-only` explicitly runs offline regression checks without the forecast;
 the report status is `fixtures-only`, not an account-budget pass. No arguments
 cannot silently skip the monthly check. Refresh the MCP export for every manual
-budget review. This remains a manual command, not a scheduled monitoring task.
+budget review. The account forecast is not a scheduled monitoring task.
 As a regression control, running this manual check on unchanged main failed the
 cold budget with 40 extra head reads and 128 eth_calls. The optimized cold core
 scan used zero extra head reads and 18 eth_calls; its subsequent warm scan used
