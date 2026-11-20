@@ -25,7 +25,7 @@ Use the separate sign and modal theme selectors to preview charcoal, light, dark
 
 Copy `.env.example` to `.env.local` only if you want to change the boards or enable WalletConnect. `VITE_WALLETCONNECT_PROJECT_ID` is optional; without it, installed browser wallets remain available. This sample uses the SDK's production API default; set `VITE_MARKEE_API_URL=http://localhost:3000/api/sdk/v1` to use a local API.
 
-The legacy Gardens **Community** demo tab is hidden by default. Set `VITE_SHOW_LEGACY_COMMUNITY_DEMO=true` only when intentionally testing that older placement. This sample switch does not enable the newer platform-community activation flow; Markee's API controls that separately.
+The **Community** demo tab is hidden by default. Set `VITE_SHOW_COMMUNITY_DEMO=true` at build time to show its platform selector. **gardens** uses the existing live Gardens placement; **giveth** shows a Project ID and Base identity-chain design preview only. Giveth board lookup and activation are not deployed, and its selection has no payment action. This sample switch does not enable the newer platform-community activation flow on Markee's API. The older `VITE_SHOW_LEGACY_COMMUNITY_DEMO` switch remains accepted for existing demo builds.
 
 For a new integration, [create a Markee leaderboard](https://www.markee.xyz/create-a-markee), then use the board address from its `markee.xyz/markee/0x…` link. The SDK detects whether the board is For Sale or For Rent. No strategy setting is needed.
 
