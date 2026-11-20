@@ -84,9 +84,25 @@ export async function evaluateObserved(id: string, message: string, board: strin
   const [trusted] = await automaticDeps.membership([{ markee: id, board }])
   return trusted === true ? evaluateTrusted(id, message, board, manual) : unavailable(id)
 }
-export async function evaluateObservedBatch(observations: Observation[], flags: { board: string[]; site: string[] }, severity: ModerationSeverity = 'standard'): Promise<PublishedModeration[]> {
-  const trusted = await automaticDeps.membership(observations)
-  return Promise.all(observations.map((o, i) => trusted[i] === true ? evaluateTrusted(o.markee, o.message, o.board, { board: flags.board.includes(flagKey(o.markee)), site: flags.site.includes(flagKey(o.markee)) }, severity) : unavailable(o.markee)))
+export async function evaluateObservedBatch(
+  observations: Observation[],
+  flags: { board: string[]; site: string[] },
+  severity: ModerationSeverity = 'standard',
+  context?: { client: ReturnType<typeof getModerationClient>; blockNumber: bigint },
+): Promise<PublishedModeration[]> {
+  // Only a server-created context can reuse a scan's pinned block. The optional
+  // blockNumber carried in an observation is never used as a trust context.
+  const trusted = await automaticDeps.membership(observations, context?.client, context?.blockNumber)
+  if (context && trusted.some(value => value === null)) throw new Error('Moderation membership read failed; retaining checkpoints')
+  const results: PublishedModeration[] = []
+  const boardFlags = new Set(flags.board), siteFlags = new Set(flags.site)
+  // Validate the whole scan once, but retain the former 25-item write concurrency.
+  for (let start = 0; start < observations.length; start += 25) {
+    results.push(...await Promise.all(observations.slice(start, start + 25).map((o, i) => trusted[start + i] === true
+      ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }, severity)
+      : unavailable(o.markee))))
+  }
+  return results
 }
 async function evaluateTrusted(id: string, message: string, board: string, manual: { board: boolean; site: boolean }, severity: ModerationSeverity = 'standard'): Promise<PublishedModeration> {
   const hash = contentHash(message)
