@@ -41,8 +41,7 @@ const gardens: PlatformAdapter = {
   async authority(p, account) {
     const recipient = await this.recipient(p);
     if (!recipient) return { authorized: false, recipient };
-    // Only the council Safe itself (ERC-1271, so its threshold applies) may
-    // activate. A single Safe owner must not choose the board admin and payout.
+    // The council Safe must authorize through ERC-1271 so its threshold applies.
     return { authorized: same(account, recipient), recipient };
   },
 };
@@ -72,7 +71,7 @@ export function platformAdapter(p: PlatformPlacement): PlatformAdapter {
   throw new SDKError('UNSUPPORTED_PLATFORM', 'This platform is not enabled.', 422);
 }
 export const platformIdHash = (id: string) => keccak256(stringToHex(id));
-/** Factory platform tags are capped at 31 bytes; the registrar mapping is the authoritative identity. */
+/** Factory platform tags are capped at 31 bytes; the registrar key remains the authoritative identity. */
 export function platformTag(p: PlatformIdentity): string {
   const id = p.platformId === 'gardens' ? getAddress(p.communityId).toLowerCase() : projectId(p).toString();
   return id.slice(0, 31);
