@@ -76,6 +76,26 @@ older clients. Treat these as independently deployed products.
   created with its former staging default. Do not switch origins casually, since
   authentication and active sessions depend on them.
 
+### Release channel usage and maintenance review
+
+- At each SDK release or compatibility-policy review, check whether older alpha,
+  beta, or stable versions may still be used. Record the date and window of npm's
+  per-version download counts (`https://api.npmjs.org/versions/@markee_team%2Fsdk/last-week`),
+  the versions pinned in controlled integrations' manifests and lockfiles, and
+  the versions actually deployed in those integrations. Check known third-party
+  consumers when evidence is available.
+- Treat npm counts as downloads, not unique installations or active clients. CI,
+  caches, and repeated installs affect them; a zero count does not prove no app
+  still runs a pinned version. Do not infer SDK versions from requests unless the
+  client reports a reliable version. State the visibility gap when it does not.
+- If an older channel appears unused or replaceable, **suggest** a maintenance
+  end with the supporting evidence, uncertainty, affected consumers, upgrade
+  path, and proposed support window. Do not retire a channel, drop the
+  `alpha.22` compatibility baseline, or change `/api/sdk/v1` behavior solely
+  because of download counts or a newer npm dist-tag. Obtain an explicit
+  product decision and document migration and transaction-recovery handling
+  before changing support policy.
+
 ### Checkout and transaction lifecycle
 
 - Prepared reviews, pending transactions, local recovery records, and hosted
