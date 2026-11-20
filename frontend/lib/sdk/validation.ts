@@ -23,7 +23,8 @@ export function placement(value: unknown): Placement {
     const numericId = typeof p.communityId === 'string' && p.communityId.length <= 78
       && /^0*[1-9][0-9]*$/.test(p.communityId) ? BigInt(p.communityId) : null;
     if ((p.platformId === 'revnet' || p.platformId === 'giveth')
-      && validIdentityChain && numericId !== null && numericId < 2n ** 256n) {
+      && validIdentityChain && numericId !== null && numericId < 2n ** 256n
+      && (p.platformId !== 'giveth' || numericId <= BigInt(Number.MAX_SAFE_INTEGER))) {
       return { kind: p.kind, platformId: p.platformId, chainId: p.chainId, communityId: numericId.toString() };
     }
     throw new SDKError('INVALID_PLACEMENT', 'Unknown platform or community identifier.');
