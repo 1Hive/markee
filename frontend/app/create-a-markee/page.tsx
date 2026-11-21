@@ -353,6 +353,7 @@ function CreateWizardInner() {
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useSponsoredWriteContract()
   const deployFactory = strategy === 'streaming' ? STREAMING_FACTORY_ADDR : FACTORIES['fixed']['openinternet']
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, data: receipt, explorerUrl } = useTrackedReceipt({
+    marksListings: true,
     hash, track: { account: address, board: deployFactory, label: 'Your Markee deployment' },
   })
   const pendingDeploys = usePendingTxsFor(address, deployFactory).filter(p => p.hash !== hash)

@@ -158,6 +158,7 @@ export function BuyMessageModal({
   const gasReserve = needsGasReserve ? FAST_TX_GAS_RESERVE : 0n
   const trackedBoard = customStrategyAddress || V13_LEADERBOARDS.COOPERATIVE
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    marksListings: true,
     hash, track: { account: activeAddress, board: trackedBoard, label: 'Your Markee payment' },
   })
   const pendingPayments = usePendingTxsFor(activeAddress, trackedBoard).filter(p => p.hash !== hash)

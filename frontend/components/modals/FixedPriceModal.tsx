@@ -88,6 +88,7 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const gasReserve = needsGasReserve ? FAST_TX_GAS_RESERVE : 0n
   const trackedBoard = fixedMarkee?.strategyAddress
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    marksListings: true,
     hash, track: { account: activeAddress, board: trackedBoard, label: 'Your sign payment' },
   })
   const pendingPayments = usePendingTxsFor(activeAddress, trackedBoard).filter(p => p.hash !== hash)

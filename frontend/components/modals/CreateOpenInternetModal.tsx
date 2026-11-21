@@ -46,7 +46,7 @@ export function CreateOpenInternetModal({ isOpen, onClose, onSuccess }: CreateOp
   const [hasUserEdited, setHasUserEdited] = useState(false)
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useSponsoredWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useTrackedReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError, data: receipt } = useTrackedReceipt({ marksListings: true, hash })
 
   useEffect(() => {
     if (isOpen) {

@@ -4,6 +4,9 @@
 // streaming boards (not just the one whose modal happened to be open). Reuses the O(1)
 // backerMarkee(wallet) lookup /api/marketplace/positions already established, but also needs the
 // live flow rate and the backed markee's message/name, which that endpoint doesn't fetch.
+//
+// Also checks each migrated board's legacy original: an open stream there comes back in legacyStreams
+// and a deposit in deposits (legacy: true), only until the wallet stops or reclaims it.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createPublicClient, http, erc20Abi } from 'viem'
@@ -30,6 +33,9 @@ const CFA_FORWARDER = STREAMING_BASE.cfaForwarder as `0x${string}`
 interface StreamingBoard extends LabelledBoard {
   address: string
   markeeCount: number
+  migratedFrom?: string | null
+  /** A migrated board's legacy original, kept only so open streams and deposits on it can be closed. */
+  legacy?: boolean
 }
 
 export interface DepositManagerStream {
@@ -41,6 +47,10 @@ export interface DepositManagerStream {
   rank: number
   isTop: boolean
   rateRaw: string
+  /** On a migrated board's legacy original: offered only to stop, never to fund (see legacyStreams). */
+  legacy?: boolean
+  /** The flow rate read failed; rateRaw is 0 and means unknown. */
+  rateUnknown?: boolean
 }
 
 export interface DepositManagerDeposit {
@@ -48,7 +58,10 @@ export interface DepositManagerDeposit {
   boardName: string
   depositRaw: string
   reclaimableRaw: string
+  legacy?: boolean
 }
+
+const LEGACY_SUFFIX = ' (old board)'
 
 function getClient() {
   return createPublicClient({
@@ -76,7 +89,7 @@ export async function GET(request: NextRequest) {
     const bust = new URL(request.url).searchParams.get('bust') === '1'
     const cacheKey = `cache:streaming:deposit-manager:${wallet}`
     if (!bust) {
-      const cached = await kv.get<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; deposits?: DepositManagerDeposit[] }>(cacheKey)
+      const cached = await kv.get<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; legacyStreams?: DepositManagerStream[]; deposits?: DepositManagerDeposit[] }>(cacheKey)
       if (cached) return NextResponse.json(cached, { headers: NO_CACHE })
     }
 
@@ -92,7 +105,15 @@ export async function GET(request: NextRequest) {
     const boardData = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
       .then(r => r.ok ? r.json() : { leaderboards: [] })
       .catch(() => ({ leaderboards: [] }))
-    const streamingBoards: StreamingBoard[] = boardData.leaderboards ?? []
+    const listed: StreamingBoard[] = boardData.leaderboards ?? []
+    // The listing shows migrated boards only. Streams and deposits can't move with a board, so each
+    // successor's legacy original is checked too: whatever the wallet still has open there is
+    // returned (streams as legacyStreams) until it's stopped or reclaimed, and nothing else is.
+    const streamingBoards: StreamingBoard[] = [
+      ...listed,
+      ...listed.flatMap(l => l.migratedFrom ? [{ ...l, address: l.migratedFrom, migratedFrom: null, markeeCount: MAX_MARKEES_PER_BOARD, legacy: true }] : []),
+    ]
+    const boardName = (l: StreamingBoard) => `${boardLabel(l, 'Streaming board')}${l.legacy ? LEGACY_SUFFIX : ''}`
 
     const client = getClient()
     const walletAddr = wallet as `0x${string}`
@@ -136,15 +157,22 @@ export async function GET(request: NextRequest) {
         const rank = idx !== -1 ? idx + 1 : 0
         return {
           boardAddress: l.address,
-          boardName: boardLabel(l, 'Streaming board'),
+          boardName: boardName(l),
+          ...(l.legacy ? { legacy: true } : {}),
           markeeAddress: backer,
           message: (messageResults[i]?.result as string | undefined) ?? '',
           name: (nameResults[i]?.result as string | undefined) ?? '',
           rank,
           isTop: rank === 1,
           rateRaw: ((rateResults[i]?.result as bigint | undefined) ?? 0n).toString(),
+          // The rate couldn't be read. A legacy stream is still listed (backerMarkee says it exists),
+          // so it can always be stopped; stopping doesn't need the rate.
+          ...(rateResults[i]?.status === 'success' ? {} : { rateUnknown: true }),
         }
-      }).filter(s => s.rank > 0) // dropped if the markee fell off the returned top-N window
+      })
+        // Dropped if the markee fell off the returned top-N window. A legacy stream is kept while it
+        // still flows, whatever its rank, so it can always be stopped.
+        .filter(s => s.legacy ? s.rateUnknown || BigInt(s.rateRaw) > 0n : s.rank > 0)
     }
 
     const heldBoards = streamingBoards
@@ -162,14 +190,22 @@ export async function GET(request: NextRequest) {
       const required = rate > 0n ? rate * BUFFER_PERIOD : 0n
       deposits.push({
         boardAddress: l.address,
-        boardName: boardLabel(l, 'Streaming board'),
+        boardName: boardName(l),
+        ...(l.legacy ? { legacy: true as const } : {}),
         depositRaw: deposit.toString(),
         reclaimableRaw: (deposit > required ? deposit - required : 0n).toString(),
       })
     })
 
-    const payload = { ethxBalanceRaw: (ethxBalanceResult as bigint).toString(), streams, deposits }
-    await kv.set(cacheKey, payload, { ex: CACHE_TTL })
+    // Legacy streams are kept apart so nothing counts them as live Rent bids; they only need stopping.
+    const payload = {
+      ethxBalanceRaw: (ethxBalanceResult as bigint).toString(),
+      streams: streams.filter(s => !s.legacy),
+      legacyStreams: streams.filter(s => s.legacy),
+      deposits,
+    }
+    // A payload with a failed read isn't cached, so the next load retries instead of serving it.
+    if (!streams.some(st => st.rateUnknown)) await kv.set(cacheKey, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[streaming/deposit-manager] error:', err)

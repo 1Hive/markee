@@ -360,6 +360,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   // Sponsored (Privy embedded) wallets don't pay gas, so don't hold any ETH back for it.
   const gasReserve = needsGasReserve ? FAST_TX_GAS_RESERVE : 0n
   const { isLoading: isConfirming, isUnknown, isSuccess, isError: txReverted, error: receiptError, explorerUrl } = useTrackedReceipt({
+    marksListings: true,
     hash, track: { account: activeAddress, board: leaderboardAddress, label: 'Your Markee payment' },
   })
   const pendingPayments = usePendingTxsFor(activeAddress, leaderboardAddress).filter(p => p.hash !== hash)

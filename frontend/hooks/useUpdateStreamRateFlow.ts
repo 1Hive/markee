@@ -34,7 +34,7 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
 
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
-    useTrackedReceipt({ hash: txHash, chainId: CANONICAL_CHAIN.id })
+    useTrackedReceipt({ marksListings: true, hash: txHash, chainId: CANONICAL_CHAIN.id })
 
   const openRef = useRef(isOpen)
   openRef.current = isOpen
