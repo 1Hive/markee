@@ -44,9 +44,9 @@ This credits the project's terminal balance. It is **not** a plain ETH transfer 
 
 Markee's API resolves the v6 project owner and its current native-token terminal from configured Projects, Permissions and Directory contracts. This code is gated on verified v6 deployment addresses and an explicit admin permission ID. Neither those live addresses nor a production project route have been validated for this branch, so Revnet activation and payout are not enabled.
 
-### Giveth Projects design test
+### Giveth Projects integration
 
-`contracts/revenue/prototypes/GivethProjectAdapter.sol` and the API-side injected `givethProjectPrototype` use mocked Project ID, owner and Base-recipient data. Tests cover owner changes, recipient changes, upstream failure, escrow and retry. The prototype is not included in the public placement union or deployment script. Sending ETH to its configured Base wallet is not a Giveth donation and must not be represented as one.
+The local contract prototype `contracts/revenue/prototypes/GivethProjectAdapter.sol` and injected `givethProjectPrototype` remain mock-only design tests. The API's separate live `giveth` platform adapter resolves a numeric Giveth Project ID, reads its current active status and admin wallet from Giveth, and authorizes only that admin. Slugs resolve to the numeric ID through Markee's API. Giveth activation is still off by default and requires the direct Base registrar, authorized operator, and `MARKEE_PLATFORM_GIVETH_ENABLED=true`. The activator explicitly chooses a Base beneficiary. Sending ETH to that beneficiary is not automatically recorded as a Giveth donation and must not be represented as one.
 
 ## Bridge guarantees and limitations
 

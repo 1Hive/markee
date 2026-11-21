@@ -9,6 +9,7 @@ import { getEnvPublicClient } from '../lib/sdk/chains';
 import { NextRequest } from 'next/server';
 import { GET, POST } from '../app/api/sdk/v1/[...path]/route';
 import { executeAdmin } from '../lib/sdk/operations';
+import { givethProject, resolveGivethSlug } from '../lib/sdk/giveth-project';
 
 const owner = '0x1111111111111111111111111111111111111111' as const;
 const nextOwner = '0x2222222222222222222222222222222222222222' as const;
@@ -27,6 +28,7 @@ test('generic placement is canonical and keeps old placement shapes', () => {
   assert.throws(() => placement({ kind: 'platform-community', platformId: 'giveth', chainId: 100, communityId: '7' }));
   assert.throws(() => placement({ kind: 'platform-community', platformId: 'unknown', chainId: 8453, communityId: '7' }));
   assert.throws(() => placement({ kind: 'platform-community', platformId: 'revnet', chainId: 8453, communityId: '-1' }));
+  assert.throws(() => placement({ kind: 'platform-community', platformId: 'giveth', chainId: 8453, communityId: '9007199254740992' }));
 });
 
 test('platform rollout gates require explicit server configuration', () => {
@@ -34,19 +36,126 @@ test('platform rollout gates require explicit server configuration', () => {
   const giveth = { kind: 'platform-community' as const, platformId: 'giveth', chainId: 8453, communityId: '42' };
   const oldGardens = process.env.MARKEE_PLATFORM_GARDENS_ENABLED;
   const oldRevnet = process.env.MARKEE_PLATFORM_REVNET_ENABLED;
+  const oldGiveth = process.env.MARKEE_PLATFORM_GIVETH_ENABLED;
   try {
     delete process.env.MARKEE_PLATFORM_GARDENS_ENABLED;
     delete process.env.MARKEE_PLATFORM_REVNET_ENABLED;
+    delete process.env.MARKEE_PLATFORM_GIVETH_ENABLED;
     assert.equal(platformEnabled(gardens), false);
     assert.equal(platformEnabled(revnetPlacement), false);
     assert.equal(platformEnabled(giveth), false);
+    process.env.MARKEE_PLATFORM_GIVETH_ENABLED = 'true';
+    assert.equal(platformEnabled(giveth), true);
+    assert.equal(platformEnabled(gardens), false);
     process.env.MARKEE_PLATFORM_GARDENS_ENABLED = 'true';
     assert.equal(platformEnabled(gardens), true);
-    assert.equal(platformEnabled(giveth), false);
+    assert.equal(platformEnabled(giveth), true);
   } finally {
     if (oldGardens === undefined) delete process.env.MARKEE_PLATFORM_GARDENS_ENABLED; else process.env.MARKEE_PLATFORM_GARDENS_ENABLED = oldGardens;
     if (oldRevnet === undefined) delete process.env.MARKEE_PLATFORM_REVNET_ENABLED; else process.env.MARKEE_PLATFORM_REVNET_ENABLED = oldRevnet;
+    if (oldGiveth === undefined) delete process.env.MARKEE_PLATFORM_GIVETH_ENABLED; else process.env.MARKEE_PLATFORM_GIVETH_ENABLED = oldGiveth;
   }
+});
+
+test('live Giveth adapter checks current admin and Base recipient without trusting a cached owner', async t => {
+  let active = true;
+  let currentOwner: string = owner;
+  let recipient: string = wallet;
+  t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => {
+    assert.equal(String(_url), 'https://core.v6.giveth.io/graphql');
+    const body = JSON.parse(String(request.body));
+    if (body.query.includes('MarkeeGivethAdmin')) {
+      assert.deepEqual(body.variables, { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' });
+      return Response.json({ data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [{ address: currentOwner, chainType: 'EVM', isPrimary: true }] } } });
+    }
+    assert.deepEqual(body.variables, { id: 42 });
+    return Response.json({ data: { project: { id: '42', status: active ? 'ACTIVE' : 'DEACTIVATED',
+      adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' }, addresses: [{ networkId: 8453, chainType: 'EVM', address: recipient, isRecipient: true }] } } });
+  });
+  const project = placement({ kind: 'platform-community', platformId: 'giveth', chainId: 8453, communityId: '42' });
+  if (project.kind !== 'platform-community') return;
+  const adapter = platformAdapter(project);
+  assert.deepEqual(await adapter.authority(project, owner), { authorized: true, recipient: wallet });
+  currentOwner = nextOwner;
+  recipient = nextWallet;
+  assert.deepEqual(await adapter.authority(project, owner), { authorized: false, recipient: nextWallet });
+  assert.deepEqual(await adapter.authority(project, nextOwner), { authorized: true, recipient: nextWallet });
+  active = false;
+  await assert.rejects(adapter.authority(project, nextOwner), /not active or available/);
+  await assert.rejects(givethProject('9007199254740992'), /Invalid Giveth Project ID/);
+});
+
+test('Giveth owner lookup fails closed on missing owner, mismatched ID and upstream outage', async t => {
+  let result: unknown = { data: { project: { id: '7', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' } } } };
+  t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => Response.json(JSON.parse(String(request.body)).query.includes('MarkeeGivethAdmin')
+    ? { data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [] } } } : result));
+  await assert.rejects(givethProject('42'), /not active or available/);
+  result = { data: { project: { id: '42', status: 'ACTIVE', adminUser: null } } };
+  await assert.rejects(givethProject('42'), /owner is unavailable/);
+  result = { data: { project: { id: '42', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' } } } };
+  await assert.rejects(givethProject('42'), /owner wallet is unavailable or ambiguous/);
+  result = { errors: [{ message: 'Provider error' }] };
+  await assert.rejects(givethProject('42'), /not active or available/);
+  t.mock.restoreAll();
+  t.mock.method(globalThis, 'fetch', async () => { throw Error('offline'); });
+  await assert.rejects(givethProject('42'), /lookup is unavailable/);
+});
+
+test('Giveth beneficiary is optional, but ambiguous or invalid Base recipients fail closed', async t => {
+  let addresses: unknown[] = [];
+  t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => Response.json(JSON.parse(String(request.body)).query.includes('MarkeeGivethAdmin')
+    ? { data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [{ address: owner, chainType: 'EVM', isPrimary: true }] } } }
+    : { data: { project: { id: '42', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' }, addresses } } }));
+  assert.deepEqual(await givethProject('42'), { owner, baseRecipient: null });
+  addresses = [{ networkId: 8453, chainType: 'EVM', address: wallet, isRecipient: true }];
+  assert.deepEqual(await givethProject('42'), { owner, baseRecipient: wallet });
+  addresses = [...addresses, { networkId: 8453, chainType: 'EVM', address: nextWallet, isRecipient: true }];
+  await assert.rejects(givethProject('42'), /Base recipient is ambiguous/);
+  addresses = [{ networkId: 8453, chainType: 'EVM', address: empty, isRecipient: true }];
+  await assert.rejects(givethProject('42'), /Base recipient is ambiguous/);
+});
+
+test('Giveth slug resolves to a verified numeric project identity through the v1 API', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls++; return Response.json({ data: { projectBySlug: { id: '42', title: 'Gardens', status: 'ACTIVE' } } }); });
+  assert.deepEqual(await resolveGivethSlug('gardens'), { id: '42', title: 'Gardens' });
+  assert.equal(calls, 1);
+  await assert.rejects(resolveGivethSlug('../gardens'), /Invalid Giveth project slug/);
+  assert.equal(calls, 1);
+  calls = 0;
+  const response = await GET(new NextRequest('http://localhost/api/sdk/v1/platform/giveth/resolve?slug=gardens'), { params: Promise.resolve({ path: ['platform', 'giveth', 'resolve'] }) });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { id: '42', title: 'Gardens' });
+});
+
+test('Giveth activation challenge uses the live project admin and rejects owner changes', async t => {
+  await withPlatformEnv(async () => {
+    const previous = process.env.MARKEE_PLATFORM_GIVETH_ENABLED;
+    process.env.MARKEE_PLATFORM_GIVETH_ENABLED = 'true';
+    try {
+      let currentOwner: string = owner;
+      t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => Response.json(JSON.parse(String(request.body)).query.includes('MarkeeGivethAdmin')
+        ? { data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [{ address: currentOwner, chainType: 'EVM', isPrimary: true }] } } }
+        : { data: { project: { id: '42', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' }, addresses: [] } } }));
+      const client = getEnvPublicClient(8453);
+      t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
+        if (functionName === 'integrations') return [empty, empty, 0, empty, empty];
+        if (functionName === 'operators') return true;
+        if (functionName === 'saleFactory' || functionName === 'rentFactory') return factory;
+        throw Error(`Unexpected read ${functionName}`);
+      });
+      const project = { kind: 'platform-community', platformId: 'giveth', chainId: 8453, communityId: '42' } as const;
+      const request = (account: string) => ({ action: 'challenge', placement: project, strategy: 'sale', beneficiary: wallet, account });
+      await assert.rejects(platformActivate(request(nextOwner)), /cannot activate/);
+      const challenge = await platformActivate(request(owner));
+      assert.equal((challenge.typedData as { message: { communityKey: string } }).message.communityKey, platformKey(project));
+      currentOwner = nextOwner;
+      await assert.rejects(platformActivate({ action: 'verify', nonce: challenge.nonce, signature: '0x123456' }), /permissions changed/);
+    } finally {
+      if (previous === undefined) delete process.env.MARKEE_PLATFORM_GIVETH_ENABLED;
+      else process.env.MARKEE_PLATFORM_GIVETH_ENABLED = previous;
+    }
+  });
 });
 
 test('Giveth prototype reads current owner and Base recipient, and fails closed on outage', async () => {
