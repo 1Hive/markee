@@ -62,11 +62,15 @@ test('live Giveth adapter checks current admin and Base recipient without trusti
   let currentOwner: string = owner;
   let recipient: string = wallet;
   t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => {
-    assert.match(String(_url), /^https:\/\/mainnet\.serve\.giveth\.io\/graphql$/);
+    assert.equal(String(_url), 'https://core.v6.giveth.io/graphql');
     const body = JSON.parse(String(request.body));
+    if (body.query.includes('MarkeeGivethAdmin')) {
+      assert.deepEqual(body.variables, { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' });
+      return Response.json({ data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [{ address: currentOwner, chainType: 'EVM', isPrimary: true }] } } });
+    }
     assert.deepEqual(body.variables, { id: 42 });
-    return Response.json({ data: { projectById: { id: '42', status: { symbol: active ? 'activate' : 'deactivate' },
-      adminUser: { walletAddress: currentOwner }, addresses: [{ networkId: 8453, chainType: 'EVM', address: recipient, isRecipient: true }] } } });
+    return Response.json({ data: { project: { id: '42', status: active ? 'ACTIVE' : 'DEACTIVATED',
+      adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' }, addresses: [{ networkId: 8453, chainType: 'EVM', address: recipient, isRecipient: true }] } } });
   });
   const project = placement({ kind: 'platform-community', platformId: 'giveth', chainId: 8453, communityId: '42' });
   if (project.kind !== 'platform-community') return;
@@ -82,11 +86,14 @@ test('live Giveth adapter checks current admin and Base recipient without trusti
 });
 
 test('Giveth owner lookup fails closed on missing owner, mismatched ID and upstream outage', async t => {
-  let result: unknown = { data: { projectById: { id: '7', status: { symbol: 'activate' }, adminUser: { walletAddress: owner } } } };
-  t.mock.method(globalThis, 'fetch', async () => Response.json(result));
+  let result: unknown = { data: { project: { id: '7', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' } } } };
+  t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => Response.json(JSON.parse(String(request.body)).query.includes('MarkeeGivethAdmin')
+    ? { data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [] } } } : result));
   await assert.rejects(givethProject('42'), /not active or available/);
-  result = { data: { projectById: { id: '42', status: { symbol: 'activate' }, adminUser: null } } };
+  result = { data: { project: { id: '42', status: 'ACTIVE', adminUser: null } } };
   await assert.rejects(givethProject('42'), /owner is unavailable/);
+  result = { data: { project: { id: '42', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' } } } };
+  await assert.rejects(givethProject('42'), /owner wallet is unavailable or ambiguous/);
   result = { errors: [{ message: 'Provider error' }] };
   await assert.rejects(givethProject('42'), /not active or available/);
   t.mock.restoreAll();
@@ -96,9 +103,9 @@ test('Giveth owner lookup fails closed on missing owner, mismatched ID and upstr
 
 test('Giveth beneficiary is optional, but ambiguous or invalid Base recipients fail closed', async t => {
   let addresses: unknown[] = [];
-  t.mock.method(globalThis, 'fetch', async () => Response.json({ data: { projectById: {
-    id: '42', status: { symbol: 'activate' }, adminUser: { walletAddress: owner }, addresses,
-  } } }));
+  t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => Response.json(JSON.parse(String(request.body)).query.includes('MarkeeGivethAdmin')
+    ? { data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [{ address: owner, chainType: 'EVM', isPrimary: true }] } } }
+    : { data: { project: { id: '42', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' }, addresses } } }));
   assert.deepEqual(await givethProject('42'), { owner, baseRecipient: null });
   addresses = [{ networkId: 8453, chainType: 'EVM', address: wallet, isRecipient: true }];
   assert.deepEqual(await givethProject('42'), { owner, baseRecipient: wallet });
@@ -110,15 +117,11 @@ test('Giveth beneficiary is optional, but ambiguous or invalid Base recipients f
 
 test('Giveth slug resolves to a verified numeric project identity through the v1 API', async t => {
   let calls = 0;
-  t.mock.method(globalThis, 'fetch', async () => {
-    calls++;
-    return Response.json(calls === 1 ? { data: { projectBySlug: { id: '42', title: 'Gardens' } } }
-      : { data: { projectById: { id: '42', status: { symbol: 'activate' }, adminUser: { walletAddress: owner }, addresses: [] } } });
-  });
+  t.mock.method(globalThis, 'fetch', async () => { calls++; return Response.json({ data: { projectBySlug: { id: '42', title: 'Gardens', status: 'ACTIVE' } } }); });
   assert.deepEqual(await resolveGivethSlug('gardens'), { id: '42', title: 'Gardens' });
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   await assert.rejects(resolveGivethSlug('../gardens'), /Invalid Giveth project slug/);
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   calls = 0;
   const response = await GET(new NextRequest('http://localhost/api/sdk/v1/platform/giveth/resolve?slug=gardens'), { params: Promise.resolve({ path: ['platform', 'giveth', 'resolve'] }) });
   assert.equal(response.status, 200);
@@ -131,9 +134,9 @@ test('Giveth activation challenge uses the live project admin and rejects owner 
     process.env.MARKEE_PLATFORM_GIVETH_ENABLED = 'true';
     try {
       let currentOwner: string = owner;
-      t.mock.method(globalThis, 'fetch', async () => Response.json({ data: { projectById: {
-        id: '42', status: { symbol: 'activate' }, adminUser: { walletAddress: currentOwner }, addresses: [],
-      } } }));
+      t.mock.method(globalThis, 'fetch', async (_url: string, request: RequestInit) => Response.json(JSON.parse(String(request.body)).query.includes('MarkeeGivethAdmin')
+        ? { data: { user: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2', wallets: [{ address: currentOwner, chainType: 'EVM', isPrimary: true }] } } }
+        : { data: { project: { id: '42', status: 'ACTIVE', adminUser: { id: '06e95c03-8059-4c38-a86d-b4ce794cb7a2' }, addresses: [] } } }));
       const client = getEnvPublicClient(8453);
       t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => {
         if (functionName === 'integrations') return [empty, empty, 0, empty, empty];
