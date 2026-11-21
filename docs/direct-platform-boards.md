@@ -1,6 +1,17 @@
 # Direct Base platform boards
 
-Status: code and local tests only. No registrar deployment, operator enablement, Revnet v6 verification, or live activation is claimed. The existing Gardens board is not migrated. Giveth has a live project-identity adapter, but its production gate remains disabled.
+Status: the registrar implementation and proxy are deployed on Base. No operator enablement, Revnet v6 verification, or live activation is claimed. The existing Gardens board is not migrated. Giveth has a live project-identity adapter, but its production gate remains disabled.
+
+## Base registrar deployment (November 20, 2026)
+
+The deployment used `script/revenue/DeployPlatformBoardRegistrar.s.sol` on Base (chain 8453), with local Foundry account `PK_DEPLOYER` (`0x00BcC26E792E393217bA895f5e85AE628FC994E9`). Before broadcast, its Base balance was `0.008391578898139303 ETH` and its confirmed and pending nonce were both `1179`. The focused registrar tests passed (8/8), and the fork simulation with this sender succeeded. Its predicted addresses were treated as simulation output until the receipts and live code were checked.
+
+| Contract | Base address | Deployment transaction | Block | Receipt |
+| --- | --- | --- | ---: | --- |
+| `PlatformBoardRegistrar` implementation | `0x51C511f8E48903C4b3cDd677Df3328189208a319` | `0xdfe4bccd2765dcb3bb68b9dbbd43bf29ccd63a54fdddfa9b6766b056eb2ca46e` | 60214625 | success (`0x1`) |
+| `ERC1967Proxy` | `0x42CB4c0FaCc90D57F06e38c2a6B301F8fe8f1239` | `0x0b28cc5f58c30a4cc48c8f9305d382289e186b1d46f916da251bc24f6378e9c5` | 60214644 | success (`0x1`) |
+
+Live checks found 5,704 bytes of implementation code and 130 bytes of proxy code. Both runtime bytecodes match the local compiled artifacts after substituting the implementation's two UUPS self-address immutables. The proxy's ERC-1967 implementation slot points to the implementation above. Its `owner()` is the Cooperative Safe `0xAf4401E765dFf079aB6021BBb8d46E53E27613DB` (threshold 4); `saleFactory()` is `0x048589C50bc1C6053cAC7B9d4463ddDc0973a06b`, and `rentFactory()` is `0x37f420fdE5c98e611EB7cb9b74ef579D84697039`. Both factories report the Safe as `factoryAdmin()`. The script does not set an operator, `operators(deployer)` returned `false`, and an independent Base RPC returned no `OperatorSet` events from proxy deployment through block 60215185. No board was activated. The Giveth gate remains disabled while verifiable admin-wallet identity and Safe operator authorization are unresolved.
 
 `PlatformBoardRegistrar` maps `keccak256(platformId, identityChainId, communityId)` to one Base board. The Markee API reads that mapping onchain. It gates platform IDs, verifies a short-lived signed authorization against the current platform owner, rechecks before execution, and uses its configured operator to create a board. The activator selects For Sale or For Rent and an initial **Base beneficiary**. ETH or ETHx goes straight to that beneficiary; no vault, bridge, or receiver is involved. The board administrator can later change the beneficiary according to the board contract. The SDK's `allowedStrategies` only limits visible choices and is not an authorization boundary.
 
