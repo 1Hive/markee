@@ -4,17 +4,17 @@ import { createMarkee } from './modal.js';
 import { fundingPresets } from './presentation.js';
 import { createThemeController } from './theme.js';
 import { lightLogo, darkLogo } from './logo-data.js';
-import type { Entry, Placement, SDKOptions, Snapshot } from './types.js';
+import type { Entry, PlacementInput, SDKOptions, Snapshot } from './types.js';
+import { resolvePlacementInput } from './placement-input.js';
 
-export interface MarkeeSignOptions extends SDKOptions {
-  placement: Placement;
+export type MarkeeSignOptions = SDKOptions & PlacementInput & {
   /** Make the sign a button that opens the payment modal. Defaults to true. */
   showAction?: boolean;
   /** Open a host-controlled modal instead of the sign's built-in SDK modal. */
   onOpen?: () => void;
   /** Refresh board and moderation state while mounted. Minimum 10 seconds; default 30 seconds. */
   refreshIntervalMs?: number;
-}
+};
 
 /** Board flags apply on integrations; Markee-only site flags deliberately do not. */
 export function signContent(snapshot: Snapshot): { entry: Entry | null; visibility: 'visible' | 'flagged' | 'unavailable' } {
@@ -57,11 +57,19 @@ const loadingLines = (label: string) =>
 /** @internal Pure renderer kept separate so hidden-content behavior can be verified. */
 export function signHtml(snapshot: Snapshot | null, showAction: boolean, unavailable = false): string {
   const board = snapshot?.name || 'Markee';
+  const integration = snapshot?.placement?.kind === 'platform-community' ? snapshot.community?.integration : undefined;
+  if (!unavailable && snapshot && integration && (integration.status === 'pending_admin' || !snapshot.board)) {
+    const canOpen = showAction && (integration.status === 'pending_admin' || integration.status === 'not_integrated' && snapshot.community?.platform?.enabled === true);
+    const message = integration.status === 'disabled' ? 'Markee is not enabled for this platform.'
+      : integration.status === 'pending_admin' ? 'Open Markee setup to accept board ownership.'
+      : canOpen ? 'Explore Markee for this community' : 'Markee is not available for this community.';
+    return `<style>${css}</style><${canOpen ? 'button' : 'div'} class="sign" ${canOpen ? 'type="button" data-markee-open' : 'role="status"'}><span class="notice">${escapeHtml(message)}</span></${canOpen ? 'button' : 'div'}>`;
+  }
   const { entry, visibility } = snapshot ? signContent(snapshot) : { entry: null, visibility: 'unavailable' as const };
   const body = unavailable ? '<span class="notice" role="status">Markee sign is temporarily unavailable.</span>'
     : !snapshot ? loadingLines('Loading the Markee sign')
       : !entry ? '<span class="notice">The sign is waiting for its first message.</span>'
-        : visibility === 'unavailable' ? loadingLines('Loading message')
+        : visibility === 'unavailable' ? '<span class="notice" role="status">Message unavailable. Moderation could not be checked.</span>'
           : `<span class="message ${visibility === 'flagged' ? 'obscured' : ''}" ${visibility === 'flagged' ? 'aria-hidden="true"' : ''}>${escapeHtml(entry.message)}</span>${visibility === 'flagged' ? '<span class="veil" role="status">This message has been flagged.</span>' : ''}`;
   const views = entry?.views === null || entry?.views === undefined ? '' : `<span class="views" aria-label="${entry.views.toLocaleString()} views"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M1.3 8s2.4-4 6.7-4 6.7 4 6.7 4-2.4 4-6.7 4S1.3 8 1.3 8Z"/><circle cx="8" cy="8" r="2"/></svg>${entry.views.toLocaleString()}</span>`;
   const rate = showAction && snapshot && entry ? `<span class="rate">${formatEth(fundingPresets(snapshot).boost.toString())} ${snapshot.strategy === 'rent' ? 'ETH/mo' : 'ETH'} to change</span>` : '';
@@ -74,6 +82,7 @@ export function signHtml(snapshot: Snapshot | null, showAction: boolean, unavail
 /** Mount a live, isolated sign in any app. The Markee API supplies its content and moderation status. */
 export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOptions) {
   if (typeof document === 'undefined') throw new Error('Mount the Markee sign in a browser.');
+  const placement = resolvePlacementInput(options);
   const host = document.createElement('div');
   host.setAttribute('data-markee-sign', '');
   const root = host.attachShadow({ mode: 'open' });
@@ -87,6 +96,7 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
   let timer: ReturnType<typeof setTimeout> | undefined;
   let observer: IntersectionObserver | undefined;
   const viewed = new Set<string>();
+  const verifiedBoards = new Set<string>();
   let snapshot: Snapshot | null = null;
   const render = (unavailable = false) => {
     observer?.disconnect();
@@ -111,8 +121,14 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
     const current = new AbortController();
     request = current;
     try {
-      const next = await client.snapshot(options.placement, null, undefined, current.signal);
-      if (active && request === current) { snapshot = next; render(); }
+      const next = await client.snapshot(placement, null, undefined, current.signal);
+      if (active && request === current) {
+        snapshot = next; render();
+        if (options.siteUrl && next.board && next.chainId === 8453 && !verifiedBoards.has(next.board.toLowerCase())) {
+          verifiedBoards.add(next.board.toLowerCase());
+          client.registerSite({ kind: 'board', chainId: 8453, address: next.board });
+        }
+      }
     } catch {
       if (active && request === current && !current.signal.aborted) { snapshot = null; render(true); }
     } finally {
@@ -123,11 +139,11 @@ export function createMarkeeSign(container: HTMLElement, options: MarkeeSignOpti
     if ((event.target as HTMLElement).closest('[data-markee-open]')) {
       if (options.onOpen) { options.onOpen(); return; }
       modal ??= createMarkee(options);
-      modal.open({ placement: options.placement });
+      modal.open({ placement });
     }
   });
   render();
-  if (options.siteUrl) client.registerSite(options.placement);
+  if (options.siteUrl && placement.kind === 'board') client.registerSite(placement);
   void refresh();
   return {
     refresh,

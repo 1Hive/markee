@@ -22,7 +22,12 @@ export type Address = `0x${string}`;
 export type Hex = `0x${string}`;
 export type Placement =
   | { kind: 'board'; chainId: number; address: Address }
-  | { kind: 'gardens-community'; chainId: number; community: Address };
+  | { kind: 'gardens-community'; chainId: number; community: Address }
+  /** A Markee-registered platform identity; chainId identifies the platform's identity chain. */
+  | { kind: 'platform-community'; platformId: string; chainId: number; communityId: string };
+export interface MultiBoard { platformId: string; chainId: number; communityId: string }
+/** Existing placements remain supported; multiBoard is the three-field platform shorthand. */
+export type PlacementInput = { placement: Placement; multiBoard?: never } | { placement?: never; multiBoard: MultiBoard };
 export interface Entry {
   address: Address; owner: Address; message: string; name: string;
   score: string; totalFunds: string; aggregateRate: string; legacyFloor: string;
@@ -36,9 +41,11 @@ export interface WalletState {
   runwaySeconds: string | null; observedAt: number;
 }
 export interface CommunityState {
-  integration: { status: 'not_integrated' | 'active'; leaderboardAddress: Address | null; vaultAddress: Address | null };
+  integration: { status: 'not_integrated' | 'pending_admin' | 'active' | 'disabled'; leaderboardAddress: Address | null; vaultAddress: Address | null };
   markeeChainId: number; revenue: { claimableAmount: string; symbol: string };
   permissions?: { canActivate: boolean; canClaim: boolean; councilSafe: Address | null };
+  /** Additive platform metadata. Older clients may ignore it. */
+  platform?: { id: string; communityId: string; destinationChainId: number; recipient: Address | null; enabled?: boolean; beneficiary?: Address | null; boardOwner?: Address | null };
 }
 export interface Snapshot {
   autoModerationEnabled?: boolean;
@@ -65,7 +72,9 @@ export type Action =
 export interface PreparedAction {
   id: string; expiresAt: number; placement: Placement; action: Action;
   transaction: { from: Address; to: Address; chainId: number; data: Hex; value: Hex; gas: Hex };
-  review: { moderation?: MessageCheck; title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string };
+  review: { moderation?: MessageCheck; title: string; lines: string[]; estimatedGasCost: string; reward: string; estimatedTokens?: string;
+    paymentRouting?: { beneficiary?: Address; beneficiaryBps?: number; revnetTerminal?: Address; revnetBps?: number };
+    streamDetails?: { effectiveMonthlyWei: string; bufferTopUpWei: string } };
 }
 export interface TransactionResult {
   status: 'pending' | 'confirmed' | 'reverted'; hash: Hex; explorerUrl: string;
@@ -141,6 +150,8 @@ export interface MarkeeTheme {
 export interface SDKOptions {
   /** Automatic moderation preset and/or individual rules. Defaults to Standard; manual flags always apply. */
   moderation?: ModerationOptions;
+  /** Activation choices shown by this integration. This is a display preference, not an API authorization rule. */
+  allowedStrategies?: Array<'sale' | 'rent'>;
   /** Optional development override; defaults to the Markee-hosted API. */
   checkoutWindow?: 'tab' | 'redirect';
   apiUrl?: string; wallet?: WalletAdapter; fetch?: typeof fetch;

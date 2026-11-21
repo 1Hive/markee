@@ -5,6 +5,7 @@ import { POST as moderationCheck } from '@/app/api/moderation/check/route';
 import { underRateLimit } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import { isHex, type Hex } from 'viem';
+import { createHash } from 'node:crypto';
 import { executeAdmin, operationStatus } from '@/lib/sdk/operations';
 import { snapshot, resolvePlacement } from '@/lib/sdk/snapshot';
 import { prepare, verifyTransaction } from '@/lib/sdk/transactions';
@@ -22,6 +23,8 @@ import * as views from '@/app/api/views/route';
 import { checkoutEnabled, checkoutOrigin, createCheckout, checkoutRequest } from '@/lib/sdk/checkout';
 import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
+import { platformActivate } from '@/lib/sdk/platform-activate';
+import { platformAdminStatus } from '@/lib/sdk/platform-admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +61,7 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
       }
       if (path === 'community') return cors(await community.GET(request), request);
       if (path === 'community/quote') return cors(await quote.GET(request), request);
+      if (path === 'platform/admin-status') return cors(NextResponse.json(await platformAdminStatus(search)), request);
       if (path === 'community/status') {
         const protocol = search.get('protocol');
         if (!['none', 'squid', 'lifi', 'across'].includes(protocol || '')) throw new SDKError('INVALID_PROTOCOL', 'Unknown bridge protocol.');
@@ -68,6 +72,25 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
     }
     if (request.method === 'POST') {
       if (path === 'moderation/check') return cors(await moderationCheck(request), request);
+      if (path === 'platform/activate') {
+        const body = object(await readLimitedJsonBody(request, 16 * 1024));
+        if (body.action === 'verify' && typeof body.nonce === 'string' && typeof body.signature === 'string' && isHex(body.signature)) {
+          const id = createHash('sha256').update(`${path}:${body.nonce}:${body.signature}`).digest('hex');
+          try { return cors(NextResponse.json(await operationStatus(id)), request); }
+          catch (error) { if (!(error instanceof SDKError) || error.code !== 'OPERATION_NOT_FOUND') throw error; }
+        }
+        throw new SDKError('PLATFORM_UPGRADE_REQUIRED', 'This preview activation flow has changed. Upgrade @markee_team/sdk and request a new authorization. Existing payment recovery remains available.', 426);
+      }
+      if (path === 'platform/activate-direct') {
+        const body = object(await readLimitedJsonBody(request, 16 * 1024));
+        if (body.action !== 'verify') return cors(NextResponse.json(await platformActivate(body)), request);
+        if (typeof body.nonce !== 'string' || !/^[1-9][0-9]{0,77}$/.test(body.nonce) || typeof body.signature !== 'string' || !isHex(body.signature)) throw new SDKError('INVALID_AUTHORIZATION', 'Invalid authorization.');
+        const rebuilt = new Request(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        return cors(await executeAdmin(path, rebuilt, { nonce: body.nonce, signature: body.signature }, async () => {
+          try { return Response.json(await platformActivate(body)); }
+          catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Community activation failed.' }, { status: error instanceof SDKError ? error.status : 502 }); }
+        }), request);
+      }
       if (path === 'community/activate' || path === 'community/claim') {
         const body = object(await readLimitedJsonBody(request, 16 * 1024));
         const handler = path === 'community/activate' ? activate.POST : claim.POST;

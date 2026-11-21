@@ -62,6 +62,19 @@ jobs:
       - name: RPC efficiency regressions
         run: npm run test:rpc
 
+      - name: Mocked RPC integration budget
+        id: rpc-usage
+        run: npm run test:rpc:usage -- --fixtures-only
+
+      - name: Upload mocked RPC usage report
+        if: always() && steps.rpc-usage.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mocked-rpc-usage
+          path: frontend/test-results/rpc-usage/moderation.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Email notification message format
         run: npm run test:email-notifications
 

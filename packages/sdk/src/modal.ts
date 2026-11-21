@@ -6,11 +6,15 @@ import { styles } from './styles.js';
 import { createThemeController } from './theme.js';
 import { fundingPresets, MONTH } from './presentation.js';
 import type { MessageCheck, MarkeeTheme } from './types.js';
-import type { Action, Address, AdminOperation, AdminResult, Authorization, EIP1193Provider, Entry, Placement, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
+import type { Action, Address, AdminOperation, AdminResult, Authorization, EIP1193Provider, Entry, Placement, PlacementInput, PreparedAction, SDKOptions, Snapshot, TransactionResult } from './types.js';
+import { resolvePlacementInput } from './placement-input.js';
 
-export interface ModalOptions { placement: Placement; onClose?: () => void; theme?: MarkeeTheme }
-type FormState = { kind: 'fund' | 'stream' | 'edit-message' | 'edit-name'; entry: Entry };
+export type ModalOptions = PlacementInput & { onClose?: () => void; theme?: MarkeeTheme };
+type ResolvedModalOptions = { placement: Placement; onClose?: () => void; theme?: MarkeeTheme };
+type FormState = { kind: 'fund' | 'stream' | 'edit'; entry: Entry };
 const exact = (raw: string) => { const n = BigInt(raw); return `${n / 10n ** 18n}.${(n % 10n ** 18n).toString().padStart(18, '0')}`.replace(/\.?0+$/, '') || '0'; };
+const bidStep = 10n ** 15n;
+const roundedBid = (raw: bigint) => exact(((raw > 0n && raw < bidStep / 2n ? bidStep : ((raw + bidStep / 2n) / bidStep) * bidStep)).toString());
 /** Wei rounded up to two significant figures, so a displayed minimum is never below the real one. */
 const ceilToTwoSignificant = (raw: string) => {
   const n = BigInt(raw);
@@ -20,7 +24,7 @@ const ceilToTwoSignificant = (raw: string) => {
   const unit = 10n ** BigInt(digits - 2);
   return exact((((n + unit - 1n) / unit) * unit).toString());
 };
-const infoTip = (text: string) => `<span class="info-tip" role="img" tabindex="0" title="${e(text)}" aria-label="${e(text)}">ⓘ</span>`;
+const infoTip = (text: string) => `<button type="button" class="info-tip" data-cmd="tip" data-tip="${e(text)}" aria-label="${e(text)}" aria-expanded="false">ⓘ</button>`;
 /**
  * Messages on a board, matching the Markee app: the empty seed Markee every board starts with doesn't count.
  * Call with a first-page snapshot. When the whole board is on it and moderation has loaded, count the
@@ -34,6 +38,14 @@ export const boardMessageCount = (s: Pick<Snapshot, 'entries' | 'nextOffset' | '
 };
 const btn = (cmd: string, label: string, cls = '', attrs = '') => `<button type="button" class="btn ${cls}" data-cmd="${cmd}" ${attrs}>${label}</button>`;
 const link = (url: string, label: string) => /^https:\/\//.test(url) ? `<a href="${e(url)}" target="_blank" rel="noopener noreferrer">${e(label)} ↗</a>` : '';
+const validBaseBeneficiary = (value: string) => /^0x[0-9a-fA-F]{40}$/.test(value.trim()) && !/^0x0{40}$/i.test(value.trim());
+
+/** Compare platform placements by identity, not by key order or ID formatting. */
+function samePlatformPlacement(a: Placement | undefined, b: Placement): boolean {
+  if (a?.kind !== 'platform-community' || b.kind !== 'platform-community') return false;
+  const id = (p: typeof b) => { try { return p.platformId === 'gardens' ? p.communityId.toLowerCase() : BigInt(p.communityId).toString(); } catch { return p.communityId; } };
+  return a.platformId === b.platformId && a.chainId === b.chainId && id(a) === id(b);
+}
 
 export class MarkeeModal {
   private host: HTMLDivElement;
@@ -49,8 +61,12 @@ export class MarkeeModal {
   private initialSelection = false;
   private renderedView = '';
   private form?: FormState;
+  private queuedNameEdit?: { markee: Address; account: Address; name: string; afterHash?: string };
+  private balanceMode: 'wrap' | 'unwrap' = 'wrap';
   private review?: PreparedAction;
-  private authorization?: { kind: 'activate' | 'claim'; value: Authorization; account: Address };
+  private authorization?: { kind: 'activate' | 'claim' | 'platform-activate'; value: Authorization; account: Address };
+  private selectedStrategy: 'sale' | 'rent' = 'rent';
+  private baseBeneficiary = '';
   private adminResult?: AdminResult;
   private adminProcessing = false;
   private result?: TransactionResult;
@@ -82,15 +98,19 @@ export class MarkeeModal {
     // resolves; account polling catches a real account change after the task.
     if (this.busy || this.closed) return;
     this.initialSelection = false;
+    this.queuedNameEdit = undefined;
     this.review = undefined; this.authorization = undefined; this.form = undefined; this.tab = 'main';
-    this.result = undefined; this.error = '';
+    this.result = undefined; this.error = ''; this.baseBeneficiary = '';
     this.snapshot = undefined;
     this.render();
     void this.reload();
   };
-  constructor(readonly client: MarkeeClient, readonly options: ModalOptions) {
+  constructor(readonly client: MarkeeClient, readonly options: ResolvedModalOptions) {
     if (typeof document === 'undefined') throw new Error('Open the Markee modal in a browser.');
-    client.registerSite(options.placement);
+    if (options.placement.kind === 'platform-community' && options.placement.platformId === 'revnet') {
+      this.selectedStrategy = 'sale';
+    }
+    if (options.placement.kind === 'board') client.registerSite(options.placement);
     this.previousFocus = document.activeElement as HTMLElement | null;
     this.previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -102,7 +122,7 @@ export class MarkeeModal {
     this.root.addEventListener('click', this.onClick);
     this.root.addEventListener('submit', this.onSubmit);
     this.root.addEventListener('keydown', this.onKey);
-    this.root.addEventListener('input', () => { this.captureDraft(); this.updateFields(); this.scheduleMessageCheck(); });
+    this.root.addEventListener('input', event => { if ((event.target as HTMLElement).id === 'base-beneficiary') this.baseBeneficiary = (event.target as HTMLInputElement).value; this.captureDraft(); this.updateFields(); this.scheduleMessageCheck(); });
     void client.request<{ enabled: boolean }>('checkout/config').then(config => { this.cardAvailable = config.enabled === true; }).catch(() => {}).finally(() => { this.checkoutChecked = true; this.render(); });
     this.render(); this.root.querySelector<HTMLButtonElement>('[data-cmd="close"]')?.focus(); void this.reload(); void this.watchAccount();
   }
@@ -146,6 +166,10 @@ export class MarkeeModal {
       const data = await this.client.snapshot(this.options.placement, account, offset, this.abort.signal);
       if (this.closed || epoch !== this.epoch) return;
       this.account = account; this.snapshot = data; this.error = '';
+      if (this.tab === 'activation' && data.community?.integration.status !== 'not_integrated') this.tab = 'community';
+      if (this.options.placement.kind === 'platform-community' && data.board && data.chainId === 8453) {
+        this.client.registerSite({ kind: 'board', chainId: 8453, address: data.board });
+      }
       // The board's message count is known from the first page; later pages only hold a slice of it.
       if (!offset) this.messageCount = boardMessageCount(data);
       if (this.form) this.form.entry = data.entries.find(entry => entry.address.toLowerCase() === this.form!.entry.address.toLowerCase()) ?? this.form.entry;
@@ -159,7 +183,9 @@ export class MarkeeModal {
       if (this.options.placement.kind === 'gardens-community') this.adminResult = this.client.communityReceipt(this.options.placement) || undefined;
       this.pending = account ? this.client.pending(this.options.placement, account) : undefined;
       const auth = this.client.pendingAuthorization();
-      this.adminProcessing = !!auth && this.options.placement.kind === 'gardens-community' && auth.account.toLowerCase() === account?.toLowerCase() && auth.community.toLowerCase() === this.options.placement.community.toLowerCase() && auth.chainId === this.options.placement.chainId;
+      this.adminProcessing = !!auth && auth.account.toLowerCase() === account?.toLowerCase() && auth.chainId === this.options.placement.chainId && (
+        this.options.placement.kind === 'gardens-community' && auth.community?.toLowerCase() === this.options.placement.community.toLowerCase()
+        || this.options.placement.kind === 'platform-community' && samePlatformPlacement(auth.placement, this.options.placement));
       this.render();
       if (this.pending) void this.poll();
     } catch (error) { if (!this.closed && epoch === this.epoch) this.fail(error); }
@@ -244,6 +270,13 @@ export class MarkeeModal {
       if (result.status !== 'pending') {
         this.pending = undefined; this.result = result; this.error = '';
         await this.reload();
+        if (this.queuedNameEdit?.afterHash === pending.hash) {
+          const next = this.queuedNameEdit;
+          this.queuedNameEdit = undefined;
+          if (result.status === 'confirmed' && this.account?.toLowerCase() === next.account.toLowerCase()) {
+            await this.prepare({ kind: 'edit-name', markee: next.markee, name: next.name });
+          }
+        }
         if (result.createdMarkee && this.snapshot?.strategy === 'rent') {
           const entry = this.snapshot.entries.find(entry => entry.address.toLowerCase() === result.createdMarkee!.toLowerCase());
           // Newly created zero-rate entries may not rank in the first page.
@@ -261,6 +294,7 @@ export class MarkeeModal {
   }
   private async applyAdmin(op: AdminOperation) {
     this.authorization = undefined;
+    if (this.options.placement.kind === 'platform-community') this.tab = 'community';
     this.adminProcessing = op.status === 'working' || op.status === 'submitted';
     if (op.status === 'complete') { this.adminResult = op.result; await this.reload(); }
     if (op.status === 'failed') throw new Error(op.error || 'Community action failed.');
@@ -269,16 +303,19 @@ export class MarkeeModal {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-cmd]');
     if (!button) return;
     const cmd = button.dataset.cmd!;
+    if (cmd === 'tip') { const open = button.getAttribute('aria-expanded') === 'true'; button.setAttribute('aria-expanded', String(!open)); return; }
     if (cmd === 'close') { this.close(); return; }
     if (this.busy) return;
     this.captureDraft();
     if (cmd === 'leaderboard') { this.leaderboardOpen = !this.leaderboardOpen; this.render(); return; }
+    if (cmd.startsWith('strategy:')) { const strategy = cmd.slice(9); if (strategy === 'sale' || strategy === 'rent') { this.selectedStrategy = strategy; this.render(); } return; }
+    if (cmd === 'begin-activation' && this.options.placement.kind === 'platform-community') { this.tab = 'activation'; this.render(); return; }
     if (cmd === 'create') { this.tab = 'main'; this.form = undefined; this.review = undefined; this.render(); return; }
     if (cmd.startsWith('tab:')) { this.tab = cmd.slice(4); this.review = undefined; this.authorization = undefined; this.render(); return; }
     if (cmd === 'back') {
       if (this.review || this.authorization || this.wallets) { this.review = undefined; this.authorization = undefined; this.wallets = undefined; this.reviewAfterConnect = false; }
       else if (this.tab !== 'main') this.tab = 'main';
-      else if (this.form?.kind.startsWith('edit')) this.form = { kind: this.snapshot!.strategy === 'rent' ? 'stream' : 'fund', entry: this.form.entry };
+      else if (this.form?.kind === 'edit') this.form = { kind: this.snapshot!.strategy === 'rent' ? 'stream' : 'fund', entry: this.form.entry };
       else this.form = undefined;
       this.render(); return;
     }
@@ -287,6 +324,18 @@ export class MarkeeModal {
       if (field) {
         const presets = fundingPresets(this.snapshot, this.form?.entry);
         field.value = exact((cmd === 'preset:min' ? presets.minimum : presets.boost).toString());
+        this.captureDraft(); this.updateFields();
+      }
+      return;
+    }
+    if (cmd === 'balance:wrap' || cmd === 'balance:unwrap') { this.balanceMode = cmd.slice(8) as 'wrap' | 'unwrap'; this.drafts.delete('wallet'); this.render(); return; }
+    if (cmd.startsWith('balance-percent:')) {
+      const input = this.root.querySelector<HTMLInputElement>('form[data-form="balance"] #amount');
+      const available = this.balanceMode === 'wrap' ? this.snapshot?.wallet?.eth : this.snapshot?.wallet?.ethx;
+      if (input && available) {
+        const reserve = this.balanceMode === 'wrap' ? 10n ** 15n : 0n;
+        const spendable = BigInt(available) > reserve ? BigInt(available) - reserve : 0n;
+        input.value = exact((spendable * BigInt(cmd.slice(16)) / 100n).toString());
         this.captureDraft(); this.updateFields();
       }
       return;
@@ -345,6 +394,16 @@ export class MarkeeModal {
       else if (cmd === 'connect-review') await this.connectAndReview();
       else if (cmd.startsWith('wallet:')) { await this.client.connect(this.wallets![Number(cmd.slice(7))].provider); this.wallets = undefined; await this.reload(); if (this.account) this.continueToReview(); }
       else if (cmd === 'refresh') await this.reload();
+      else if (cmd === 'accept-admin' && this.options.placement.kind === 'platform-community' && this.snapshot?.board) {
+        await this.client.acceptPlatformAdmin(this.options.placement, this.snapshot.board);
+        await this.reload();
+      }
+      else if (cmd === 'check-platform-admin' && this.options.placement.kind === 'platform-community' && this.account) {
+        const status = await this.client.platformAdminStatus(this.options.placement, this.account);
+        if (status === 'reverted') throw new Error('Board ownership acceptance reverted. Review the transaction before retrying.');
+        if (status === 'pending') this.error = 'Board ownership acceptance is still pending. Do not send another transaction.';
+        await this.reload();
+      }
       else if (cmd === 'more') await this.reload(this.snapshot?.nextOffset ?? undefined);
       else if (cmd === 'send' && this.review) {
         const preparation = this.review;
@@ -357,6 +416,7 @@ export class MarkeeModal {
           await this.prepare(preparation.action);
           return; // A refreshed review always requires another confirmation.
         }
+        if (preparation.action.kind === 'edit-message' && this.queuedNameEdit?.markee.toLowerCase() === preparation.action.markee.toLowerCase()) this.queuedNameEdit.afterHash = hash;
         this.pending = { preparation, hash }; this.review = undefined; this.form = undefined; this.result = undefined;
         void this.poll();
       } else if (cmd === 'check') await this.poll();
@@ -365,13 +425,22 @@ export class MarkeeModal {
         const [kind, markee] = cmd.split(':'); await this.prepare({ kind, markee } as Action);
       } else if (cmd === 'activate' || cmd === 'claim') {
         const placement = this.options.placement;
-        if (placement.kind !== 'gardens-community' || !this.account) return;
+        if (placement.kind === 'board' || !this.account) return;
         const account = this.account;
-        this.authorization = { kind: cmd, account, value: await this.client.authorize(placement, cmd) };
+        if (placement.kind === 'platform-community') {
+          if (cmd !== 'activate') return;
+          const beneficiary = this.baseBeneficiary.trim();
+          if (!validBaseBeneficiary(beneficiary)) throw new Error('Enter a valid, nonzero Base beneficiary address.');
+          const allowed = this.allowedStrategies();
+          const strategy = allowed.includes(this.selectedStrategy) ? this.selectedStrategy : allowed[0];
+          this.authorization = { kind: 'platform-activate', account, value: await this.client.authorizePlatform(placement, strategy, beneficiary as Address) };
+        } else this.authorization = { kind: cmd, account, value: await this.client.authorize(placement, cmd) };
         this.review = undefined;
       } else if (cmd === 'sign' && this.authorization) {
         const auth = this.authorization;
-        try { await this.applyAdmin(await this.client.executeAuthorization(auth.kind, auth.value, auth.account)); }
+        try { await this.applyAdmin(await (auth.kind === 'platform-activate' && this.options.placement.kind === 'platform-community'
+          ? this.client.executePlatformAuthorization(this.options.placement, auth.value, auth.account)
+          : this.client.executeAuthorization(auth.kind as 'activate' | 'claim', auth.value, auth.account))); }
         finally { if (this.client.pendingAuthorization()) { this.authorization = undefined; this.adminProcessing = true; } }
       } else if (cmd === 'admin-check') {
         await this.applyAdmin(await this.client.resumeAuthorization());
@@ -397,13 +466,19 @@ export class MarkeeModal {
         if (this.snapshot?.strategy === 'rent') parseEth(value('amount'));
         await this.prepare({ kind: 'create', message: value('message'), name: value('name'), ...(this.snapshot?.strategy === 'sale' ? { amount: parseEth(value('amount'), true) } : {}) });
       }
-      else if (form.dataset.form === 'balance') await this.prepare({ kind: value('kind') as 'wrap' | 'unwrap', amount: parseEth(value('amount')) });
+      else if (form.dataset.form === 'balance') await this.prepare({ kind: this.balanceMode, amount: parseEth(value('amount')) });
       else if (this.form) {
         const { kind, entry } = this.form;
         if (kind === 'fund') await this.prepare({ kind, markee: entry.address, amount: parseEth(value('amount')) });
         else if (kind === 'stream') await this.prepare({ kind, markee: entry.address, monthlyAmount: parseEth(value('amount')) });
-        else if (kind === 'edit-message') await this.prepare({ kind, markee: entry.address, message: value('message') });
-        else await this.prepare({ kind, markee: entry.address, name: value('name') });
+        else {
+          const message = value('message'), name = value('name');
+          const messageChanged = message !== entry.message, nameChanged = name !== entry.name;
+          if (!messageChanged && !nameChanged) throw new Error('Change your message or display name before reviewing.');
+          this.queuedNameEdit = messageChanged && nameChanged && this.account ? { markee: entry.address, account: this.account, name } : undefined;
+          if (messageChanged) await this.prepare({ kind: 'edit-message', markee: entry.address, message });
+          else await this.prepare({ kind: 'edit-name', markee: entry.address, name });
+        }
       }
     });
   };
@@ -436,6 +511,8 @@ export class MarkeeModal {
   }
   private reviewHtml() {
     const review = this.review!, action = review.action;
+    const editingMessage = action.kind === 'edit-message';
+    const editingName = action.kind === 'edit-name';
     const selected = 'markee' in action ? this.snapshot?.entries.find(entry => entry.address.toLowerCase() === action.markee.toLowerCase()) : undefined;
     const reviewEntry = action.kind === 'create' || action.kind === 'edit-message' ? undefined : this.form ? this.form.entry : selected;
     // The user's own new text is shown as is; an existing entry goes through entryMessageHtml so a
@@ -443,7 +520,7 @@ export class MarkeeModal {
     const messageHtml = action.kind === 'create' || action.kind === 'edit-message' ? `<p class="message">${e(action.message)}</p>`
       : reviewEntry ? this.entryMessageHtml(reviewEntry) : '';
     const value = BigInt(review.transaction.value);
-    const paying = action.kind === 'stream' ? `${formatEth(action.monthlyAmount)} ETHx/mo`
+    const paying = action.kind === 'stream' ? `${exact(action.monthlyAmount)} ETHx/mo`
       : action.kind === 'fund' || action.kind === 'create' && value > 0n ? `${formatEth(value.toString())} ETH` : null;
     const payment = paying !== null;
     const rows = payment ? [
@@ -453,29 +530,34 @@ export class MarkeeModal {
       ["You'll earn", review.review.estimatedTokens !== undefined ? `${formatEth(review.review.estimatedTokens, 4)} ${action.kind === 'stream' ? 'MARKEE/month (estimated)' : 'MARKEE (estimated)'}` : this.snapshot?.revnetEnabled ? action.kind === 'stream' ? 'MARKEE while winning' : 'MARKEE to your wallet' : 'No MARKEE on this board'],
     ] : [
       ['Action', review.review.title],
-      ['Native ETH sent', `${formatEth(value.toString())} ETH`],
       ['Estimated network fee', `${formatEth(review.review.estimatedGasCost)} ETH`],
     ];
     const context = review.review.lines.filter(line => !/^(Message: |Name: |Native ETH sent: |Network: |Recipient: )/.test(line));
     const summary = rows.map(([label, amount]) => `<div class="review-row"><span>${e(label)}</span><strong>${e(amount)}</strong></div>`).join('');
-    const calloutTitle = action.kind === 'stream' ? 'Your payment only streams while your message is winning'
+    const calloutTitle = action.kind === 'stream' ? 'Your bid streams until you stop it'
       : action.kind === 'fund' ? 'Funding keeps the current message owner'
       : action.kind === 'create' && payment ? 'Your payment gives you this Markee message'
       : 'Review this wallet action';
     const calloutText = action.kind === 'stream' ? 'Anyone can overtake your message. The refund pool offsets rent while you are not winning; you can stop the stream at any time.' : review.review.reward;
     const explorer = review.transaction.chainId === 8453 ? 'https://basescan.org' : review.transaction.chainId === 11155111 ? 'https://sepolia.etherscan.io' : null;
     const addressRow = (label: string, address?: string | null) => `<div class="review-row"><span>${e(label)}</span>${address ? explorer ? `<a class="review-address mono" href="${explorer}/address/${e(address)}" target="_blank" rel="noopener noreferrer" title="${e(address)}" aria-label="${e(label)}: ${e(address)} (opens in new tab)">${e(shortAddress(address))}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3 10 14M10 3H3v18h18v-7"/></svg></a>` : `<strong class="mono">${e(shortAddress(address))}</strong>` : '<strong>Unavailable</strong>'}</div>`;
-    return `<div class="payment-review">${review.review.moderation?.enabled && review.review.moderation.state !== 'pass' ? `<p class="moderation-warning moderation-warning-inline" role="alert">${e(review.review.moderation.reason || 'Moderation check unavailable')} Your published message may be hidden.</p>` : ''}${messageHtml ? `<section class="review-message" aria-label="Markee message">${messageHtml}</section>` : ''}<section class="review-summary" aria-label="Payment summary">${summary}</section><section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section>${this.snapshot?.strategy === 'rent' ? '<p class="meta review-note">Unspent rent is refunded while your message is not the winner. You can stop streaming at any time. Shortcuts use the loaded ranking; positions can change.</p>' : ''}<details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${addressRow('Community split beneficiary', this.snapshot?.beneficiary)}${addressRow('Leaderboard contract', this.snapshot?.board)}${addressRow('Connected wallet', review.transaction.from)}${action.kind === 'stream' ? '' : `${context.map(line => `<p>${e(line)}</p>`).join('')}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p>`}</details></div>`;
+    const routing = review.review.paymentRouting;
+    const splitDescription = action.kind === 'stream' ? 'winning rent' : 'payment';
+    const paymentDetails = payment ? `${routing?.beneficiary ? `${addressRow(`Markee beneficiary${routing.beneficiaryBps === undefined ? '' : ` · ${routing.beneficiaryBps / 100}% of ${splitDescription}`}`, routing.beneficiary)}<p class="meta">Set by this board’s owner to receive its share of payments.</p>` : ''}${routing?.revnetTerminal ? `${addressRow(`RevNet terminal${routing.revnetBps === undefined ? '' : ` · ${routing.revnetBps / 100}% of ${splitDescription}`}`, routing.revnetTerminal)}<p class="meta">This share funds the Markee Cooperative token issuance contract.</p>` : ''}${review.review.streamDetails ? `<div class="review-row"><span>Precise stream rate</span><strong>${e(exact(review.review.streamDetails.effectiveMonthlyWei))} ETHx/mo</strong></div><div class="review-row"><span>Refundable buffer added</span><strong>${e(formatEth(review.review.streamDetails.bufferTopUpWei))} ETHx</strong></div>` : ''}` : '';
+    return `<div class="payment-review">${review.review.moderation?.enabled && review.review.moderation.state !== 'pass' ? `<p class="moderation-warning moderation-warning-inline" role="alert">${e(review.review.moderation.reason || 'Moderation check unavailable')} Your published message may be hidden.</p>` : ''}${messageHtml ? `<section class="review-message" aria-label="${editingMessage ? 'New Message' : 'Markee message'}">${messageHtml}</section>` : ''}${editingName ? `<div class="review-row"><span>New display name</span><strong>${e(action.name || 'None')}</strong></div>` : ''}<section class="review-summary" aria-label="${payment ? 'Payment summary' : 'Action summary'}">${summary}</section>${editingMessage ? '<p class="meta review-note">This update changes the message everyone sees once confirmed.</p>' : editingName ? '<p class="meta review-note">This update changes the display name once confirmed.</p>' : `<section class="review-callout"><strong>${e(calloutTitle)}</strong><p>${e(calloutText)}</p></section>`}${payment && this.snapshot?.strategy === 'rent' ? '<p class="meta review-note">Unspent rent is refunded while your message is not the winner. You can stop streaming at any time. Shortcuts use the loaded ranking; positions can change.</p>' : ''}<details class="review-details"><summary>Transaction details</summary><div class="review-row"><span>Network</span><strong>${e(this.snapshot?.chainId === 8453 ? 'Base' : this.snapshot?.chainId === 11155111 ? 'Sepolia testnet' : String(review.transaction.chainId))}</strong></div>${paymentDetails}${addressRow('Leaderboard contract', this.snapshot?.board)}${editingMessage ? `<div class="review-row"><span>New Message</span><strong>${e(action.message)}</strong></div>` : ''}${editingName ? `<div class="review-row"><span>New display name</span><strong>${e(action.name || 'None')}</strong></div>` : ''}${payment ? `${context.map(line => `<p>${e(line)}</p>`).join('')}` : ''}<p>This review expires in 5 minutes. Your wallet shows the final network fee.</p></details></div>`;
   }
   private authorizationHtml() {
     const auth = this.authorization!, message = auth.value.typedData.message;
-    return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'activate' ? 'Activate this community’s Markee' : 'Claim community revenue'}</h2><p>A signed authorization lets Markee’s keeper execute this action. The server rechecks your current council role before submitting it.</p><div class="card stack">${['registryCommunity', 'recipient', 'leaderboardFactory'].filter(k => message[k]).map(k => `<div class="meta">${e(k)}<br><strong class="mono">${e(message[k])}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community council treasury. Bridged claims remain pending until destination delivery is confirmed.' : 'This creates the community board and its revenue vault on the Markee chain.'}</p>`;
+    const beneficiaryNote = String(message.strategy) === '1'
+      ? 'For Sale transfers native ETH on Base to this beneficiary. Confirm it can receive ETH transfers.'
+      : 'For Rent streams ETHx on Base to this beneficiary. Confirm it can receive a Superfluid ETHx stream.';
+    return `<div class="eyebrow">Community authorization</div><h2>${auth.kind === 'claim' ? 'Claim community revenue' : 'Activate this community’s Markee'}</h2><p>A signed authorization lets Markee’s operator execute this action after checking your current community rights.</p><div class="card stack">${['registryCommunity', 'recipient', 'beneficiary', 'activator', 'leaderboardFactory', 'communityKey', 'factory', 'strategy'].filter(k => message[k] !== undefined).map(k => `<div class="meta">${e(k === 'beneficiary' ? 'Base beneficiary' : k)}<br><strong class="mono">${e(String(message[k]))}</strong></div>`).join('')}${['claimAmount', 'gasCost', 'maxFeeAmount'].filter(k => message[k] !== undefined).map(k => `<div class="stat"><span>${k === 'claimAmount' ? 'Revenue' : k === 'gasCost' ? 'Keeper network fee' : 'Maximum bridge fee'}</span><strong>${formatEth(String(message[k]))} ETH</strong></div>`).join('')}</div><p class="note">${auth.kind === 'claim' ? 'Revenue is sent to the community treasury. Bridged claims remain pending until destination delivery is confirmed.' : auth.kind === 'platform-activate' ? `${beneficiaryNote} The board owner may need to accept admin on Base.` : 'This creates one community board and its revenue vault on Base.'}</p>`;
   }
   private entryMessage(entry: Entry) {
     return entry.moderated === false ? entry.message : entry.moderation?.state === 'soft-flagged' ? entry.moderation?.reason || 'This message is hidden by automatic moderation.' : 'This message is hidden by moderation.';
   }
   private entryMessageHtml(entry: Entry) {
-    if (entry.moderated === null || entry.moderated === undefined) return `<div class="message skeleton-lines" role="status" aria-label="Loading message"><span class="skeleton-line"></span><span class="skeleton-line short"></span></div>`;
+    if (entry.moderated === null || entry.moderated === undefined) return '<p class="message moderation-placeholder" role="status">Message unavailable. Moderation could not be checked.</p>';
     return `<p class="message${entry.moderated === false ? '' : ' moderation-placeholder'}">${e(this.entryMessage(entry))}</p>`;
   }
   private entriesHtml() {
@@ -483,11 +565,13 @@ export class MarkeeModal {
     const ranked = [...s.entries].sort((a, b) => BigInt(a.score) > BigInt(b.score) ? -1 : BigInt(a.score) < BigInt(b.score) ? 1 : 0);
     const entries = [...ranked.filter(entry => entry.owner.toLowerCase() === this.account?.toLowerCase()), ...ranked.filter(entry => entry.owner.toLowerCase() !== this.account?.toLowerCase())];
     const count = this.messageCount ?? boardMessageCount(s);
+    const w = s.wallet;
     return `<section class="leaderboard" aria-label="Markee leaderboard">${btn('leaderboard', `<span>Leaderboard</span><span class="leaderboard-meta"><span class="pill count-badge">${count.toLocaleString()} ${count === 1 ? 'message' : 'messages'}</span><span class="chevron" aria-hidden="true">${this.leaderboardOpen ? '⌃' : '⌄'}</span></span>`, 'leaderboard-toggle', `aria-expanded="${this.leaderboardOpen}" aria-controls="markee-leaderboard"`)}${this.leaderboardOpen ? `<div class="leaderboard-list" id="markee-leaderboard">${entries.map(entry => {
       const own = entry.owner.toLowerCase() === this.account?.toLowerCase();
       const top = entry.address.toLowerCase() === s.top?.toLowerCase();
       const selected = entry.address.toLowerCase() === this.form?.entry.address.toLowerCase();
-      return `<article class="leaderboard-entry ${top ? 'winner' : ''} ${selected ? 'selected-entry' : ''}"><div class="grow">${this.entryMessageHtml(entry)}<div class="row entry-caption">${top ? '<span class="pill">Winner</span>' : ''}${own ? '<span class="meta">Yours</span>' : ''}${entry.moderated === false && entry.name ? `<span class="name">${e(entry.name)}</span>` : ''}</div></div><div class="entry-funding"><div class="meta mono">${s.strategy === 'rent' ? `${formatEth((BigInt(entry.score) * MONTH).toString())} ETH/mo` : `${formatEth(entry.totalFunds)} ETH`}</div><span class="meta">${entry.views === null ? 'Views unavailable' : `${entry.views.toLocaleString()} views`}</span>${btn(`form:${s.strategy === 'sale' ? 'fund' : 'stream'}:${entry.address}`, selected ? 'Selected' : 'Fund', `compact ${selected ? 'primary' : ''}`, `aria-pressed="${selected}" aria-label="${selected ? 'Selected' : 'Fund'} message ${shortAddress(entry.address)}"`)}</div></article>`;
+      const fundLabel = selected ? 'Selected' : s.strategy === 'rent' ? w?.backedMarkee?.toLowerCase() === entry.address.toLowerCase() && BigInt(w?.flowRate ?? '0') > 0n ? 'Change Bid' : 'Add to This Bid' : 'Fund';
+      return `<article class="leaderboard-entry ${top ? 'winner' : ''} ${selected ? 'selected-entry' : ''}"><div class="grow">${this.entryMessageHtml(entry)}<div class="row entry-caption">${own ? '<span class="meta">Yours</span>' : ''}${entry.moderated === false && entry.name ? `<span class="name">${e(entry.name)}</span>` : ''}${top ? '<span class="pill winner-badge">Winner</span>' : ''}</div></div><div class="entry-funding"><div class="meta mono">${s.strategy === 'rent' ? `${roundedBid(BigInt(entry.score) * MONTH)} ETH/mo` : `${formatEth(entry.totalFunds)} ETH`}</div><span class="meta">${entry.views === null ? 'Views unavailable' : `${entry.views.toLocaleString()} views`}</span>${btn(`form:${s.strategy === 'sale' ? 'fund' : 'stream'}:${entry.address}`, fundLabel, `compact ${selected ? 'primary' : ''}`, `aria-pressed="${selected}" aria-label="${fundLabel} message ${shortAddress(entry.address)}"`)}</div></article>`;
     }).join('') || '<p class="empty">No Markees yet. Create the first one.</p>'}${s.strategy === 'rent' && s.rankedTop && s.rankedTop.toLowerCase() !== s.top?.toLowerCase() ? `<p class="note">The ranking has changed. ${btn(`claim-top:${s.rankedTop}`, 'Refresh winner', 'compact')}</p>` : ''}${s.nextOffset !== null ? btn('more', 'Browse more messages', 'full') : ''}</div>` : ''}</section>`;
   }
   private selectedMessageHtml(entry: Entry) {
@@ -496,7 +580,7 @@ export class MarkeeModal {
     const owned = s.entries.find(item => item.owner.toLowerCase() === this.account?.toLowerCase());
     const top = entry.address.toLowerCase() === s.top?.toLowerCase();
     const backing = entry.address.toLowerCase() === w?.backedMarkee?.toLowerCase() && BigInt(w?.flowRate ?? '0') > 0n;
-    return `<section class="message-card ${top ? 'winner' : ''}"><div class="row between"><span class="eyebrow">${own ? 'Your Markee' : 'Markee you’re funding'}</span>${top ? '<span class="pill">Winner</span>' : ''}</div>${this.entryMessageHtml(entry)}${entry.moderated === false && entry.name ? `<p class="name">${e(entry.name)}</p>` : ''}<div class="row message-tools">${own ? btn(`form:edit-message:${entry.address}`, 'Edit message', 'text-button') + btn(`form:edit-name:${entry.address}`, 'Edit name', 'text-button') : ''}${!own && owned ? btn(`form:${s.strategy === 'rent' ? 'stream' : 'fund'}:${owned.address}`, 'Back to your Markee', 'text-button') : ''}${btn('create', 'Create your own Markee', 'text-button')}${s.strategy === 'rent' && this.account && entry.address.toLowerCase() === w?.backedMarkee?.toLowerCase() && BigInt(w?.poolClaimable ?? '0') > 0n ? btn(`claim-refund:${entry.address}`, 'Collect refund', 'text-button') : ''}</div><div class="message-stats">${s.strategy === 'rent' ? `<span class="meta">${!this.account ? 'Live message ranking' : backing ? top ? '● Active stream' : w?.poolConnected ? '● Stream refunded while not the winner' : '● Connect your refund pool in Deposit manager' : 'No active stream from your wallet to this message'}</span><div class="stats-grid"><div><span class="stat-label">Ranking rate</span><strong>${formatEth((BigInt(entry.score) * MONTH).toString())} ETH/mo</strong></div>${this.account ? `<div><span class="stat-label">Your rate</span><strong>${formatEth((backing ? BigInt(w!.flowRate) * MONTH : 0n).toString())} ETH/mo</strong></div>` : ''}${w ? `<div><span class="stat-label">ETHx balance</span><strong>${formatEth(w.ethx)} ETHx</strong></div><div><span class="stat-label">Funds remaining</span><strong title="Across all of your ETHx flows">${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div>` : ''}</div>${BigInt(entry.legacyFloor) > 0n ? `<p class="meta">Ranking includes a decaying legacy floor of ${formatEth((BigInt(entry.legacyFloor) * MONTH).toString())} ETH/mo.</p>` : ''}` : `<div class="stats-grid"><div><span class="stat-label">Total funded</span><strong>${formatEth(entry.totalFunds)} ETH</strong></div><div><span class="stat-label">Views</span><strong>${entry.views === null ? 'Unavailable' : entry.views.toLocaleString()}</strong></div></div>`}</div></section>`;
+    return `<section class="message-card ${top ? 'winner' : ''}"><div class="row between"><span class="eyebrow">${own ? 'Your Message' : 'Message You’re Funding'}</span>${top ? '<span class="pill winner-badge">Winner</span>' : ''}</div>${this.entryMessageHtml(entry)}${entry.moderated === false && entry.name ? `<p class="name">${e(entry.name)}</p>` : ''}<div class="row message-tools">${own ? btn(`form:edit:${entry.address}`, 'Edit Your Message', 'text-button') : ''}${!own && owned ? btn(`form:${s.strategy === 'rent' ? 'stream' : 'fund'}:${owned.address}`, 'Go Back', 'text-button') : ''}${btn('create', 'Buy a New Message', 'text-button')}${s.strategy === 'rent' && this.account && entry.address.toLowerCase() === w?.backedMarkee?.toLowerCase() && BigInt(w?.poolClaimable ?? '0') > 0n ? btn(`claim-refund:${entry.address}`, 'Collect refund', 'text-button') : ''}</div><div class="message-stats">${s.strategy === 'rent' ? `<span class="meta">${!this.account ? 'Live message ranking' : backing ? top ? '● Active stream' : w?.poolConnected ? '● Stream refunded while not the winner' : '● Connect your refund pool in Deposit manager' : 'No active stream from your wallet to this message'}</span><div class="stats-grid"><div><span class="stat-label">Winning Bid</span><strong>${roundedBid(BigInt(entry.score) * MONTH)} ETH/mo</strong></div>${this.account ? `<div><span class="stat-label">Your Bid</span><strong>${roundedBid(backing ? BigInt(w!.flowRate) * MONTH : 0n)} ETH/mo</strong></div>` : ''}${w ? `<div><span class="stat-label">ETHx Deposit Balance</span><strong>${formatEth(w.ethx)} ETHx</strong></div><div><span class="stat-label">Deposit Remaining</span><strong title="Across all of your ETHx flows">${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div>` : ''}</div>${BigInt(entry.legacyFloor) > 0n ? `<p class="meta">Ranking includes a decaying legacy floor of ${formatEth((BigInt(entry.legacyFloor) * MONTH).toString())} ETH/mo.</p>` : ''}` : `<div class="stats-grid"><div><span class="stat-label">Total funded</span><strong>${formatEth(entry.totalFunds)} ETH</strong></div><div><span class="stat-label">Views</span><strong>${entry.views === null ? 'Unavailable' : entry.views.toLocaleString()}</strong></div></div>`}</div></section>`;
   }
   private fundingHtml(entry?: Entry) {
     const s = this.snapshot!, w = s.wallet, rent = s.strategy === 'rent';
@@ -504,16 +588,26 @@ export class MarkeeModal {
     const backing = !!entry && entry.address.toLowerCase() === w?.backedMarkee?.toLowerCase();
     const current = rent && backing ? BigInt(w!.flowRate) * MONTH : 0n;
     const defaultAmount = BigInt(s.minimum) > presets.minimum ? BigInt(s.minimum) : presets.minimum;
-    const initial = current > defaultAmount ? current : defaultAmount;
+    const existingWinner = rent && backing && entry?.address.toLowerCase() === s.top?.toLowerCase() && current > 0n;
+    const initial = rent ? existingWinner ? current : presets.boost : current > defaultAmount ? current : defaultAmount;
     const minimum = !rent && entry ? 1n : BigInt(s.minimum);
-    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly streaming rate' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', 'title="Use the minimum amount"')}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', 'title="Suggest an amount using the loaded ranking"')}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${ceilToTwoSignificant(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${rent ? `<span data-wallet-balance>${w ? BigInt(w.ethx) > 0n ? `ETHx Balance ${formatEth(w.ethx)}` : `ETH Balance ${formatEth(w.eth)}` : 'Paid in ETHx'}${infoTip('Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.')}</span>` : this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div>${rent ? this.account && w ? `<div class="funding-tools">${btn('tab:wallet', 'Deposit manager →', 'text-button')}<span class="meta runway">${w.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days${infoTip('How long your message can stream for based on your ETHx balance. To add more, go to the Deposit manager.')}` : `${formatEth(w.ethx)} ETHx${infoTip('If your ETHx balance doesn’t cover this rate, your first transaction deposits ETH as ETHx. Go to the Deposit manager to deposit a different amount.')}`}</span></div>` : '' : `<div class="funding-tools">${this.account ? btn('tab:wallet', 'Wallet & rewards →', 'text-button') : ''}<span class="meta">One-time payment</span></div>`}</section>${rent ? '' : `<p class="meta funding-hint">${entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`}`;
+    const minHelp = rent ? 'Minimum bid amount. Your payment will not stream unless all higher bids are cancelled.' : 'Minimum additional payment for this message.';
+    const boostHelp = presets.double ? rent ? 'Double your current bid.' : 'Double your current payment.' : 'Amount needed to take the top spot and have your message featured.';
+    return `<section class="funding-card"><label for="amount">${rent ? 'Monthly bid' : 'Payment amount'}</label><div class="amount-row"><div class="amount-value"><input id="amount" name="amount" inputmode="decimal" value="${e(rent ? roundedBid(initial) : exact(initial.toString()))}" required aria-describedby="amount-hint"><span class="mono">${rent ? 'ETHx/mo' : 'ETH'}</span></div><div class="amount-presets">${btn('preset:min', 'MIN', 'compact mono', `aria-label="MIN: ${e(minHelp)}" data-tip="${e(minHelp)}"`)}${btn('preset:boost', presets.double ? '2×' : 'WIN', 'compact mono', `aria-label="${presets.double ? '2×' : 'WIN'}: ${e(boostHelp)}" data-tip="${e(boostHelp)}"`)}</div></div><div class="funding-caption"><span id="amount-hint">Minimum ${ceilToTwoSignificant(minimum.toString())} ${rent ? 'ETH/mo' : 'ETH'}</span>${rent ? `<span data-wallet-balance>${w ? BigInt(w.ethx) > 0n ? `ETHx Balance ${formatEth(w.ethx)}` : `ETH Balance ${formatEth(w.eth)}` : 'Paid in ETHx'}${infoTip('Markee uses Superfluid for payment streaming. Deposit ETH to get ETHx you can use for payments.')}</span>` : this.account && w ? `<span data-wallet-balance>Balance ${formatEth(w.eth)} ETH</span>` : ''}</div>${rent ? this.account && w ? `<div class="funding-tools">${btn('tab:wallet', 'Deposit manager →', 'text-button')}<span class="meta runway">${w.runwaySeconds != null ? `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days${infoTip('Based on your balance and all wallet ETHx flows. Add ETHx in Deposit Manager to extend it.')}` : `${formatEth(w.ethx)} ETHx${infoTip('If your ETHx balance does not cover this rate, your first transaction deposits ETH as ETHx.')}`}</span></div>` : '' : `<div class="funding-tools">${this.account ? btn('tab:wallet', 'Wallet & rewards →', 'text-button') : ''}<span class="meta">One-time payment</span></div>`}</section>${rent ? '' : `<p class="meta funding-hint">${entry ? 'Adding funds keeps the current message owner.' : 'The paying wallet will own this message.'} Shortcuts use the loaded ranking; positions can change.</p>`}`;
   }
   private formHtml() {
     const s = this.snapshot!, form = this.form;
-    if (form?.kind.startsWith('edit')) return `<form id="markee-action" data-form="entry"><section class="message-card"><div class="eyebrow">Your Markee</div>${form.kind === 'edit-message' ? this.field('message', 'Markee message', form.entry.message, '', true) : this.field('name', 'Your name (optional)', form.entry.name)}</section></form>`;
-    return `<form id="markee-action" data-form="${form ? 'entry' : 'create'}">${form ? this.selectedMessageHtml(form.entry) : `<section class="message-card editor-card">${this.field('message', 'Markee message', '', '', true)}${this.field('name', 'Your name (optional)')}</section>`}${this.fundingHtml(form?.entry)}</form>`;
+    if (form?.kind === 'edit') return `<form id="markee-action" data-form="entry"><section class="message-card editor-card"><div class="eyebrow">Your Message</div>${this.field('message', 'Your Message', form.entry.message, '', true)}${this.field('name', 'Display Name (optional)', form.entry.name, 'Show people who wrote this.')}</section></form>`;
+    return `<form id="markee-action" data-form="${form ? 'entry' : 'create'}">${form ? this.selectedMessageHtml(form.entry) : `<section class="message-card editor-card">${this.field('message', 'Your Message', '', '', true)}${this.field('name', 'Display Name (optional)', '', 'Show people who wrote this.')}</section>`}${this.fundingHtml(form?.entry)}</form>`;
   }
   private updateFields() {
+    const beneficiary = this.root.querySelector<HTMLInputElement>('#base-beneficiary');
+    if (beneficiary) {
+      const valid = validBaseBeneficiary(beneficiary.value);
+      beneficiary.setCustomValidity(valid ? '' : 'Enter a valid, nonzero Base address.');
+      const activate = this.root.querySelector<HTMLButtonElement>('button[data-cmd="activate"]');
+      if (activate) activate.disabled = this.busy || !valid;
+    }
     for (const field of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-byte-limit]')) {
       const limit = Number(field.dataset.byteLimit);
       const bytes = new TextEncoder().encode(field.value).length;
@@ -552,35 +646,88 @@ export class MarkeeModal {
       }
       const minimum = this.snapshot.strategy === 'sale' && this.form ? 1n : BigInt(this.snapshot.minimum);
       amount.setCustomValidity(value === undefined ? 'Enter a valid ETH amount.' : value < minimum ? `Use at least ${ceilToTwoSignificant(minimum.toString())} ETH${this.snapshot.strategy === 'rent' ? ' per month' : ''}.` : '');
-      this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum));
+      this.root.querySelector('[data-cmd="preset:min"]')?.setAttribute('aria-pressed', String(value === presets.minimum && presets.minimum !== presets.boost));
       this.root.querySelector('[data-cmd="preset:boost"]')?.setAttribute('aria-pressed', String(value === presets.boost));
     }
   }
   private walletHtml() {
     const s = this.snapshot!, w = s.wallet;
-    if (!w) return '<p class="empty">Connect your wallet to see balances and manage your Markee.</p>' + btn('connect', 'Connect app wallet', 'primary full');
-    let html = `<h2>Your wallet</h2><p class="meta mono">${e(w.address)}</p><div class="grid"><div class="card"><span class="meta">Native ETH</span><div class="metric">${formatEth(w.eth)}</div></div><div class="card"><span class="meta">MARKEE</span><div class="metric">${w.markee === null ? 'Unavailable' : formatEth(w.markee, 2)}</div></div></div>`;
-    if (s.strategy === 'sale') return html + '<p class="note">Payments reward the paying wallet when this board has RevNet enabled. Manage your messages from the leaderboard.</p>';
-    html += `<div class="divider"></div><div class="card"><div class="stat"><span>Available ETHx</span><strong>${formatEth(w.ethx)} ETHx</strong></div><div class="stat"><span>This board’s monthly rate</span><strong>${formatEth((BigInt(w.flowRate) * 2628000n).toString())} ETH</strong></div><div class="stat"><span>Refund flow / month</span><strong>${formatEth((BigInt(w.refundRate) * 2628000n).toString())} ETHx</strong></div><div class="stat"><span>Runway across all ETHx flows</span><strong>${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div><p class="meta">Snapshot at ${new Date(w.observedAt * 1000).toLocaleTimeString()}. Balances and rates can change.</p><div class="row">${BigInt(w.flowRate) > 0n ? btn('stop', 'Stop stream', 'danger') : ''}${w.backedMarkee && !w.poolConnected ? btn(`connect-refund:${w.backedMarkee}`, 'Connect refund pool', 'accent') : ''}${btn('refresh', 'Refresh balances')}</div></div><div class="divider"></div><h3>Manage ETHx</h3><form data-form="balance"><div class="grid"><div><label for="kind">Action</label><select id="kind" name="kind"><option value="wrap">Deposit ETH → ETHx</option><option value="unwrap">Withdraw ETHx → ETH</option></select></div>${this.field('amount', 'Amount', '0.001')}</div><button type="submit" class="btn">Review balance change</button></form><div class="divider"></div><div class="card"><h3>Buffer and rewards</h3><div class="stat"><span>Refundable board buffer</span><strong>${formatEth(w.withdrawableDeposit)} ETHx</strong></div><div class="stat"><span>Accrued rent to settle</span><strong>${formatEth(w.pendingSettlement)} ETH</strong></div><p class="meta">Rewards come from actual rent spent, not the ETH deposited into your wallet.</p><div class="row">${BigInt(w.withdrawableDeposit) > 0n ? btn('withdraw-buffer', 'Recover buffer') : ''}${BigInt(w.pendingSettlement) > 0n ? btn('settle', s.revnetEnabled ? 'Claim MARKEE' : 'Settle rent', 'primary') : ''}${w.backedMarkee && BigInt(w.poolClaimable) > 0n ? btn(`claim-refund:${w.backedMarkee}`, 'Collect pool refund') : ''}</div></div>`;
-    return html;
+    if (!w) return '<p class="empty">Connect your wallet to see balances and manage your bid.</p>' + btn('connect', 'Connect app wallet', 'primary full');
+    const balances = `<h2>Your wallet</h2><div class="grid"><div class="card"><span class="meta">Native ETH</span><div class="metric">${formatEth(w.eth)} ETH</div></div><div class="card"><span class="meta">${s.strategy === 'rent' ? 'Deposited ETH (ETHx)' : 'MARKEE'}</span><div class="metric">${s.strategy === 'rent' ? `${formatEth(w.ethx)} ETHx` : w.markee === null ? 'Unavailable' : `${formatEth(w.markee, 2)} MARKEE`}</div></div></div>`;
+    if (s.strategy === 'sale') return balances + '<p class="note">Payments reward the paying wallet when this board has RevNet enabled. Manage your messages from the leaderboard.</p>';
+    const streaming = BigInt(w.flowRate) > 0n;
+    const winning = streaming && !!w.backedMarkee && w.backedMarkee.toLowerCase() === s.top?.toLowerCase();
+    const status = !streaming ? '<span class="bid-status">No Active Bid</span>' : winning
+      ? `<span class="bid-status streaming">Streaming</span>${infoTip('Your message is winning and its bid is streaming to the board.')}`
+      : `<span class="bid-status not-winning">Not Winning</span>${infoTip('Your bid is not winning. The connected refund pool streams its payment back to you until your message wins again.')}`;
+    const available = this.balanceMode === 'wrap' ? w.eth : w.ethx;
+    const rewardHelp = s.revnetEnabled ? 'Your settled payments earn MARKEE tokens that give you part ownership of the Markee Network.' : 'This board does not currently issue MARKEE.';
+    return `${balances}<div class="divider"></div><div class="card stack"><div class="stat"><span>Your Bid</span><strong>${roundedBid(BigInt(w.flowRate) * MONTH)} ETHx/mo</strong></div><div class="stat"><span>Status</span><strong>${status}</strong></div><div class="stat"><span>Runway across all wallet ETHx flows ${infoTip('Based on your ETHx balance and the net rate of every ETHx flow in this wallet, not only Markee bids.')}</span><strong>${w.runwaySeconds === null ? 'No net outflow' : `${(Number(w.runwaySeconds) / 86400).toFixed(1)} days`}</strong></div><p class="meta">Snapshot at ${new Date(w.observedAt * 1000).toLocaleTimeString()}. Balances and rates can change.</p><div class="row">${streaming ? btn('stop', 'Stop Bid', 'danger') : ''}${w.backedMarkee && !w.poolConnected ? btn(`connect-refund:${w.backedMarkee}`, 'Connect refund pool', 'accent') : ''}${btn('refresh', 'Refresh balances')}</div></div><div class="divider"></div><h3>Manage ETHx</h3><div class="balance-tabs" role="group" aria-label="ETHx balance action">${btn('balance:wrap', 'Deposit ETH', this.balanceMode === 'wrap' ? 'primary' : '', `aria-pressed="${this.balanceMode === 'wrap'}"`)}${btn('balance:unwrap', 'Withdraw ETHx', this.balanceMode === 'unwrap' ? 'primary' : '', `aria-pressed="${this.balanceMode === 'unwrap'}"`)}</div><form data-form="balance"><p class="meta">${this.balanceMode === 'wrap' ? 'Convert native ETH to ETHx for streaming bids.' : 'Convert available ETHx back to native ETH.'} Available: ${formatEth(available)} ${this.balanceMode === 'wrap' ? 'ETH' : 'ETHx'}.</p>${this.field('amount', 'Amount', '', '', false)}<div class="balance-percentages" aria-label="Percentage of available balance">${[25, 50, 100].map(percent => btn(`balance-percent:${percent}`, `${percent}%`, 'compact')).join('')}</div><button type="submit" class="btn primary">Review ${this.balanceMode === 'wrap' ? 'Deposit' : 'Withdrawal'}</button></form><div class="divider"></div><div class="card stack"><h3>Your Rewards</h3><p class="meta">MARKEE earned from settled payments ${infoTip(rewardHelp)}</p><div class="stat"><span>Rent ready to settle</span><strong>${formatEth(w.pendingSettlement)} ETH</strong></div><div class="stat"><span>Claimable ETHx pool refund ${infoTip('Refundable ETHx from your message’s connected pool while your bid is not winning.')}</span><strong>${formatEth(w.poolClaimable)} ETHx</strong></div><div class="stat"><span>Recoverable board buffer ${infoTip('ETHx deposited as a refundable buffer for your streaming bid.')}</span><strong>${formatEth(w.withdrawableDeposit)} ETHx</strong></div><div class="row">${BigInt(w.pendingSettlement) > 0n ? btn('settle', s.revnetEnabled ? 'Claim MARKEE' : 'Settle rent', 'primary') : ''}${w.backedMarkee && BigInt(w.poolClaimable) > 0n ? btn(`claim-refund:${w.backedMarkee}`, 'Collect ETHx refund') : ''}${BigInt(w.withdrawableDeposit) > 0n ? btn('withdraw-buffer', 'Recover buffer') : ''}</div></div>`;
+  }
+  private allowedStrategies(): Array<'sale' | 'rent'> {
+    if (this.options.placement.kind !== 'platform-community') return ['rent'];
+    const supported: Array<'sale' | 'rent'> = this.options.placement.platformId === 'gardens' ? ['rent'] : ['sale', 'rent'];
+    const chosen = this.client.options.allowedStrategies;
+    return chosen?.length ? supported.filter(strategy => chosen.includes(strategy)) : supported;
+  }
+  private activationHtml() {
+    const c = this.snapshot?.community;
+    if (this.options.placement.kind !== 'platform-community' || !c || c.integration.status !== 'not_integrated' || !c.permissions?.canActivate || !this.account) {
+      return this.communityHtml();
+    }
+    const strategies = this.allowedStrategies();
+    if (!strategies.length) return '<p class="note">Activation is unavailable for this platform configuration.</p>';
+    const selected = strategies.includes(this.selectedStrategy) ? this.selectedStrategy : strategies[0];
+    const sale = selected === 'sale';
+    const description = sale
+      ? 'Payments transfer native ETH on Base. Use a wallet or contract that can receive native ETH transfers.'
+      : 'Payments stream ETHx on Base. Use a wallet or contract that can receive an incoming Superfluid ETHx stream.';
+    const choices = strategies.length > 1 ? `<div class="activation-strategies" role="group" aria-label="Payment strategy">${strategies.map(strategy => `<button type="button" class="activation-strategy${strategy === selected ? ' selected' : ''}" data-cmd="strategy:${strategy}" aria-pressed="${strategy === selected}"><strong>${strategy === 'sale' ? 'For Sale' : 'For Rent'}</strong><span>${strategy === 'sale' ? 'One-time ETH payments' : 'Continuous ETHx streams'}</span></button>`).join('')}</div>` : `<p class="activation-fixed">${sale ? 'For Sale · one-time ETH payments' : 'For Rent · continuous ETHx streams'}</p>`;
+    return `<div class="activation-flow"><div class="eyebrow">Community setup · Base</div><h2>Activate this community’s Markee</h2><p class="muted">Create a board for this community. Choose where its payments will go before signing an authorization.</p><section class="activation-section"><div class="activation-step"><span>1</span><div><h3>Payment model</h3><p>How supporters fund messages on this board.</p></div></div>${choices}</section><section class="activation-section"><div class="activation-step"><span>2</span><div><h3>Base beneficiary</h3><p>Enter the address that will receive community payments on Base.</p></div></div><label for="base-beneficiary">Beneficiary wallet or contract address on Base</label><input id="base-beneficiary" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" aria-describedby="base-beneficiary-help" required value="${e(this.baseBeneficiary)}"><p class="activation-help" id="base-beneficiary-help">${e(description)} Address format can be checked here; a contract’s ability to receive payments must be confirmed separately.</p></section><div class="activation-actions">${btn('back', 'Back')}${btn('activate', 'Review activation', 'primary', validBaseBeneficiary(this.baseBeneficiary) ? '' : 'disabled')}</div></div>`;
   }
   private communityHtml() {
-    const c = this.snapshot!.community;
-    if (!c) return '';
-    return `<h2>Community treasury</h2><p class="muted">Community council members can activate Markee and collect community revenue.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}<div class="row">${this.adminProcessing ? '<p class="note">A signed community action is processing. Check it before authorizing another.</p>' + btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect council wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>${this.adminResult ? `<div class="success">Source transaction confirmed. ${link(this.adminResult.transactionUrl || '', 'View transaction')}${this.adminResult.bridged ? '<p>Bridge delivery is tracked separately from the source transaction.</p>' : ''}${btn('bridge', 'Check transfer status')}</div>` : ''}`;
+    const c = this.snapshot?.community;
+    if (!c) return '<p class="note">Community information is unavailable.</p>';
+    const manageUrl = this.snapshot?.chainId === 8453 ? 'https://www.markee.xyz/account?section=creator'
+      : this.snapshot?.chainId === 11155111 ? 'https://2staging.markee.xyz/account?section=creator' : '';
+    const heading = (title: string) => `<div class="row between"><h2>${title}</h2>${link(manageUrl, 'Manage on Markee')}</div>`;
+    const generic = this.options.placement.kind === 'platform-community';
+    if (generic) {
+      const status = c.integration.status;
+      const strategies = status === 'not_integrated' ? this.allowedStrategies() : [];
+      const pending = status === 'pending_admin';
+      const owner = c.platform?.boardOwner;
+      const canAccept = pending && !!owner && owner.toLowerCase() === this.account?.toLowerCase();
+      const pendingAcceptance = canAccept && this.options.placement.kind === 'platform-community' && !!this.account
+        ? this.client.pendingPlatformAdmin(this.options.placement, this.account) : null;
+      const action = this.adminProcessing ? btn('admin-check', 'Check community action', 'primary')
+        : pendingAcceptance ? btn('check-platform-admin', 'Check board ownership acceptance', 'primary')
+        : canAccept ? btn('accept-admin', 'Accept board ownership on Base', 'primary')
+        : status === 'not_integrated' && !this.account ? btn('connect', 'Connect community wallet', 'primary')
+        : status === 'not_integrated' && c.permissions?.canActivate && strategies.length ? btn('begin-activation', 'Set up community Markee', 'primary')
+        : '';
+      const explanation = status === 'disabled' ? 'This platform is not yet enabled for Markee activation.'
+        : pending ? 'The board was created. Its activator must accept board ownership on Base before it becomes active.'
+        : status === 'active' ? 'Revenue is paid directly to the Base beneficiary shown below.'
+        : 'An authorized project owner can create one Markee board for this community.';
+      return `${heading('Community Markee')}<p class="muted">${e(explanation)}</p><div class="card"><div class="stat"><span>Integration</span><strong>${status === 'active' ? 'Active' : pending ? 'Awaiting board owner' : status === 'disabled' ? 'Not enabled' : 'Not activated'}</strong></div>${c.platform?.beneficiary ? `<p class="meta">Base beneficiary<br><strong class="mono">${e(c.platform.beneficiary)}</strong></p>` : ''}<div class="row">${action || '<span class="meta">No action is available for this wallet.</span>'}</div></div>`;
+    }
+    const choice = '';
+    return `${heading('Community treasury')}<p class="muted">This legacy Gardens integration pays the council treasury on its identity chain. To choose a Base beneficiary, use the new platform activation flow when it is enabled.</p><div class="card"><div class="stat"><span>Integration</span><strong>${c.integration.status === 'active' ? 'Active' : 'Not activated'}</strong></div><div class="stat"><span>Available revenue</span><strong>${formatEth(c.revenue.claimableAmount)} ETH</strong></div>${c.permissions?.councilSafe ? `<p class="meta">Council treasury<br><span class="mono">${e(c.permissions.councilSafe)}</span></p>` : ''}${choice}<div class="row">${this.adminProcessing ? btn('admin-check', 'Check community action', 'primary') : !this.account ? btn('connect', 'Connect community wallet', 'primary') : c.integration.status !== 'active' && c.permissions?.canActivate ? btn('activate', 'Activate community Markee', 'primary') : c.permissions?.canClaim && BigInt(c.revenue.claimableAmount) > 0n ? btn('claim', 'Review revenue claim', 'primary') : '<span class="meta">No authorized action is currently available for this wallet.</span>'}</div></div>`;
   }
   private title() {
     const s = this.snapshot;
     if (this.wallets) return 'Connect your wallet';
-    if (this.review) return this.review.action.kind === 'create' && BigInt(this.review.transaction.value) === 0n ? 'Review creation' : this.review.action.kind.startsWith('edit-') ? 'Review change' : 'Review payment';
+    if (this.review) return this.review.action.kind === 'edit-message' ? 'Confirm Your Message Change' : this.review.action.kind === 'edit-name' ? 'Confirm Your Display Name Change' : this.review.action.kind === 'create' && BigInt(this.review.transaction.value) === 0n ? 'Review creation' : 'Review payment';
     if (this.authorization) return 'Review authorization';
     if (this.pending) return 'Payment in progress';
     if (this.tab === 'wallet') return s?.strategy === 'rent' ? 'Deposit manager' : 'Wallet & rewards';
-    if (this.tab === 'community' || s && !s.board) return 'Community treasury';
-    if (this.form?.kind.startsWith('edit')) return 'Edit your Markee';
+    if (this.tab === 'activation' && this.options.placement.kind === 'platform-community') return 'Activate community Markee';
+    if (this.tab === 'community' || s && (!s.board || s.community?.integration.status === 'pending_admin')) return this.options.placement.kind === 'platform-community' ? 'Community Markee' : 'Community treasury';
+    if (this.form?.kind === 'edit') return 'Edit Your Message';
     if (!this.form) return 'Change the Markee Sign';
-    if (this.form.entry.owner.toLowerCase() !== this.account?.toLowerCase()) return 'Fund a Markee';
-    return s?.strategy === 'sale' ? 'Fund your Markee' : BigInt(s?.wallet?.flowRate ?? '0') > 0n ? 'Manage your Markee stream' : 'Stream to your Markee';
+    if (this.form.entry.owner.toLowerCase() !== this.account?.toLowerCase()) return s?.strategy === 'rent' ? 'Add to This Bid' : 'Fund This Message';
+    return s?.strategy === 'sale' ? 'Fund Your Message' : BigInt(s?.wallet?.flowRate ?? '0') > 0n ? 'Manage Your Bid' : 'Start Your Bid';
   }
   private hostedEligible() {
     const s = this.snapshot;
@@ -595,19 +742,19 @@ export class MarkeeModal {
     else if (this.review) actions = btn('back', 'Back') + btn('send', this.review.action.kind === 'fund' || this.review.action.kind === 'stream' || this.review.action.kind === 'create' && BigInt(this.review.transaction.value) > 0n ? 'Confirm payment' : 'Confirm in wallet', 'primary');
     else if (this.authorization) actions = btn('back', 'Back') + btn('sign', 'Sign authorization', 'primary');
     else if (this.pending) actions = btn('check', '<svg class="refresh-icon" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></svg>Refresh', 'primary refresh-action');
-    else if (s && this.tab === 'main' && s.board) {
-      const editing = this.form?.kind.startsWith('edit');
+    else if (s && this.tab === 'main' && s.board && s.community?.integration.status !== 'pending_admin') {
+      const editing = this.form?.kind === 'edit';
       const secondary = editing ? btn('back', 'Cancel') : s.strategy === 'rent' && BigInt(s.wallet?.flowRate ?? '0') > 0n ? btn('stop', 'Stop streaming', 'danger') : '';
       if (!this.account) actions = this.hostedEligible()
         ? btn('card', 'Review Payment', 'primary', !this.checkoutChecked || !this.cardAvailable ? 'disabled' : '')
         : btn('connect-review', 'Review Payment', 'primary', 'title="Connect a wallet to continue"');
       else {
         alignPaymentActions = this.cardAvailable && this.hostedEligible() && !editing;
-        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<span class="review-action"><button class="btn primary" type="submit" form="markee-action">${editing ? 'Review change' : 'Review Payment'}</button><span id="balance-tooltip" class="balance-tooltip" role="tooltip" hidden>You don’t have enough ETH for this payment.</span></span>`;
+        actions = (alignPaymentActions ? btn('card', 'Pay by card', 'primary') : '') + secondary + `<span class="review-action"><button class="btn primary" type="submit" form="markee-action">${editing ? 'Review Message Change' : 'Review Payment'}</button><span id="balance-tooltip" class="balance-tooltip" role="tooltip" hidden>You don’t have enough ETH for this payment.</span></span>`;
       }
-    } else if (s) actions = btn('tab:main', 'Back to Markee');
+    } else if (s && s.board && s.community?.integration.status !== 'pending_admin') actions = btn('tab:main', 'Back to Message');
     const appUrl = s?.board && [8453, 11155111].includes(s.chainId) ? `https://${s.chainId === 8453 ? 'www' : '2staging'}.markee.xyz/markee/${s.board}` : '';
-    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${appUrl ? ` · ${link(appUrl, 'View in App')}` : ''}${this.account ? ` · ${shortAddress(this.account)}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community accumulated revenue', 'text-button') : ''}</div>`}<div class="footer-actions">${actions}</div></footer>`;
+    return `<footer${this.review ? ' class="review-footer"' : alignPaymentActions ? ' class="payment-choice-footer"' : ''}>${this.review ? '' : `<div class="footer-meta"><span>Powered by Markee${appUrl ? ` · ${link(appUrl, 'View in App')}` : ''}</span>${this.account && s?.community && s.board && this.tab !== 'community' && !this.authorization && !this.pending ? btn('tab:community', 'Community accumulated revenue', 'text-button') : ''}</div>`}<div class="footer-actions">${actions}</div></footer>`;
   }
   private render() {
     if (this.closed) return;
@@ -626,9 +773,10 @@ export class MarkeeModal {
     else if (this.authorization) body = this.authorizationHtml();
     else if (!s) body = this.error ? btn('refresh', 'Retry', 'primary') : '<div class="loading" role="status" aria-live="polite"><span class="spinner"></span>Loading Markee…</div>';
     else if (this.pending) body = `<h2>Waiting for confirmation</h2><p>Your transaction was sent. You can close this modal and come back to check it.</p><p class="meta mono">${e(this.pending.hash)}</p><p class="note">Do not send a second payment while this transaction is pending.</p>`;
-    else if (!s.board || this.tab === 'community') body = this.communityHtml();
+    else if (this.tab === 'activation' && this.options.placement.kind === 'platform-community') body = this.activationHtml();
+    else if (!s.board || s.community?.integration.status === 'pending_admin' || this.tab === 'community') body = this.communityHtml();
     else if (this.tab === 'wallet') body = this.walletHtml();
-    else body = `${this.form?.kind.startsWith('edit') ? '' : this.entriesHtml()}${this.formHtml()}${!this.account && this.hostedEligible() ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
+    else body = `${this.form?.kind === 'edit' ? '' : this.entriesHtml()}${this.formHtml()}${!this.account && this.hostedEligible() ? `<p class="note">${!this.checkoutChecked ? 'Checking Markee checkout availability…' : !this.cardAvailable ? 'Pay in Markee is temporarily unavailable. Please try again later.' : 'Sign in and pay on Markee. Your payment wallet and rewards are managed there.'}</p>` : ''}`;
     const result = this.result ? `<div class="${this.result.status === 'reverted' || this.result.settlement === 'deferred' ? 'error' : 'success'}">${this.result.status === 'reverted' ? 'Transaction reverted. No action was completed.' : this.result.settlement === 'deferred' ? 'The transaction confirmed, but reward settlement was deferred. Your claim remains available.' : `Transaction confirmed.${this.result.tokensReceived && BigInt(this.result.tokensReceived) > 0n ? ` ${formatEth(this.result.tokensReceived, 2)} MARKEE delivered to your wallet.` : ''}`} ${link(this.result.explorerUrl, 'View receipt')}</div>` : '';
     this.root.innerHTML = `<style>${styles}</style><div class="overlay"><section class="panel" role="dialog" aria-modal="true" aria-labelledby="markee-title"><header><div class="grow"><h1 id="markee-title">${e(this.title())}</h1></div><button class="close" data-cmd="close" aria-label="Close Markee">×</button></header><main class="content" aria-busy="${this.busy || (!s && !this.error)}"><div role="status" aria-live="polite">${this.busy ? `<p class="meta"><span class="spinner"></span>${e(this.busyMessage)}</p>` : ''}${this.error ? `<div class="error">${e(this.error)}</div>` : ''}${result}</div>${s?.warnings.map(w => `<div class="note">${e(w)}</div>`).join('') || ''}${body}</main>${this.footerHtml()}</section></div>`;
     if (this.busy) this.root.querySelectorAll<HTMLButtonElement>('button:not([data-cmd="close"])').forEach(b => { b.disabled = true; });
@@ -666,7 +814,7 @@ export function createMarkee(options: SDKOptions = {}) {
   let theme = options.theme;
   return {
     client,
-    open(options: ModalOptions) { modal?.close(); modal = new MarkeeModal(client, { ...options, theme: options.theme ?? theme }); return modal; },
+    open(options: ModalOptions) { const placement = resolvePlacementInput(options); modal?.close(); modal = new MarkeeModal(client, { ...options, placement, theme: options.theme ?? theme }); return modal; },
     setTheme(next?: MarkeeTheme) { theme = next ?? {}; modal?.setTheme(theme); },
     close() { modal?.close(); modal = undefined; },
   };

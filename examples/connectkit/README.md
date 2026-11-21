@@ -23,7 +23,9 @@ Use the separate sign and modal theme selectors to preview charcoal, light, dark
 
 ## Configuration
 
-Copy `.env.example` to `.env.local` only if you want to change the boards or enable WalletConnect. `VITE_WALLETCONNECT_PROJECT_ID` is optional; without it, installed browser wallets remain available. To target a local Markee API during development, set `VITE_MARKEE_API_URL=http://localhost:3000/api/sdk/v1`. The default is managed by the SDK.
+Copy `.env.example` to `.env.local` only if you want to change the boards or enable WalletConnect. `VITE_WALLETCONNECT_PROJECT_ID` is optional; without it, installed browser wallets remain available. This sample uses the SDK's production API default; set `VITE_MARKEE_API_URL=http://localhost:3000/api/sdk/v1` to use a local API.
+
+The **Community** demo tab is hidden by default. Set `VITE_SHOW_COMMUNITY_DEMO=true` at build time to show its platform selector. **gardens** uses the existing live Gardens placement; **giveth** accepts a numeric Project ID, project slug, or Giveth project URL. Slugs are looked up through Giveth's public GraphQL API and displayed as their canonical numeric Project ID. A failed lookup shows an unavailable state rather than guessing an ID. Giveth remains a Base identity-chain design preview only: board lookup and activation are not deployed, and its selection has no payment action. This sample switch does not enable the newer platform-community activation flow on Markee's API. The older `VITE_SHOW_LEGACY_COMMUNITY_DEMO` switch remains accepted for existing demo builds.
 
 For a new integration, [create a Markee leaderboard](https://www.markee.xyz/create-a-markee), then use the board address from its `markee.xyz/markee/0x…` link. The SDK detects whether the board is For Sale or For Rent. No strategy setting is needed.
 
@@ -37,4 +39,4 @@ The published sample registers `https://markee-sdk-connectkit-example.vercel.app
 npm run build
 ```
 
-The SDK uses the production Markee API (`https://www.markee.xyz/api/sdk/v1`) by default.
+The SDK and this sample default to the production Markee API (`https://www.markee.xyz/api/sdk/v1`). Set `VITE_MARKEE_API_URL` only for an intentional override.

@@ -342,7 +342,7 @@ export async function runModerationScan(): Promise<ScanReport> {
   const flagged = await scanDeps.readAllFlagged()
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
   if (autoEnabled()) {
-    for (const batch of chunk(observations, 25)) await evaluateObservedBatch(batch, flagged)
+    await evaluateObservedBatch(observations, flagged, 'standard', { client, blockNumber: block.number })
   }
   const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)

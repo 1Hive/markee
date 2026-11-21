@@ -19,6 +19,16 @@ function secret() {
   return configured || devSecret;
 }
 type Envelope = Omit<PreparedAction, 'id' | 'review'> & { token: Address | null; board: Address; issuedAt: number };
+/** Optional display data; a missing getter cannot block payment preparation. */
+export async function paymentRoutingForReview(c: BoardContext): Promise<PreparedAction['review']['paymentRouting']> {
+  const [beneficiaryBps, terminal] = await Promise.all([
+    c.r<bigint>('percentToBeneficiary').catch(() => undefined),
+    c.revnetEnabled ? c.r<Address>('revNetTerminal').catch(() => undefined) : Promise.resolve(undefined),
+  ]);
+  if (beneficiaryBps === undefined || beneficiaryBps < 0n || beneficiaryBps > 10_000n) return undefined;
+  return { beneficiary: c.beneficiary, beneficiaryBps: Number(beneficiaryBps),
+    ...(c.revnetEnabled && terminal && terminal !== zeroAddress ? { revnetTerminal: terminal, revnetBps: 10_000 - Number(beneficiaryBps) } : {}) };
+}
 export function signEnvelope(value: Envelope): string {
   const payload = Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${payload}.${createHmac('sha256', secret()).update(payload).digest('base64url')}`;
@@ -59,13 +69,14 @@ async function routeExit(c: BoardContext, account: Address, action: Action): Pro
 export async function prepare(p: Placement, account: Address, requested: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
   const resolved = await resolvePlacement(p);
   if (!resolved.board) throw new SDKError('INACTIVE_COMMUNITY', 'Activate the community Markee first.', 409);
-  const current = await boardContext(resolved.chainId, resolved.board, p.kind === 'gardens-community');
+  const current = await boardContext(resolved.chainId, resolved.board, p.kind !== 'board');
   const followed = 'markee' in requested ? { ...requested, markee: await currentSdkMarkee(current.chainId, requested.markee) } : requested;
   const { c, action, stream } = await routeExit(current, account, followed);
   let to = c.board;
   let data: Hex;
   let value = 0n;
   let monthlyRewardAmount = 0n;
+  let streamDetails: PreparedAction['review']['streamDetails'];
   const lines: string[] = [];
   let title: string = action.kind;
   let reward = 'This action does not issue MARKEE.';
@@ -101,11 +112,12 @@ export async function prepare(p: Placement, account: Address, requested: Action,
     if (action.kind === 'stream') {
       const monthly = wei(action.monthlyAmount);
       if (monthly < c.minimum) throw new SDKError('BELOW_MINIMUM', `Minimum monthly rate is ${formatEther(c.minimum)} ETH.`);
-      const { ratePerSecond } = getMarkeeStreamAmounts(monthly, 0n, c.minimum);
+      const { ratePerSecond } = getMarkeeStreamAmounts(monthly, 0n);
       monthlyRewardAmount = ratePerSecond * 2628000n;
       if (ratePerSecond >= 2n ** 95n) throw new SDKError('INVALID_RATE', 'Stream rate is out of range.');
       const nativeBalance = await c.client.getBalance({ address: account });
       const funding = getMarkeeAutoFunding({ ethxAvailableBalance: s.available, existingDeposit: s.deposit, nativeBalance, ratePerSecond });
+      streamDetails = { effectiveMonthlyWei: monthlyRewardAmount.toString(), bufferTopUpWei: funding.depositTopUp.toString() };
       if (funding.insufficientEth) throw new SDKError('INSUFFICIENT_FUNDS', 'Not enough ETH/ETHx to fund both stream buffers and gas.');
       const [pool, allowance] = await Promise.all([c.r<Address>('poolOf', [action.markee]), read<bigint>(c.client, s.ethx, tokenABI, 'allowance', [account, c.board])]);
       const ops = buildMarkeeOpenStreamOperations({ backer: account, board: c.board, markee: action.markee,
@@ -178,7 +190,12 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   const expiresAt = Date.now() + 5 * 60_000;
   const id = signEnvelope({ transaction, placement: p, action: requested, expiresAt, token: c.token, board: c.board, issuedAt: Date.now() });
   lines.push(`Native ETH sent: ${formatEther(value)} ETH`, `Network: ${resolveClientChain(c.chainId).name}`, `Recipient: ${to}`);
-  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}) } };
+  // Routing is display-only and optional. The signed payment is unchanged.
+  let paymentRouting: PreparedAction['review']['paymentRouting'];
+  if (action.kind === 'stream' || action.kind === 'fund' || action.kind === 'create' && value > 0n) {
+    paymentRouting = await paymentRoutingForReview(c);
+  }
+  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {

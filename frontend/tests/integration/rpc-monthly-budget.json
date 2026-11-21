@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "monthlyLimitCU": 111100000,
+  "limitSource": "User-provided Alchemy screenshot: 111.1M CU (rounded display, enforced conservatively)",
+  "maxInputAgeHours": 24
+}

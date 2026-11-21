@@ -7,6 +7,7 @@ import { lifetimeDeps } from '../lib/streaming/lifetime-deps'
 import { GET as lifetime } from '../app/api/streaming/lifetime-streamed/route'
 import { snapshotStorage } from '../lib/sdk/cached-display'
 import { BACKOFF, PUBLISH, RELEASE, type SnapshotStore } from '../lib/sdk/snapshot-cache'
+import { automaticDeps, softKey } from '../lib/moderation/automatic'
 
 const board = '0x1111111111111111111111111111111111111111'
 const ids = ['0x2222222222222222222222222222222222222222', '0x3333333333333333333333333333333333333333']
@@ -101,6 +102,41 @@ test('spoofed edit logs cannot add non-members to either moderation queue', asyn
   assert.equal(report.fromLogs, 0)
   assert.equal(s.records.has(itemKey(attacker)), false)
   assert.equal(s.reads(), 0)
+})
+
+test('automatic scan reuses its client and block once across more than 25 observations', async t => {
+  const s = scanner(t)
+  process.env.FLAG_AUTO_MODERATION = 'true'
+  const manyIds = Array.from({ length: 61 }, (_, i) => `0x${(i + 100).toString(16).padStart(40, '0')}`)
+  s.records.set(`moderation:scan:v2:${board}`, { count: '2', ids: manyIds, reconciledAt: 1000 })
+  manyIds.forEach(markee => s.records.set(itemKey(markee), observeMessage(null, { markee, board, message: 'shit', name: '', author: owner, blockNumber: '49000', at: 1000 }, { preexisting: true, flagged: { board: false, site: false } })))
+  let calls = 0
+  t.mock.method(automaticDeps, 'membership', async (pairs: unknown[], client: unknown, block: bigint) => {
+    calls++; assert.equal(client, s.client); assert.equal(block, 50000n)
+    assert.equal(pairs.length, 63)
+    return pairs.map(() => true)
+  })
+  t.mock.method(automaticDeps, 'get', async () => null)
+  t.mock.method(automaticDeps, 'pipeline', () => {
+    const p = { set(key: string, value: unknown) { s.records.set(key, value); return p }, sadd() { return p }, srem() { return p }, async exec() { return [] } }
+    return p
+  })
+  await runModerationScan()
+  assert.equal(calls, 1)
+  assert.equal(s.records.get(softKey(manyIds[0])).state, 'soft-flagged')
+})
+
+test('unknown automatic scan membership preserves scan checkpoints and existing soft flags', async t => {
+  const s = scanner(t)
+  process.env.FLAG_AUTO_MODERATION = 'true'
+  const before = s.records.get('moderation:scan:logBlock')
+  const state = structuredClone(s.records.get(`moderation:scan:v2:${board}`))
+  s.records.set(softKey(ids[0]), { state: 'soft-flagged' })
+  t.mock.method(automaticDeps, 'membership', async (pairs: unknown[]) => pairs.map(() => null))
+  await assert.rejects(runModerationScan(), /membership read failed; retaining checkpoints/)
+  assert.equal(s.records.get('moderation:scan:logBlock'), before)
+  assert.deepEqual(s.records.get(`moderation:scan:v2:${board}`), state)
+  assert.deepEqual(s.records.get(softKey(ids[0])), { state: 'soft-flagged' })
 })
 
 function snapshots(t: any) {

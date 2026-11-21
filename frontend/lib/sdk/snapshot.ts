@@ -7,6 +7,7 @@ import { MARKEE_TOKEN, V14_FACTORIES } from '../contracts/addresses';
 import { boardABI, cfaABI, gdaABI, messageABI, poolABI, tokenABI } from './abi';
 import { getEnvPublicClient, registryCommunityABI } from './chains';
 import { markeeAdapter } from './gardens/revenue';
+import { platformCommunity } from './platforms';
 import { CFA_AGREEMENT_ID, GDA_AGREEMENT_ID, getMarkeeEthxAddress, getMarkeeWithdrawableDeposit, superfluidHostABI } from './gardens/streaming';
 import { SDKError } from './validation';
 import { strategyForBoardVersion, type Strategy } from '../strategy';
@@ -36,6 +37,10 @@ export async function communityPermissions(chainId: number, community: Address, 
 export async function resolvePlacement(p: Placement, account?: Address) {
   let community: CommunityState | undefined;
   if (p.kind === 'board') return { board: p.address, chainId: p.chainId, community };
+  if (p.kind === 'platform-community') {
+    community = await platformCommunity(p, account);
+    return { board: community.integration.leaderboardAddress, chainId: community.markeeChainId, community };
+  }
   community = await markeeAdapter.getCommunityIntegration(p.chainId, p.community);
   if (account) {
     community.permissions = await communityPermissions(p.chainId, p.community, account);
@@ -152,8 +157,8 @@ async function onlyPlaceholderLeftOff(c: BoardContext, firstPage: readonly Addre
 async function loadSnapshot(p: Placement, account?: Address, offset?: number): Promise<Snapshot> {
   const resolved = await resolvePlacement(p);
   const warnings: string[] = [];
-  if (!resolved.board) return { apiVersion: 1, placement: p, board: null, chainId: resolved.chainId, strategy: 'rent', name: 'Community Markee', minimum: '0', maxMessageBytes: 0, maxNameBytes: 0, revnetEnabled: false, token: null, entries: [], nextOffset: null, count: 0, top: null, rankedTop: null, wallet: null, community: resolved.community, warnings, blockNumber: '0' };
-  const c = await boardContext(resolved.chainId, getAddress(resolved.board), p.kind === 'gardens-community');
+  if (!resolved.board) return { apiVersion: 1, placement: p, board: null, chainId: resolved.chainId, strategy: p.kind === 'platform-community' && p.platformId === 'revnet' ? 'sale' : 'rent', name: 'Community Markee', minimum: '0', maxMessageBytes: 0, maxNameBytes: 0, revnetEnabled: false, token: null, entries: [], nextOffset: null, count: 0, top: null, rankedTop: null, wallet: null, community: resolved.community, warnings, blockNumber: '0' };
+  const c = await boardContext(resolved.chainId, getAddress(resolved.board), p.kind !== 'board');
   const [addresses, wallet] = await Promise.all([
     offset !== undefined ? c.r<Address[]>('getMarkees', [BigInt(offset), 20n]) : c.ranked[0],
     account ? walletStateWithLegacyStream(c, account) : null,
@@ -188,6 +193,7 @@ async function loadSnapshot(p: Placement, account?: Address, offset?: number): P
 
 export async function snapshot(p: Placement, account?: Address, offset?: number, severity: ModerationSeverity = 'standard'): Promise<Snapshot> {
   let result: Snapshot;
+  let platformFresh = false;
   if (displayCacheConfigured()) {
     const cache = displayCache();
     let cached;
@@ -212,12 +218,23 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
   } else {
     if (process.env.NODE_ENV === 'production') throw new SDKError('NOT_CONFIGURED', 'Snapshot storage is not configured.', 503);
     result = await loadSnapshot(p, account, offset);
+    // loadSnapshot already read the platform integration and permissions for this account.
+    platformFresh = p.kind === 'platform-community';
   }
   // Permissions are never cached with display data. Preparation separately
   // resolves current routing; a display cache is never an authorization source.
   if (p.kind === 'gardens-community' && account) {
     const permissions = await communityPermissions(p.chainId, p.community, account);
     if (result.community) result = { ...result, community: { ...result.community, permissions } };
+  } else if (p.kind === 'platform-community' && !platformFresh) {
+    // Platform board existence and admin handoff must be current: always re-read
+    // the integration, and reload uncached if the board changed since caching.
+    const current = await platformCommunity(p, account);
+    if ((current.integration.leaderboardAddress ?? null)?.toLowerCase() !== (result.board ?? null)?.toLowerCase()) {
+      result = await loadSnapshot(p, account, offset);
+    } else {
+      result = { ...result, community: current };
+    }
   }
   return applySnapshotModeration(result, severity);
 }
@@ -257,7 +274,14 @@ export async function applySnapshotModeration(result: Snapshot, severity: Modera
         const verdict = moderation[i];
         return { ...entry, moderation: verdict, moderated: verdict.state === 'unavailable' ? null : verdict.state !== 'visible' };
       }) };
-    } catch { result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })), warnings: [...result.warnings, 'Moderation check unavailable'] }; }
+    } catch (error) {
+      console.error('SDK_SNAPSHOT_MODERATION_FAILED', {
+        name: error instanceof Error ? error.name : typeof error,
+        code: typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined,
+        status: typeof error === 'object' && error !== null && 'status' in error ? String(error.status) : undefined,
+      });
+      result = { ...result, entries: result.entries.map(entry => ({ ...entry, moderated: null })), warnings: [...result.warnings, 'Moderation check unavailable'] };
+    }
   }
   return result;
 }
