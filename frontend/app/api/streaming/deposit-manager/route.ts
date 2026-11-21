@@ -102,10 +102,15 @@ export async function GET(request: NextRequest) {
 
     const origin = internalOrigin()
     const headers = internalHeaders()
+    // Set by any failed read. The payload is still returned (showing what did read), but it isn't
+    // cached: a missing stream would hide its Stop button and overstate the runway for CACHE_TTL.
+    let partial = false
+    const failed = (what: string, e?: unknown) => { partial = true; console.warn(`[streaming/deposit-manager] ${what} failed`, e ?? '') }
     const boardData = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
-      .then(r => r.ok ? r.json() : { leaderboards: [] })
-      .catch(() => ({ leaderboards: [] }))
-    const listed: StreamingBoard[] = boardData.leaderboards ?? []
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+    if (!boardData) failed('streaming listing fetch')
+    const listed: StreamingBoard[] = boardData?.leaderboards ?? []
     // The listing shows migrated boards only. Streams and deposits can't move with a board, so each
     // successor's legacy original is checked too: whatever the wallet still has open there is
     // returned (streams as legacyStreams) until it's stopped or reclaimed, and nothing else is.
@@ -119,7 +124,7 @@ export async function GET(request: NextRequest) {
     const walletAddr = wallet as `0x${string}`
 
     const [ethxBalanceResult, backerResultsList, depositResults] = await Promise.all([
-      client.readContract({ address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddr] }).catch(() => 0n),
+      client.readContract({ address: ETHX, abi: erc20Abi, functionName: 'balanceOf', args: [walletAddr] }).catch(e => { failed('ETHx balance read', e); return 0n }),
       streamingBoards.length > 0 ? chunkedMulticall(client, streamingBoards.map(l => ({
         address: l.address as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'backerMarkee' as const, args: [walletAddr] as const,
       })) as Parameters<typeof client.multicall>[0]['contracts']) : Promise.resolve([]),
@@ -127,6 +132,9 @@ export async function GET(request: NextRequest) {
         address: l.address as `0x${string}`, abi: StreamingLeaderboardABI, functionName: 'backerDeposit' as const, args: [walletAddr] as const,
       })) as Parameters<typeof client.multicall>[0]['contracts']) : Promise.resolve([]),
     ])
+
+    if (backerResultsList.some(r => r?.status !== 'success')) failed('backerMarkee read')
+    if (depositResults.some(r => r?.status !== 'success')) failed('backerDeposit read')
 
     const backed = streamingBoards
       .map((l, i) => ({ l, backer: backerResultsList[i]?.result as `0x${string}` | undefined }))
@@ -150,6 +158,9 @@ export async function GET(request: NextRequest) {
           address: backer, abi: MarkeeABI, functionName: 'name' as const,
         })) as Parameters<typeof client.multicall>[0]['contracts']),
       ])
+      // A failed top-N read makes a live stream look off the board (rank 0), so it would be dropped.
+      if (topResults.some(r => r?.status !== 'success')) failed('getTopMarkees read')
+      if (rateResults.some(r => r?.status !== 'success')) failed('flow rate read')
 
       streams = backed.map(({ l, backer }, i) => {
         const addrs = (topResults[i]?.result as [string[], bigint[]] | undefined)?.[0] ?? []
@@ -185,7 +196,7 @@ export async function GET(request: NextRequest) {
     heldBoards.forEach(({ l, deposit, backer }, i) => {
       const streaming = !!backer && backer !== '0x0000000000000000000000000000000000000000'
       const rateRead = heldRates[i]
-      if (streaming && rateRead?.status !== 'success') return
+      if (streaming && rateRead?.status !== 'success') { failed(`flow rate read for deposit on ${l.address}`); return }
       const rate = streaming ? (rateRead!.result as bigint) : 0n
       const required = rate > 0n ? rate * BUFFER_PERIOD : 0n
       deposits.push({
@@ -205,7 +216,7 @@ export async function GET(request: NextRequest) {
       deposits,
     }
     // A payload with a failed read isn't cached, so the next load retries instead of serving it.
-    if (!streams.some(st => st.rateUnknown)) await kv.set(cacheKey, payload, { ex: CACHE_TTL })
+    if (!partial) await kv.set(cacheKey, payload, { ex: CACHE_TTL })
     return NextResponse.json(payload, { headers: NO_CACHE })
   } catch (err) {
     console.error('[streaming/deposit-manager] error:', err)

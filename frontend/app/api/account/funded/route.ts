@@ -112,12 +112,11 @@ async function fixedFunded(
 ): Promise<{ rows: FundedMessage[]; complete: boolean }> {
   let complete = true
   const incomplete = (what: string, e?: unknown) => { complete = false; console.warn(`[account/funded] ${what} failed`, e ?? '') }
-  const [sfData, ghData, oiData, fsData] = await Promise.all([
-    fetch(`${origin}/api/superfluid/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/github/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/openinternet/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch(`${origin}/api/forsale/leaderboards`, { cache: 'no-store', headers }).then(r => r.ok ? r.json() : null).catch(() => null),
-  ])
+  // A platform whose listing can't be fetched is left out, which makes the total incomplete.
+  const listing = (platform: string) => fetch(`${origin}/api/${platform}/leaderboards`, { cache: 'no-store', headers })
+    .then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(data => { if (!data) incomplete(`${platform} listing fetch`); return data })
+  const [sfData, ghData, oiData, fsData] = await Promise.all(['superfluid', 'github', 'openinternet', 'forsale'].map(listing))
 
   const leaderboards: Board[] = [
     // See messages/route.ts for why superfluid's own listing route needs platform/verification
@@ -145,10 +144,14 @@ async function fixedFunded(
     })),
   )
   const markeeListResults = allListResults.slice(0, leaderboards.length)
+  // A legacy board that can't be listed leaves out its contributions, so the total is incomplete. It's
+  // also left out of the board-level log scan below: its Markees aren't in legacySet, so their
+  // contributions couldn't be moved to their copies.
+  const listedLegacyBoards: `0x${string}`[] = []
   const legacyMarkees = legacyBoards.flatMap((board, j) => {
     const read = allListResults[leaderboards.length + j]
-    // A legacy board that can't be listed leaves out its contributions, so the total is incomplete.
     if (read?.status !== 'success') { incomplete(`getMarkees on legacy board ${board}`, read?.error); return [] }
+    listedLegacyBoards.push(board)
     return (read.result as string[])
       .filter(a => a && a !== '0x0000000000000000000000000000000000000000')
       .map(a => a.toLowerCase() as `0x${string}`)
@@ -158,7 +161,10 @@ async function fixedFunded(
   const entries: Entry[] = []
   const lbRankMaps = new Map<number, Map<string, number>>()
   for (let i = 0; i < leaderboards.length; i++) {
-    const addrs = (markeeListResults[i]?.result as string[]) ?? []
+    const read = markeeListResults[i]
+    // A board that can't be listed leaves out its Markees' contributions, so the total is incomplete.
+    if (read?.status !== 'success') incomplete(`getMarkees on board ${leaderboards[i].address}`, read?.error)
+    const addrs = (read?.status === 'success' ? read.result as string[] : null) ?? []
     const ranks = new Map<string, number>()
     let rank = 1
     for (const addr of addrs) {
@@ -173,7 +179,7 @@ async function fixedFunded(
   if (entries.length === 0) return { rows: [], complete }
 
   const allMarkeeAddresses = [...new Set([...entries.map(e => e.markeeAddress), ...legacyMarkees])]
-  const allLeaderboardAddresses = [...leaderboards.map(lb => lb.address as `0x${string}`), ...legacyBoards]
+  const allLeaderboardAddresses = [...leaderboards.map(lb => lb.address as `0x${string}`), ...listedLegacyBoards]
 
   // A chunk whose scan fails is left out and makes the result incomplete, so the snapshot is skipped
   // rather than recorded without those lump sums.
@@ -265,12 +271,16 @@ async function fixedFunded(
     }
   }
 
-  const rows = externalAddrs.map((addr, i) => {
+  // After a failed read, a Markee on no listed board is an artefact of that failure (its board's
+  // listing failed, or a legacy contribution's copy sits on such a board), so it's left out rather
+  // than shown as an Unknown Leaderboard row; the total is already incomplete.
+  const rows = externalAddrs.flatMap((addr, i) => {
+    const lb = markeeToLb.get(addr)
+    if (!lb && !complete) return []
     const b = i * 3
     const message = (detailResults[b]?.result as string) ?? ''
     const name = (detailResults[b + 1]?.result as string) ?? ''
     const totalFundsAdded = (detailResults[b + 2]?.result as bigint) ?? 0n
-    const lb = markeeToLb.get(addr)
     const isTop = lb?.topMarkeeAddress?.toLowerCase() === addr
     return {
       address: addr,
@@ -325,11 +335,14 @@ async function streamingFunded(
 ): Promise<{ rows: FundedMessage[]; legacyOnly: bigint; complete: boolean }> {
   const data = await fetch(`${origin}/api/streaming/leaderboards`, { cache: 'no-store', headers })
     .then(r => r.ok ? r.json() : null).catch(() => null)
+  // Without the listing no streaming position can be read, so the total is incomplete.
+  if (!data) console.warn('[account/funded] streaming listing fetch failed')
+  let complete = !!data
 
   const listed: Board[] = data?.leaderboards ?? []
   const boards = listed.filter((lb: any) => lb.markeeCount > 0)
-  const [rows, legacy] = await Promise.all([
-    boards.length ? streamingFundedRows(client, owner, boards) : Promise.resolve([] as FundedMessage[]),
+  const [{ rows, complete: rowsComplete }, legacy] = await Promise.all([
+    boards.length ? streamingFundedRows(client, owner, boards) : Promise.resolve({ rows: [] as FundedMessage[], complete: true }),
     legacyStreamedFunded(client, owner, listed),
   ])
   // What the wallet streamed to other people's messages on legacy originals belongs to each
@@ -341,7 +354,8 @@ async function streamingFunded(
     if (row) row.totalContributed = (BigInt(row.totalContributed) + wei).toString()
     else legacyOnly += wei
   }
-  return { rows, legacyOnly: legacyOnly + legacy.uncopied, complete: legacy.complete }
+  complete &&= rowsComplete && legacy.complete
+  return { rows, legacyOnly: legacyOnly + legacy.uncopied, complete }
 }
 
 const BACKER_UPDATED_EVENT = parseAbiItem('event BackerUpdated(address indexed backer, address indexed markee, uint256 flowRate, uint256 newAggregate)')
@@ -399,7 +413,9 @@ async function streamingFundedRows(
   client: ReturnType<typeof getClient>,
   owner: string,
   boards: Board[],
-): Promise<FundedMessage[]> {
+): Promise<{ rows: FundedMessage[]; complete: boolean }> {
+  // A board whose position can't be read, or a failed contributed-amount read, leaves the total short.
+  let complete = true
   const backedResults = await chunkedMulticall(
     client,
     boards.map(lb => ({
@@ -414,8 +430,9 @@ async function streamingFundedRows(
     .map((lb, i) => ({ lb, markee: (backedResults[i]?.result as string | undefined)?.toLowerCase() }))
     .filter((b): b is { lb: Board; markee: string } =>
       !!b.markee && b.markee !== '0x0000000000000000000000000000000000000000')
+  if (backedResults.some(r => r?.status !== 'success')) { complete = false; console.warn('[account/funded] backerMarkee read failed') }
 
-  if (backed.length === 0) return []
+  if (backed.length === 0) return { rows: [], complete }
 
   const [detailResults, positions] = await Promise.all([
     chunkedMulticall(
@@ -432,10 +449,10 @@ async function streamingFundedRows(
       backed.map(b => b.lb.address),
       STREAMING_BASE.ethx,
       BigInt(Math.floor(Date.now() / 1000)),
-    ).catch(() => new Map<string, BackerPosition>()),
+    ).catch(e => { complete = false; console.warn('[account/funded] backer positions read failed', e); return new Map<string, BackerPosition>() }),
   ])
 
-  return backed
+  const rows = backed
     .map((b, i) => {
       const o = i * 4
       const markeeOwner = (detailResults[o + 2]?.result as string | undefined)?.toLowerCase()
@@ -468,6 +485,7 @@ async function streamingFundedRows(
       }
     })
     .filter((m): m is NonNullable<typeof m> => m !== null)
+  return { rows, complete }
 }
 
 export async function GET(request: Request) {

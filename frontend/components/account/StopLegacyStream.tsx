@@ -28,7 +28,8 @@ export function StopLegacyStream({ stream, onDone, compact = false }: { stream: 
   const { switchChain } = useSwitchChain()
   const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  // Marks listings stale: the legacy stream's rate counts toward its successor's raisedRate (withLegacyTotals).
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash, chainId: CANONICAL_CHAIN.id })
   const [error, setError] = useState<string | null>(null)
   // Set on the click itself: isPending only flips once the wallet request is under way.
   const submitting = useRef(false)
