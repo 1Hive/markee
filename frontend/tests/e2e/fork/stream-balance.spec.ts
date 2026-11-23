@@ -24,3 +24,38 @@ test('withdraw ETHx back to ETH', async ({ page }) => {
   await page.getByRole('button', { name: 'Withdraw', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Withdrew 0.005 ETH' })).toBeVisible({ timeout: TX_TIMEOUT })
 })
+
+test('shows a migrated board’s legacy stream with Stop as its only action', async ({ page }) => {
+  // The fork is pinned before migration. Supply the post-migration API shape:
+  // the successor has no stream, but the original still drains the buyer's balance.
+  const oldBoardName = 'Migrated Rent Board'
+  await page.route('**/api/streaming/deposit-manager?*', route => route.fulfill({
+    json: {
+      ethxBalanceRaw: '1000000000000000000',
+      streams: [],
+      deposits: [],
+      legacyStreams: [{
+        boardAddress: '0x0000000000000000000000000000000000000101',
+        markeeAddress: '0x0000000000000000000000000000000000000102',
+        boardName: oldBoardName,
+        message: 'A stream left on the original',
+        name: '',
+        rank: 1,
+        isTop: true,
+        rateRaw: '10000000000',
+        legacy: true,
+      }],
+    },
+  }))
+
+  await openStreamBalance(page)
+  await expect(page.getByText('Streams on old boards', { exact: true })).toBeVisible()
+  await expect(page.getByText('+ 1 old', { exact: true })).toBeVisible()
+  const row = page.getByText(oldBoardName, { exact: true }).locator('../..')
+  await expect(row.getByText('A stream left on the original')).toBeVisible()
+  await expect(row.getByRole('button')).toHaveCount(1)
+  const stop = row.getByRole('button', { name: 'Stop stream', exact: true })
+  await expect(stop).toBeVisible()
+  await expect(stop).toBeEnabled()
+  // Intentionally leave the control untouched: this test never submits a transaction.
+})

@@ -39,6 +39,7 @@ import { useModerationQueue } from '@/hooks/useModerationQueue'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { buyerBoards, walletSpend } from '@/lib/account/spend'
 import { boardLabel } from '@/lib/leaderboards/label'
+import { clearListingsStale, peekListingsStale } from '@/lib/client/listingsStale'
 
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -1071,19 +1072,27 @@ function AccountDashboard() {
     return { ...lb, admin }
   }, [])
 
-  const fetchAll = useCallback(async (addr: string, refresh = false) => {
+  // Only the latest load updates the page: a slower, older one (say a cached read started alongside
+  // a fresh one) can't overwrite it.
+  const loadSeqRef = useRef(0)
+  const fetchAll = useCallback(async (addr: string, refresh = false): Promise<boolean> => {
     const suffix = refresh ? '?bust=1' : ''
+    const seq = ++loadSeqRef.current
     setIsLoading(true)
     try {
-      const [sfRes, ghRes, oiRes, strRes, fsRes] = await Promise.all([
+      const responses = await Promise.all([
         fetch(`/api/superfluid/leaderboards${suffix}`,   { cache: 'no-store' }),
         fetch(`/api/github/leaderboards${suffix}`,       { cache: 'no-store' }),
         fetch(`/api/openinternet/leaderboards${suffix}`, { cache: 'no-store' }),
         fetch(`/api/streaming/leaderboards${suffix}`,    { cache: 'no-store' }),
         fetch(`/api/forsale/leaderboards${suffix}`,      { cache: 'no-store' }),
       ])
+      const parsed = await Promise.all(responses.map(r => r.ok ? r.json().catch(() => null) : null))
+      if (seq !== loadSeqRef.current) return false
+      const [sfData, ghData, oiJson, strData, fsJson] = parsed
+      const [sfRes, ghRes, oiRes, strRes, fsRes] = parsed.map(json => ({ ok: json !== null }))
       if (sfRes.ok) {
-        const data = await sfRes.json()
+        const data = sfData
         setSuperfluidBoards(
           (data.leaderboards ?? [])
             .map(withConfirmedAdmin)
@@ -1092,7 +1101,7 @@ function AccountDashboard() {
         )
       }
       if (ghRes.ok) {
-        const data = await ghRes.json()
+        const data = ghData
         setGithubBoards(
           (data.leaderboards ?? [])
             .map(withConfirmedAdmin)
@@ -1101,8 +1110,8 @@ function AccountDashboard() {
         )
       }
       if (oiRes.ok || fsRes.ok) {
-        const oiData = oiRes.ok ? await oiRes.json() : { leaderboards: [] }
-        const fsData = fsRes.ok ? await fsRes.json() : { leaderboards: [] }
+        const oiData = oiRes.ok ? oiJson : { leaderboards: [] }
+        const fsData = fsRes.ok ? fsJson : { leaderboards: [] }
         const byAdmin = (lb: any) => !lb.isLegacy && ownedByAdmin(lb, addr)
         setWebsiteBoards([
           ...(oiData.leaderboards ?? []).map(withConfirmedAdmin).filter(byAdmin).map((lb: any) => ({ ...lb, platform: 'website' as const })),
@@ -1110,7 +1119,7 @@ function AccountDashboard() {
         ])
       }
       if (strRes.ok) {
-        const data = await strRes.json()
+        const data = strData
         setStreamingBoards(
           (data.leaderboards ?? [])
             .map(withConfirmedAdmin)
@@ -1127,10 +1136,12 @@ function AccountDashboard() {
             })
         )
       }
+      return [sfRes, ghRes, oiRes, strRes, fsRes].every(r => r.ok)
     } catch (err) {
       console.error('[account] fetch error:', err)
+      return false
     } finally {
-      setIsLoading(false)
+      if (seq === loadSeqRef.current) setIsLoading(false)
     }
   }, [withConfirmedAdmin])
 
@@ -1219,11 +1230,21 @@ function AccountDashboard() {
   }, [])
 
   useEffect(() => {
-    if (activeAddress) {
-      fetchAll(activeAddress)
-      fetchMyMessages(activeAddress)
-      fetchFundedMessages(activeAddress)
+    if (!activeAddress) return
+    // Something was activated, bought or verified elsewhere in this tab (e.g. on the board's page):
+    // read past the listing cache, as after a transaction here, so it shows up straight away. The flag
+    // is cleared only once that fresh read succeeds, so a re-run of this effect reads fresh too.
+    if (peekListingsStale()) {
+      void fetchAll(activeAddress, true).then(ok => {
+        if (ok) clearListingsStale()
+        fetchMyMessages(activeAddress)
+        fetchFundedMessages(activeAddress)
+      })
+      return
     }
+    fetchAll(activeAddress)
+    fetchMyMessages(activeAddress)
+    fetchFundedMessages(activeAddress)
   }, [activeAddress, fetchAll, fetchMyMessages, fetchFundedMessages])
 
   // A purchase can add a Markee, and the message routes find boards through the shared listings, so

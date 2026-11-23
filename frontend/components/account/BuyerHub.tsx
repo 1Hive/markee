@@ -20,6 +20,7 @@ import { parseEthInput, sanitizeDecimalInput } from '@/components/modals/StreamU
 import { CANONICAL_CHAIN, CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
 import { TopDawgPartnerStrategyABI } from '@/lib/contracts/abis'
 import { STREAMING_BASE, ETHX_WRAP_ABI, formatRunway, runwaySeconds } from '@/lib/superfluid/streaming'
+import { LEGACY_STREAMS_NOTE, StopLegacyStream } from '@/components/account/StopLegacyStream'
 import { formatTransactionError, formatReceiptError } from '@/lib/transactionErrors'
 import { MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG, PURPLE } from '@/lib/design-tokens'
 import type { BestBuy, FundedMessage, MyMessage } from '@/components/account/types'
@@ -38,6 +39,8 @@ const TWELVE_MONTHS = SECONDS_PER_MONTH * 12n
 export interface StreamSnapshot {
   ethxBalanceRaw: string
   streams: DepositManagerStream[]
+  /** Streams still open on migrated boards' legacy originals; offered only to stop. */
+  legacyStreams?: DepositManagerStream[]
   deposits?: DepositManagerDeposit[]
   at: number
 }
@@ -117,8 +120,9 @@ export function useStreamSnapshot(activeAddress: string | undefined, refreshKey:
   return { snapshot, failed }
 }
 
+// What the balance drains at: every winning stream, including any left open on a legacy board.
 export function winningRate(snapshot: StreamSnapshot | null): bigint {
-  return (snapshot?.streams ?? []).filter(s => s.isTop).reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+  return [...(snapshot?.streams ?? []), ...(snapshot?.legacyStreams ?? [])].filter(s => s.isTop).reduce((s, x) => s + BigInt(x.rateRaw), 0n)
 }
 
 function BalanceAction({ mode, balance, onDone, onCancel }: { mode: 'deposit' | 'withdraw'; balance: bigint; onDone: () => void; onCancel: () => void }) {
@@ -215,8 +219,14 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
 
   const streams = data?.streams ?? []
   const winning = streams.filter(s => s.isTop)
+  // Winning streams left on old boards: shown beside the count, since Streaming Now includes them.
+  const legacyWinning = (data?.legacyStreams ?? []).filter(s => s.isTop).length
   const liveRate = winningRate(data)
-  const totalRate = streams.reduce((s, x) => s + BigInt(x.rateRaw), 0n)
+  // An old-board stream whose rate couldn't be read drains the balance too, so the runway is at most
+  // what's shown.
+  const rateUnknown = (data?.legacyStreams ?? []).some(s => s.rateUnknown)
+  // Everything the wallet is streaming, old boards included, so it's never below Streaming Now.
+  const totalRate = [...streams, ...(data?.legacyStreams ?? [])].reduce((s, x) => s + BigInt(x.rateRaw), 0n)
   const balanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
   const drained = liveRate * BigInt(Math.max(0, Math.floor((now - snapshotAt) / 1000)))
   const balance = balanceRaw > drained ? balanceRaw - drained : 0n
@@ -249,7 +259,7 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
             <div style={{ flex: '1 1 160px' }}>
               <div style={label}>Runs Out In</div>
               {data
-                ? <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: low ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{liveRate > 0n ? formatRunway(runway) : 'Not streaming'}</div>
+                ? <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: low ? AMBER : TEXT, marginTop: 6, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{liveRate > 0n ? `${rateUnknown ? 'Under ' : ''}${formatRunway(runway)}` : rateUnknown ? 'Unknown' : 'Not streaming'}</div>
                 : <div className="skeleton" style={{ width: 120, height: 18, marginTop: 8, background: 'rgba(138,143,191,0.08)', borderRadius: 6 }} />}
             </div>
             {!mode && (
@@ -274,11 +284,20 @@ export function StreamBalanceCard({ snapshot: data, failed, ethPrice, onRetry, o
           {data!.deposits!.map(d => <ReclaimDeposit key={d.boardAddress} deposit={d} onDone={onChanged} />)}
         </div>
       )}
-      {streams.length > 0 && (
+      {(data?.legacyStreams ?? []).length > 0 && (
+        <div style={{ borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '12px 18px 2px' }}>
+            <div style={label}>Streams on old boards</div>
+            <div style={{ fontSize: 12, color: TEXT2, marginTop: 4, lineHeight: 1.5 }}>{LEGACY_STREAMS_NOTE}</div>
+          </div>
+          {data!.legacyStreams!.map(st => <StopLegacyStream key={`${st.boardAddress}-${st.markeeAddress}`} stream={st} onDone={onChanged} />)}
+        </div>
+      )}
+      {(streams.length > 0 || (data?.legacyStreams ?? []).length > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', borderTop: `1px solid ${BORDER}` }}>
           {[
             { l: 'Streaming Now', v: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{liveRate > 0n && <PulseDot />}{perMo(liveRate, liveRate > 0n ? GREEN : TEXT2)}</span> },
-            { l: 'Winning', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{winning.length}</span> },
+            { l: 'Winning', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{winning.length}{legacyWinning > 0 && <span style={{ fontSize: 11.5, fontWeight: 500, color: MUTED }}> + {legacyWinning} old</span>}</span> },
             { l: 'Monthly Bid Total', v: perMo(totalRate, TEXT) },
             { l: 'Rent Bids', v: <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: TEXT }}>{streams.length}</span> },
           ].map((c, i) => (
@@ -340,7 +359,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const { switchChain } = useSwitchChain()
   const { writeContractAsync, isPending } = useSponsoredWriteContract()
   const [hash, setHash] = useState<Hex | undefined>()
-  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
   const messageModeration = useMessageModeration(draft.trim(), true, { checkWhileTyping: false })
   const [error, setError] = useState<string | null>(null)

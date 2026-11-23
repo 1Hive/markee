@@ -499,7 +499,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [cancelTxHash, setCancelTxHash] = useState<Hex | undefined>(undefined)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const { writeContractAsync: writeCancel, isPending: cancelPending } = useSponsoredWriteContract()
-  const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useTrackedReceipt({ hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: cancelConfirming, isSuccess: cancelSuccess, isError: cancelReverted, error: cancelReceiptError } = useTrackedReceipt({ marksListings: true, hash: cancelTxHash, chainId: CANONICAL_CHAIN.id })
   async function handleCancel() {
     setCancelError(null)
     try {
@@ -581,7 +581,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useSponsoredWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)
-  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useTrackedReceipt({ hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: editMessageConfirming, isSuccess: editMessageSuccess, isError: editMessageReverted, error: editMessageReceiptError } = useTrackedReceipt({ marksListings: true, hash: editMessageTxHash, chainId: CANONICAL_CHAIN.id })
   const editMessageBusy = editModeration.checking || editMessagePending || editMessageConfirming
   async function handleSaveMessage() {
     if (!await editModeration.guard(editMessageText)) return

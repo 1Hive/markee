@@ -79,7 +79,7 @@ export function AdminSettingRow({ label, contractAddress, abi, getterName, sette
   const [localError, setLocalError] = useState<string | null>(null)
 
   const { writeContractAsync, data: hash, isPending, reset } = useSponsoredWriteContract()
-  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ hash, chainId: CANONICAL_CHAIN.id })
+  const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash, chainId: CANONICAL_CHAIN.id })
 
   useEffect(() => {
     if (!isSuccess) return
