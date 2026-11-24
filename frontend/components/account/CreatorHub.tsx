@@ -29,8 +29,12 @@ const markeeName = (lb: AnyLeaderboard) => lb.name || fmtAddr(lb.address)
 
 function AttnMarkeeItem({ lb, meta, cta, onCta, onArchive }: { lb: AnyLeaderboard; meta: string; cta: string; onCta: () => void; onArchive: () => void }) {
   return (
-    <div style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{markeeName(lb)}</span>
+    // The whole row opens the Markee's page; Archive and the call to action keep their own clicks.
+    <div className="row-link" style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <Link href={`/markee/${lb.address}`} className="row-link-target" title={`Open ${markeeName(lb)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14.5, fontWeight: 700, color: TEXT, minWidth: 0, textDecoration: 'none' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{markeeName(lb)}</span>
+        <ArrowUpRight size={14} color={MUTED} aria-hidden style={{ flexShrink: 0 }} />
+      </Link>
       <StrategyBadge strategy={lb.strategy ?? 'fixed'} size="xs" />
       <span style={{ fontSize: 12, color: MUTED }}>{meta}</span>
       <span style={{ flex: 1 }} />

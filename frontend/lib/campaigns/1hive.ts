@@ -17,7 +17,8 @@ export function campaign1HiveMonthlyBonusUsd(views: number): number {
 // A sign is listed when it is a new (v1.4-era) For Rent or For Sale Markee that has been activated
 // (a real message went live) and has a verified site or GitHub embed. There is no start date for
 // views: every view the sign has ever had counts, including views while only the placeholder
-// message was up. Boards copied over by a migration are older signs and never count. Disqualified
+// message was up. A board copied over by the v1.4 migration counts only if its original was created
+// after the v1.4 launch; copies of older signs never count. Disqualified
 // boards (lib/leaderboards/disqualified.ts) never count, and signs rejected from this campaign only
 // are removed via CAMPAIGN_1HIVE_EXCLUDED_BOARDS. The pure rules live here; /api/campaigns/1hive
 // does the reads.
@@ -29,6 +30,12 @@ export function campaign1HiveMonthlyBonusUsd(views: number): number {
  * since the launch. Every v1.4 For Sale board is new by construction (its factory launched then).
  */
 export const FOR_RENT_BOARDS_BEFORE_V14 = 80
+
+/**
+ * Boards the v1.3 For Sale factory (FACTORIES.FOR_SALE) had at the v1.4 launch. Boards created on it
+ * after the launch (index 18 and up) are new signs; the forced migration copied them to v1.4.
+ */
+export const FOR_SALE_V13_BOARDS_BEFORE_V14 = 18
 
 /**
  * Signs rejected from the campaign: board address (any case) -> why it was removed. Add an entry and
@@ -62,13 +69,16 @@ export interface CampaignTopSpan { markee: string; from: number; to: number | nu
 const lower = (a: string | null | undefined) => (a ?? '').toLowerCase()
 
 /**
- * Only new boards count: every v1.4 For Sale board, and For Rent boards created since the v1.4
- * launch (`newForRent`, lowercase addresses). A board migrated in (every v1.3 For Sale board was
- * copied to v1.4) is an existing sign.
+ * Only new boards count: every v1.4 For Sale board created on v1.4, and For Rent boards created since
+ * the v1.4 launch. `newBoards` (lowercase addresses) holds every board created since the launch on a
+ * factory that predates it: the For Rent factory's boards from FOR_RENT_BOARDS_BEFORE_V14 on, and the
+ * v1.3 For Sale factory's from FOR_SALE_V13_BOARDS_BEFORE_V14 on. A migrated board is judged by its
+ * original, so a copy of a sign created after the launch still counts and a copy of an older one
+ * (every pre-launch v1.3 board was copied to v1.4) doesn't.
  */
-export function isCampaignBoard(row: CampaignListingRow, newForRent: ReadonlySet<string>): boolean {
-  if (row.migratedFrom) return false
-  if (row.strategy === 'streaming') return newForRent.has(lower(row.address))
+export function isCampaignBoard(row: CampaignListingRow, newBoards: ReadonlySet<string>): boolean {
+  if (row.migratedFrom) return newBoards.has(lower(row.migratedFrom))
+  if (row.strategy === 'streaming') return newBoards.has(lower(row.address))
   return row.verificationGated === true
 }
 
@@ -78,24 +88,26 @@ const excludedSets = new WeakMap<Record<string, string>, ReadonlySet<string>>()
 export function isExcludedBoard(row: CampaignListingRow, excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS): boolean {
   let set = excludedSets.get(excluded)
   if (!set) excludedSets.set(excluded, set = new Set(Object.keys(excluded).map(lower)))
-  return set.has(lower(row.address))
+  // Listed under either address: an entry added before the migration names the original board.
+  return set.has(lower(row.address)) || (!!row.migratedFrom && set.has(lower(row.migratedFrom)))
 }
 
 /**
- * Whether the board's first real message has gone live, from its #1 history. False if it hasn't, or
- * the moderation scan hasn't recorded it yet (a just-activated board appears within one scan).
+ * Whether the board's first real message has gone live. Its current #1 having a message and funds
+ * (For Rent: a live stream; the listing's topFundsAddedRaw is the top rate) says so straight away;
+ * otherwise its #1 history does, once the 5-minute moderation scan has recorded it.
  *
- * For Rent: any #1 span (the first TopChanged).
- * For Sale: initialize() deploys an empty placeholder message that holds #1 from the moment the board
- * is created, so its span doesn't count; any other message reaching #1 does. So does the placeholder
- * itself being given a message and funds.
+ * For Rent history: any #1 span (the first TopChanged).
+ * For Sale history: initialize() deploys an empty placeholder message that holds #1 from the moment
+ * the board is created, so its span doesn't count; any other message reaching #1 does. The empty
+ * placeholder never has funds, so it never passes the current-#1 check either.
  */
 export function isActivated(row: CampaignListingRow, spans: CampaignTopSpan[] | undefined): boolean {
+  if (BigInt(row.topFundsAddedRaw || '0') > 0n && !!row.topMessage) return true
   if (!spans?.length) return false
   if (row.strategy === 'streaming') return true
   const placeholder = lower(spans[0].markee)
-  if (spans.some(s => lower(s.markee) !== placeholder)) return true
-  return BigInt(row.topFundsAddedRaw || '0') > 0n && !!row.topMessage && lower(row.topMarkeeAddress) === placeholder
+  return spans.some(s => lower(s.markee) !== placeholder)
 }
 
 /**
@@ -110,10 +122,10 @@ export function hasVerifiedEmbed(row: CampaignListingRow): boolean {
 export function isEligibleBoard(
   row: CampaignListingRow,
   spans: CampaignTopSpan[] | undefined,
-  newForRent: ReadonlySet<string>,
+  newBoards: ReadonlySet<string>,
   excluded: Record<string, string> = CAMPAIGN_1HIVE_EXCLUDED_BOARDS,
 ): boolean {
-  return isCampaignBoard(row, newForRent) && row.disqualified !== true && !isExcludedBoard(row, excluded)
+  return isCampaignBoard(row, newBoards) && row.disqualified !== true && !isExcludedBoard(row, excluded)
     && hasVerifiedEmbed(row) && isActivated(row, spans)
 }
 
@@ -164,11 +176,13 @@ export interface Campaign1HiveSign {
 export const CAMPAIGN_1HIVE_TERMS: string[] = [
   'Signs need at least 100 views to get funded.',
   'More views, more funding: $10/mo for 100 views, up to $1k/mo for 1M+ views.',
-  "The bonus is paid directly to the Markee sign. The sign's beneficiary receives the funds, and 1Hive owns the message that's displayed.",
-  "As with any Markee, anyone can outbid 1Hive to take over the sign. 38% of every payment goes to the Markee Cooperative's Revnet, earning MARKEE tokens for the buyer, and the remaining funds go directly to the beneficiary set for the Markee.",
+  'Available on For Rent and For Sale signs created on or after November 13, 2026, with a verified site or GitHub embed.',
+  "The bonus is paid in ETH as a bid on the Markee sign. The sign's beneficiary receives the funds, and 1Hive's message is displayed while its bid is winning.",
+  "1Hive updates its bid weekly to match the sign's view count.",
+  "As with any Markee, anyone can outbid 1Hive and take over the sign. Their payment replaces 1Hive's message while it's winning. A site doesn't get the bonus on top of an outbidding payment. 1Hive's bid stays active and pays out whenever it's winning.",
+  "Anyone can add funds to 1Hive's message. A message's bid is the total of everyone who funded it.",
+  "38% of every payment goes to the Markee Cooperative's Revnet, earning MARKEE tokens for the buyer. The rest goes directly to the sign's beneficiary.",
   'Limit one eligible bonus per domain.',
-  'Available on any new For Rent or For Sale sign embed.',
-  'Pay amounts are updated weekly based on view counts.',
   'View counts are reviewed for gaming. Signs suspected of view farming will have their stream stopped.',
   'All entries are reviewed for quality. Sites that are abusive or inappropriate will be rejected.',
   'Bonuses are not guaranteed. Markee may approve, adjust, pause or end any bonus at its discretion.',

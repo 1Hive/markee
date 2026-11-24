@@ -26,25 +26,17 @@ import { fmtAddr, decimalsForWeiRate } from '@/components/board-detail/shared'
 import { ViewsSpinner } from '@/components/ui/ViewsSpinner'
 import { ModeratedContent } from '@/components/moderation'
 import { getTxUrl } from '@/lib/explorer'
-import type { DepositManagerDeposit } from '@/app/api/streaming/deposit-manager/route'
+import type { DepositManagerDeposit, DepositManagerStream } from '@/app/api/streaming/deposit-manager/route'
+import { LEGACY_STREAMS_NOTE, StopLegacyStream } from '@/components/account/StopLegacyStream'
 import { LiveDot } from '@/components/ui/LiveDot'
 
 const ETHX = STREAMING_BASE.ethx as Address
 const GOLD = '#FFD700'
 const RED = '#FF8E8E'
 
-export type { DepositManagerDeposit }
+export type { DepositManagerDeposit, DepositManagerStream }
 
-export interface DepositManagerStream {
-  boardAddress: string
-  boardName: string
-  markeeAddress: string
-  message: string
-  name: string
-  rank: number
-  isTop: boolean
-  rateRaw: string
-}
+
 
 const labelStyle: React.CSSProperties = { fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center' }
 
@@ -55,7 +47,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const isCorrectChain = hasActiveWalletConnection && chain?.id === CANONICAL_CHAIN.id
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
-  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; deposits?: DepositManagerDeposit[] } | null>(null)
+  const [data, setData] = useState<{ ethxBalanceRaw: string; streams: DepositManagerStream[]; legacyStreams?: DepositManagerStream[]; deposits?: DepositManagerDeposit[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [action, setAction] = useState<'deposit' | 'withdraw' | 'reclaim' | null>(null)
   const [reclaimingBoard, setReclaimingBoard] = useState<string | null>(null)
@@ -114,9 +106,15 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const refreshingBalance = loading && !!data
   const ethxBalanceRaw = data ? BigInt(data.ethxBalanceRaw) : 0n
   const streams = data?.streams ?? []
+  const legacyStreams = data?.legacyStreams ?? []
   const winning = streams.filter(s => s.isTop)
   const notStreaming = streams.filter(s => !s.isTop)
-  const streamingNowRate = winning.reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
+  // The balance drains for winning streams left open on old boards too.
+  const legacyWinning = legacyStreams.filter(s => s.isTop).length
+  const streamingNowRate = [...winning, ...legacyStreams.filter(s => s.isTop)].reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
+  // An old-board stream whose rate couldn't be read drains the balance too, so the runway is at most
+  // what's shown.
+  const rateUnknown = legacyStreams.some(s => s.rateUnknown)
   const notStreamingRate = notStreaming.reduce((sum, s) => sum + BigInt(s.rateRaw), 0n)
 
   // Decimals derived from the actual drain rate (same helper used for every other live balance on
@@ -144,7 +142,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
   const runway = runwaySeconds(countdownBalance, streamingNowRate)
   const tier = runwayTier(runway)
   const tierColor = tier === 'danger' ? RED : tier === 'warning' ? GOLD : PINK
-  const progressPct = streamingNowRate > 0n ? runwayProgressPct(runway) : 100
+  const progressPct = streamingNowRate > 0n ? runwayProgressPct(runway) : rateUnknown ? 0 : 100
 
   function depositShortcut(months: number) {
     if (streamingNowRate <= 0n) return
@@ -266,7 +264,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
 
             {/* ── Runs out in (skipped entirely once we know there's nothing streaming -- an empty
                  wallet isn't a warning state, it just hasn't been set up yet) ── */}
-            {(initialLoading || streamingNowRate > 0n) && (
+            {(initialLoading || streamingNowRate > 0n || rateUnknown) && (
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={labelStyle}>
@@ -275,7 +273,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 </span>
                 {initialLoading ? <ViewsSpinner size={14} color={MUTED} /> : (
                   <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 800, color: TEXT }}>
-                    {formatRunway(runway)}
+                    {streamingNowRate > 0n ? `${rateUnknown ? 'Under ' : ''}${formatRunway(runway)}` : 'Unknown'}
                   </span>
                 )}
               </div>
@@ -437,7 +435,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                     <div style={{ fontFamily: MONO, fontSize: 17, fontWeight: 800, color: TEXT }}>
                       {parseFloat(formatEther(ratePerSecToMonthly(streamingNowRate))).toFixed(3)} <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>ETH/mo</span>
                     </div>
-                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 2 }}>{winning.length} message{winning.length === 1 ? '' : 's'} winning</div>
+                    <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 2 }}>{winning.length} message{winning.length === 1 ? '' : 's'} winning{legacyWinning > 0 ? ` + ${legacyWinning} on old board${legacyWinning === 1 ? '' : 's'}` : ''}</div>
                   </>
                 )}
               </div>
@@ -485,6 +483,16 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 })}
               </div>
               {actionError && action === null && <p style={{ margin: '8px 0 0', fontFamily: MONO, fontSize: 11, color: RED }}>{actionError}</p>}
+            </div>
+            )}
+
+            {legacyStreams.length > 0 && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Streams on old boards</div>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>{LEGACY_STREAMS_NOTE}</p>
+              <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+                {legacyStreams.map(s => <StopLegacyStream key={`${s.boardAddress}-${s.markeeAddress}`} stream={s} compact onDone={() => { refresh(true); refetchBalance() }} />)}
+              </div>
             </div>
             )}
 

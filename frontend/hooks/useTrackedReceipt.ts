@@ -10,6 +10,7 @@ import { addPendingTx, isDismissedTx, removePendingTx } from '@/lib/tx/pendingSt
 import { nextTracking, type ReceiptPoll, type ReceiptTracking } from '@/lib/tx/receiptOutcome'
 import { createTrackedCache } from '@/lib/tx/trackedCache'
 import { useIsDismissedTx } from '@/hooks/usePendingTxs'
+import { markListingsStale } from '@/lib/client/listingsStale'
 
 export const REVERTED_TX_MESSAGE = 'Transaction failed on-chain. Please try again.'
 export const DISMISSED_TX_MESSAGE = 'You marked this transaction as never sent, so you can try again.'
@@ -63,10 +64,13 @@ function isResolved(tracking: ReceiptTracking) {
 
 const trackedByHash = createTrackedCache<TrackedState>(state => isResolved(state.tracking))
 
-export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }: {
+export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track, marksListings = false }: {
   hash: `0x${string}` | undefined
   chainId?: number
   track?: TrackedTxContext
+  /** The transaction changes what a board listing shows (create, activate, buy, bid, edit, admin
+   *  settings): once confirmed, /account's next load reads past the listing cache. */
+  marksListings?: boolean
 }) {
   const client = usePublicClient({ chainId })
   const key = hash ? `${chainId}:${hash.toLowerCase()}` : ''
@@ -120,6 +124,11 @@ export function useTrackedReceipt({ hash, chainId = CANONICAL_CHAIN_ID, track }:
   useEffect(() => {
     if (hash && resolved) removePendingTx(hash)
   }, [hash, resolved])
+
+  // A confirmed transaction that changed a listing: /account's next load reads past the listing cache.
+  useEffect(() => {
+    if (marksListings && hash && outcome === 'confirmed') markListingsStale()
+  }, [marksListings, hash, outcome])
 
   return useMemo(() => {
     const error = outcome === 'reverted' ? (data?.revertError ?? new Error(REVERTED_TX_MESSAGE))

@@ -29,6 +29,7 @@ import { SECONDS_PER_MONTH, WalletPending, fmtAddr, fmtCount, isUserRejection } 
 import { integrationsOf, type Integration } from '@/components/account/sites'
 import { useToast } from '@/components/account/Toast'
 import { boardLabel } from '@/lib/leaderboards/label'
+import { markListingsStale } from '@/lib/client/listingsStale'
 
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 38, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
 const pinkOutline: React.CSSProperties = { ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700 }
@@ -130,7 +131,7 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      if (body?.verified) { toast('Site verified'); onChanged() }
+      if (body?.verified) { markListingsStale(); toast('Site verified'); onChanged() }
       else setError('The Markee markers are not in this file yet. Add them, then verify again.')
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : 'Could not verify this file.')

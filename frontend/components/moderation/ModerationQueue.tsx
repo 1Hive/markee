@@ -15,9 +15,10 @@ const itemId = (it: ModerationItem) => `${it.markee}:${it.blockNumber}`
 const ago = (it: ModerationItem) => it.at > 0 ? formatDistanceToNow(it.at * 1000, { addSuffix: true }) : null
 const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8, padding: '0 12px', height: 32, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7 }
 
-// The message opens its board's page, where it shows on the Markee sign.
+// Opens the message's board page, where it shows on the Markee sign. It stretches over its row
+// (.row-link), so the whole row opens the page while the row's buttons keep their own clicks.
 function SignLink({ board, style, children }: { board: string; style: React.CSSProperties; children: React.ReactNode }) {
-  return <a href={`/markee/${board}`} style={{ ...style, display: 'block', textDecoration: 'none' }}>{children}</a>
+  return <a href={`/markee/${board}`} className="row-link-target" style={{ ...style, display: 'block', textDecoration: 'none' }}>{children}</a>
 }
 
 function BoardTag({ item, board }: { item: { board: string }; board: { name?: string } | undefined }) {
@@ -51,7 +52,7 @@ export function ModerationItemRow({ item, board, onReview, selected, onSelect }:
   }
 
   return (
-    <div style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: onSelect ? 'auto minmax(0,1fr) auto' : 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
+    <div className="row-link" style={{ background: CARD_BG, border: '1px solid rgba(138,143,191,0.18)', borderRadius: 14, boxShadow: `inset 3px 0 0 ${AMBER}`, padding: '12px 16px 12px 18px', display: 'grid', gridTemplateColumns: onSelect ? 'auto minmax(0,1fr) auto' : 'minmax(0,1fr) auto', gap: 16, alignItems: 'center' }}>
       {onSelect && (
         <input
           type="checkbox"
@@ -113,10 +114,14 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
+    <div className="row-link" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
-        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
-          {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
+        <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {/* The blur sits on this span, not the link: a filter on the link would confine its row-wide
+              click area (.row-link-target::after) to the link itself. */}
+          <span style={{ filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
+            {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
+          </span>
         </SignLink>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.automatic && <span>{item.automatic.siteState === 'visible' ? 'Approved on Markee only · Still hidden in SDK integrations' : `Automatic · ${item.automatic.reason || 'Matched automatic moderation rule'}`}</span>}
@@ -158,7 +163,7 @@ function VisibleRow({ item, onReview }: { item: VisibleMessage; onReview: (actio
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
+    <div className="row-link" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
         <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.message || 'Empty message'}{item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}

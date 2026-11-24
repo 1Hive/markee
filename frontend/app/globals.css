@@ -227,6 +227,16 @@ body.page-hidden .starfield-bg::after { animation-play-state: paused; }
 .acct-layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:36px;align-items:start}
 .acct-side{position:sticky;top:88px;display:flex;flex-direction:column;gap:2px}
 .acct-side-item:hover{background:rgba(138,143,191,0.08)!important}
+/* A row that opens a page from anywhere on it: its .row-link-target link stretches over the row, and
+   the row's own buttons, inputs and other links sit above it. */
+.row-link{position:relative;transition:background 120ms}
+/* An image-layer tint, so an inline background colour (the attention cards' CARD_BG) shows through it;
+   box-shadow is taken by those cards' inset accent. */
+.row-link:hover{background-image:linear-gradient(rgba(138,143,191,0.06),rgba(138,143,191,0.06))!important}
+.row-link-target::after{content:'';position:absolute;inset:0;border-radius:inherit}
+.row-link button,.row-link input,.row-link label,.row-link a:not(.row-link-target){position:relative;z-index:1}
+.row-link-target:focus-visible{outline:none}
+.row-link:has(.row-link-target:focus-visible){outline:2px solid #F897FE;outline-offset:2px}
 .acct-row{transition:background 120ms}
 .acct-row-click{cursor:pointer}
 .acct-row-click:hover{background:rgba(138,143,191,0.09)!important;box-shadow:inset 2px 0 0 #F897FE!important}

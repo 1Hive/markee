@@ -1,3 +1,4 @@
+import { communityMinimumMonthlyRate } from "./preview-minimum";
 import { recordAdminBroadcast } from '../operations';
 import { currentSdkBoard } from '../migration';
 // Adapted from Gardens V2 apps/web/services/markeeServer.ts at 078d17954ad38dba7a142eb3cee59002f44d303f.
@@ -1645,6 +1646,11 @@ const getCommunityLeaderboard = async (chainId: number, community: Address) => {
 export const markeeAdapter = {
   async getCommunityIntegration(chainId: number, community: Address) {
     const [revenue, leaderboard] = await Promise.all([getCommunityRevenue(chainId, community), getCommunityLeaderboard(chainId, community)]);
+    const minimumMonthlyRate = await communityMinimumMonthlyRate(
+      getEnvPublicClient(getMarkeeChainId(chainId)),
+      getMarkeeRouterAddress(chainId),
+      leaderboard?.minimumMonthlyRate,
+    );
 
     return {
       integration: {
@@ -1660,7 +1666,7 @@ export const markeeAdapter = {
         maxNameLength: (leaderboard?.maxNameLength ?? 0n).toString(),
         message: leaderboard?.message ?? "",
         name: leaderboard?.name ?? "",
-        minimumMonthlyRate: (leaderboard?.minimumMonthlyRate ?? 0n).toString(),
+        minimumMonthlyRate: minimumMonthlyRate.toString(),
         topMarkeeAddress: leaderboard?.topMarkeeAddress ?? null,
         topMarkeeOwner: leaderboard?.topMarkeeOwner ?? null,
         topRate: (leaderboard?.topRate ?? 0n).toString(),

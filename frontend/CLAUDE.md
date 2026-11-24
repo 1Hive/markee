@@ -121,6 +121,9 @@ Contract addresses and ABIs are in `lib/contracts/addresses.ts` and `lib/contrac
 ### Board ownership
 The board's live on-chain `admin()` is its only owner. Creator Hub lists boards by `admin`, the Manage drawer re-reads `admin()` before showing controls, and moderation, unlink, metadata and featured-site checks go through `readBoardOwners` in `lib/moderation/server.ts`, which returns only the admin. Never authorize anything by the cached creator. Routes that attach a site or repo or unlink one go through `boardAdminDenial` in `lib/boards/admin-auth.ts`: the current admin proves itself with a Privy session for its wallet or a fresh signature (5-minute window), and contract admins such as multisigs sign through ERC-1271. Other owner routes use `authorizeWallet` from `lib/auth/wallet-session.ts` and then check `readBoardOwners`.
 
+### Migrated boards (v1.3 → v1.4, finished 2026-11-19)
+Every legacy board has been copied to a successor (`lib/contracts/migration.ts`; rows carry `migratedFrom`). Listings and /account show successors only. Metrics keep the legacy data: lump-sum totals carry over on the copied Markees, but For Rent streams stay on the legacy board, so a successor's streamed totals add its original's (`withLegacyTotals`). A wallet's past payments are logged on legacy Markees, so /account maps them onto the copies (`markeeSuccessorOf`), and streams or deposits still open on a legacy board are offered only to stop or reclaim (`legacyStreams` in /api/streaming/deposit-manager). KV state is copied by the board-kv-migration cron.
+
 ### Leaderboard creator (Superfluid)
 `creator` is display-only. The API finds it with `eth_getLogs` on the factory's creation events and `eth_getTransaction` for the `from` address, and caches it permanently in KV as `creator:sf:{address}` (the admin it was created with as `initial-admin:{prefix}:{address}`).
 
