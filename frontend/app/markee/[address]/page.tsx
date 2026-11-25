@@ -23,7 +23,7 @@ import { useBoardTrust } from '@/lib/contracts/boardRegistry'
 import { useCurrentBoardAddress } from '@/hooks/useCurrentBoardAddress'
 import { boardLabel } from '@/lib/leaderboards/label'
 import {
-  MONO, PINK, BLUE, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
+  MONO, PINK, GREEN, BG, BG2, TEXT, TEXT2, MUTED, BORDER, BOARD_LB_COLS, HERO_GRAD,
   fmtAddr, useServedOn, MetricsBar, MetricValue, FeaturedCard, BoardDetailSkeleton,
 } from '@/components/board-detail/shared'
 
@@ -86,10 +86,6 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
   const [editOpen,     setEditOpen]     = useState(false)
   const [embedOpen,    setEmbedOpen]    = useState(false)
   const [modalTarget,  setModalTarget]  = useState<LeaderboardMarkee | null>(null)
-  const [syncStatus,    setSyncStatus]    = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [syncResult,    setSyncResult]    = useState<string | null>(null)
-  const [trafficStatus, setTrafficStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [ghTraffic,     setGhTraffic]     = useState<{ count: number; uniques: number } | null>(null)
 
   const openBuy = useCallback(() => setBuyOpen(true), [])
   const openAddFunds = useCallback((m: LeaderboardMarkee) => { setModalTarget(m); setAddFundsOpen(true) }, [])
@@ -102,58 +98,13 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
     setBuyOpen(false)
   }, [refreshAfterTransaction])
 
-  const handleSync = useCallback(async () => {
-    setSyncStatus('loading')
-    setSyncResult(null)
-    try {
-      const res = await fetch('/api/github/update-markee-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaderboardAddress }),
-      })
-      const data = await res.json().catch(() => ({})) as {
-        success?: boolean; error?: string
-        results?: Array<{ success: boolean; error?: string; filePath?: string }>
-      }
-      if (res.ok && data.success) {
-        const ok   = data.results?.filter(r => r.success).length ?? 1
-        const fail = data.results?.filter(r => !r.success).length ?? 0
-        setSyncStatus('success')
-        setSyncResult(fail > 0 ? `Updated ${ok}, ${fail} failed` : `Updated ${ok} file${ok !== 1 ? 's' : ''}`)
-      } else {
-        setSyncStatus('error')
-        const firstResultErr = data.results?.find(r => !r.success)?.error
-        const raw = data.error ?? firstResultErr ?? 'Sync failed'
-        setSyncResult(raw.toLowerCase().includes('delimiter')
-          ? `Delimiters missing — add the snippet from the Embed panel to your file first`
-          : raw)
-      }
-    } catch {
-      setSyncStatus('error')
-      setSyncResult('Network error')
-    }
-  }, [leaderboardAddress])
-
   const topMarkeeAddrRef = useRef<string>('')
 
-  const handleRefreshTraffic = useCallback(async () => {
-    setTrafficStatus('loading')
-    try {
-      const res = await fetch(`/api/github/traffic?address=${leaderboardAddress.toLowerCase()}`)
-      const data = await res.json().catch(() => ({})) as { count?: number; uniques?: number; error?: string; syncedViews?: number }
-      if (res.ok && data.count !== undefined) {
-        setGhTraffic({ count: data.count, uniques: data.uniques ?? 0 })
-        setTrafficStatus('success')
-        if (data.syncedViews !== undefined && topMarkeeAddrRef.current) {
-          setViewsMap(m => new Map(m).set(topMarkeeAddrRef.current, data.syncedViews!))
-        }
-      } else {
-        setTrafficStatus('error')
-      }
-    } catch {
-      setTrafficStatus('error')
-    }
-  }, [leaderboardAddress])
+  // A GitHub refresh in Served on credits repo traffic to the top message.
+  const handleGitHubRefreshed = useCallback((syncedViews?: number) => {
+    if (syncedViews !== undefined && topMarkeeAddrRef.current)
+      setViewsMap(m => new Map(m).set(topMarkeeAddrRef.current, syncedViews))
+  }, [])
 
   const topMarkee  = markees[0] ?? null
   topMarkeeAddrRef.current = topMarkee?.address?.toLowerCase() ?? ''
@@ -228,69 +179,9 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
               totalLabel="Total funds added"
               totalNode={<MetricValue text={totalFundsLabel} color={GREEN} title={ethPrice ? totalFundsEthLabel : undefined} />}
               onAddToSite={() => setEmbedOpen(true)}
+              onGitHubRefreshed={handleGitHubRefreshed}
             />
           </section>
-
-          {/* ── Action bar (GitHub sync/traffic controls) ── */}
-          {ecoEntry?.platform === 'github' && (
-          <section style={{ padding: '16px 40px', borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
-                  <button
-                    onClick={handleSync}
-                    disabled={syncStatus === 'loading'}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      background: 'transparent', border: `1px solid rgba(248,151,254,0.4)`,
-                      borderRadius: 9, padding: '9px 16px', cursor: syncStatus === 'loading' ? 'wait' : 'pointer',
-                      fontFamily: MONO, fontSize: 13, color: PINK,
-                      opacity: syncStatus === 'loading' ? 0.6 : 1, transition: 'opacity 140ms',
-                    }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                    </svg>
-                    {syncStatus === 'loading' ? 'Syncing…' : 'Sync Message'}
-                  </button>
-                  {syncResult && (
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: syncStatus === 'success' ? GREEN : 'rgba(255,100,120,0.9)' }}>
-                      {syncResult}
-                    </span>
-                  )}
-
-                  <button
-                    onClick={handleRefreshTraffic}
-                    disabled={trafficStatus === 'loading'}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      background: 'transparent', border: `1px solid ${BORDER}`,
-                      borderRadius: 9, padding: '9px 16px', cursor: trafficStatus === 'loading' ? 'wait' : 'pointer',
-                      fontFamily: MONO, fontSize: 13, color: TEXT2,
-                      opacity: trafficStatus === 'loading' ? 0.6 : 1, transition: 'opacity 140ms, border-color 140ms, color 140ms',
-                    }}
-                    onMouseEnter={e => { if (trafficStatus !== 'loading') { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,151,254,0.35)'; (e.currentTarget as HTMLElement).style.color = TEXT }}}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; (e.currentTarget as HTMLElement).style.color = TEXT2 }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                    </svg>
-                    {trafficStatus === 'loading' ? 'Fetching…' : 'Refresh Traffic'}
-                  </button>
-                  {trafficStatus === 'success' && ghTraffic && (
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2 }}>
-                      <span style={{ color: BLUE, fontWeight: 700 }}>{ghTraffic.count.toLocaleString()}</span>
-                      {' views · '}
-                      <span style={{ color: MUTED }}>{ghTraffic.uniques.toLocaleString()} unique</span>
-                    </span>
-                  )}
-                  {trafficStatus === 'error' && (
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(255,100,120,0.9)' }}>
-                      Failed — check GitHub connection
-                    </span>
-                  )}
-            </div>
-          </section>
-          )}
 
           {/* ── Leaderboard table ── */}
           <section style={{ padding: '8px 40px 20px' }}>

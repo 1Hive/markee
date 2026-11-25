@@ -272,6 +272,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               totalNode={totalStreamedNode}
               messagesLabel="Messages"
               onAddToSite={() => setEmbedOpen(true)}
+              onGitHubRefreshed={views => { if (views !== undefined && topAddress) setViewsMap(m => new Map(m).set(topAddress.toLowerCase(), views)) }}
             />
           </section>
 

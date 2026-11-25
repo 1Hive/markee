@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fixedFooter, formatEthCeil, streamingFooter } from '../lib/github/markeeSync'
+import { billboardFor, billboardSignature, fixedFooter, formatEthCeil, streamingFooter } from '../lib/github/markeeSync'
 import { currentBoardsForLegacy, encodedRepoPath, legacyAddressesFor } from '../lib/github/linkedFiles'
 
 const eth = (n: number) => BigInt(Math.round(n * 1e6)) * 10n ** 12n
@@ -37,4 +37,16 @@ test('a legacy alias maps to its current board and is never treated as one', () 
   assert.ok(legacyAddressesFor(hermes).includes(beneficiary.toLowerCase()), 'delimiters under the alias still match')
   assert.deepEqual(currentBoardsForLegacy(beneficiary), [hermes])
   assert.deepEqual(currentBoardsForLegacy(hermes), [], 'a current board is not an alias')
+})
+
+test('a moderated top message never reaches the README, and hiding it changes the sync signature', () => {
+  const board = '0x' + 'a'.repeat(40)
+  const shown = { message: 'buy my token', footer: '0.002 ETH to change' }
+  const hidden = { message: '', footer: '0.002 ETH to change', hidden: true }
+  const text = billboardFor(board, hidden, 'https://example.test')
+  assert.ok(!text.includes('buy my token'))
+  assert.ok(text.includes('hidden by moderation'))
+  assert.ok(text.includes('0.002 ETH to change'))
+  assert.notEqual(billboardSignature(shown), billboardSignature(hidden))
+  assert.notEqual(billboardSignature({ message: '', footer: shown.footer }), billboardSignature(hidden))
 })
