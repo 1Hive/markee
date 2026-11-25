@@ -30,7 +30,6 @@ import { integrationsOf, type Integration } from '@/components/account/sites'
 import { useToast } from '@/components/account/Toast'
 import { boardLabel } from '@/lib/leaderboards/label'
 import { markListingsStale } from '@/lib/client/listingsStale'
-import { normalizeHost } from '@/lib/views/host'
 
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: TEXT2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0 14px', height: 38, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: SANS, whiteSpace: 'nowrap' }
 const pinkOutline: React.CSSProperties = { ...ghostBtn, color: PINK, border: `1px solid ${PINK}`, fontWeight: 700 }
@@ -80,7 +79,7 @@ function SyncTag({ status }: { status: FileSyncStatus }) {
   )
 }
 
-function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync, clientEvidence, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | 'unavailable' | null; reportingTip: string | null; sync?: FileSyncStatus; clientEvidence?: { version: string; lastSeen: number }; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
+function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync, canEdit, onChanged, onFeaturedChanged }: { board: string; it: Integration; featured: boolean; chosen: boolean; views: number | 'unavailable' | null; reportingTip: string | null; sync?: FileSyncStatus; canEdit: boolean; onChanged: () => void; onFeaturedChanged: () => void }) {
   const [state, setState] = useState<'idle' | 'confirm' | 'removing' | 'verifying' | 'featuring'>('idle')
   const [error, setError] = useState<string | null>(null)
   const walletFetch = useWalletAuthFetch()
@@ -175,16 +174,6 @@ function IntegrationRow({ board, it, featured, chosen, views, reportingTip, sync
           </a>
         </span>
         {featured && !unverifiedFile && <FeaturedTag />}
-        {it.url && (
-          <span
-            title={clientEvidence
-              ? `This host reported Markee SDK ${clientEvidence.version} on ${new Date(clientEvidence.lastSeen).toLocaleString()}. The version is self-reported and does not verify the site's source code.`
-              : 'Client unknown: an older SDK and a custom client look the same without a version marker. Absence of a signal does not mean this site uses a custom client.'}
-            style={{ flexShrink: 0, fontFamily: MONO, fontSize: 10, color: clientEvidence ? GREEN : MUTED, whiteSpace: 'nowrap' }}
-          >
-            {clientEvidence ? `SDK ${clientEvidence.version} signal` : 'Client unknown'}
-          </span>
-        )}
         {it.file && !unverifiedFile && sync && <SyncTag status={sync} />}
         {unverifiedFile && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: MUTED, border: '1px solid rgba(138,143,191,0.35)', borderRadius: 99, padding: '1px 7px' }}>Not verified</span>}
         {views === 'unavailable' && (
@@ -318,17 +307,6 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
   // Featured first, then by views, the same order as the board's public page.
   const integrations = orderIntegrations(integrationsOf(lb, info?.featured), i => i.key, info)
   const [verifying, setVerifying] = useState(false)
-  const [clientEvidence, setClientEvidence] = useState<Record<string, { version: string; lastSeen: number }>>({})
-
-  useEffect(() => {
-    const controller = new AbortController()
-    setClientEvidence({})
-    fetch(`/api/boards/client-observations?board=${encodeURIComponent(lb.address)}`, { signal: controller.signal })
-      .then(response => response.ok ? response.json() : {})
-      .then(data => { if (!controller.signal.aborted) setClientEvidence(data) })
-      .catch(() => {})
-    return () => controller.abort()
-  }, [lb.address])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -393,7 +371,6 @@ export function ManageDrawer({ lb, ethPrice, activeAddress, onClose, onAddToSite
                 views={!info ? null : viewsUnavailable(info, it.key) ? 'unavailable' : info.views[it.key] ?? null}
                 reportingTip={viewReportingTip(viewReporting(info, it.key), info?.lastView[it.key])}
                 sync={info?.sync?.[it.key]}
-                clientEvidence={it.url ? clientEvidence[normalizeHost(it.url) ?? ''] : undefined}
                 canEdit={isAdmin}
                 onChanged={() => { reloadIntegrations(); onSuccess() }}
                 onFeaturedChanged={reloadIntegrations}
