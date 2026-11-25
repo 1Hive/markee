@@ -25,6 +25,7 @@ import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
 import { platformActivate } from '@/lib/sdk/platform-activate';
 import { platformAdminStatus } from '@/lib/sdk/platform-admin';
+import { observeSdkClient } from '@/lib/sdk/client-observations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,9 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
         const account = search.has('account') ? address(search.get('account')) : undefined;
         const offset = search.has('offset') ? Number(search.get('offset')) : undefined;
         if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000)) throw new SDKError('INVALID_OFFSET', 'Invalid page offset.');
-        return cors(NextResponse.json(await snapshot(p, account, offset, await severity(p, search.get('policy') ?? undefined, search.get('severity') ?? undefined, search.get('rules') ?? undefined))), request);
+        const data = await snapshot(p, account, offset, await severity(p, search.get('policy') ?? undefined, search.get('severity') ?? undefined, search.get('rules') ?? undefined));
+        await observeSdkClient(data.chainId === 8453 ? data.board : null, search.get('client'), request.headers.get('origin'));
+        return cors(NextResponse.json(data), request);
       }
       if (path === 'community') return cors(await community.GET(request), request);
       if (path === 'community/quote') return cors(await quote.GET(request), request);

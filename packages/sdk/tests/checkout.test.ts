@@ -15,7 +15,7 @@ test('popup opens during gesture; only server-verified receipt succeeds; tokens 
   storage.clear(); closed = false; const requests: string[] = [];
   const client = new MarkeeClient({ fetch: async (url, init) => {
     assert.equal(opens, 1); requests.push(String(url)); assert.equal(init?.credentials, 'omit');
-    if (String(url).endsWith('checkout/create')) return Response.json(session);
+    if (new URL(String(url)).pathname.endsWith('checkout/create')) return Response.json(session);
     assert.equal(JSON.parse(String(init?.body)).token, session.readToken);
     return Response.json({ id: session.id, status: 'confirmed', result: receipt });
   } });
@@ -28,7 +28,7 @@ test('popup opens during gesture; only server-verified receipt succeeds; tokens 
 test('closing a funded but unpaid popup retains its session; resume does not create another checkout', async () => {
   storage.clear(); closed = true; let creates = 0;
   const client = new MarkeeClient({ fetch: async url => {
-    if (String(url).endsWith('checkout/create')) { creates++; return Response.json(session); }
+    if (new URL(String(url)).pathname.endsWith('checkout/create')) { creates++; return Response.json(session); }
     return Response.json({ id: session.id, status: 'created' });
   } });
   await assert.rejects(openHostedCheckout(client, placement, action), /funding alone/);
