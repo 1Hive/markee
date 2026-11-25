@@ -216,7 +216,24 @@ export async function isLiveBoard(address: string): Promise<boolean | null> {
   return factoryReads.every(r => r.status === 'success') ? false : null
 }
 
-export interface BillboardState { message: string; footer: string }
+// hidden: the top message is flagged by moderation. Its text is never written to a README, but it
+// still holds the spot, so the footer keeps its price to change.
+export interface BillboardState { message: string; footer: string; hidden?: boolean }
+
+export class ModerationUnavailableError extends Error {
+  constructor() { super('No current moderation verdict for the top message') }
+}
+
+// A README is a public embed, so it shows exactly what the embed API would. With no verdict yet the
+// sync fails and the file keeps its last content, rather than publishing unchecked text or churning
+// the README with a placeholder.
+async function moderationHides(topMarkee: string, message: string): Promise<boolean> {
+  // Imported here so this module stays loadable outside the server (the footer tests import it).
+  const { moderateEmbed } = await import('@/lib/moderation/embed')
+  const result = await moderateEmbed({ topMarkeeAddress: topMarkee, message, name: '', flagged: false })
+  if ('moderationUnavailable' in result && result.moderationUnavailable) throw new ModerationUnavailableError()
+  return result.flagged
+}
 
 export async function readBillboardState(board: `0x${string}`): Promise<BillboardState> {
   // Only a revert means "no VERSION" (a pre-streaming board). A failed RPC request must fail the
@@ -230,7 +247,8 @@ export async function readBillboardState(board: `0x${string}`): Promise<Billboar
     ])
     const message = top && !/^0x0{40}$/i.test(top) ? await client.readContract({ address: top, abi: MARKEE_ABI, functionName: 'message' }) : ''
     const hasMessage = !!billboardLine(message) && topRate > 0n
-    return { message: hasMessage ? message : '', footer: streamingFooter(topRate, minimumMonthlyRate, hasMessage) }
+    const hidden = hasMessage && await moderationHides(top, message)
+    return { message: hasMessage && !hidden ? message : '', footer: streamingFooter(topRate, minimumMonthlyRate, hasMessage), ...(hidden ? { hidden } : {}) }
   }
   const [[topAddresses, topFunds], minimumPrice] = await Promise.all([
     client.readContract({ address: board, abi: LEADERBOARD_ABI, functionName: 'getTopMarkees', args: [1n] }),
@@ -239,15 +257,17 @@ export async function readBillboardState(board: `0x${string}`): Promise<Billboar
   const topAddr = topAddresses[0]
   const message = topAddr ? await client.readContract({ address: topAddr as `0x${string}`, abi: MARKEE_ABI, functionName: 'message' }) : ''
   const hasMessage = !!billboardLine(message)
-  return { message: hasMessage ? message : '', footer: fixedFooter(topFunds[0] ?? 0n, minimumPrice, hasMessage) }
+  const hidden = hasMessage && await moderationHides(topAddr, message)
+  return { message: hasMessage && !hidden ? message : '', footer: fixedFooter(topFunds[0] ?? 0n, minimumPrice, hasMessage), ...(hidden ? { hidden } : {}) }
 }
 
 export function billboardFor(board: string, state: BillboardState, leaderboardUrl: string): string {
-  return buildBillboard(board, state.message || 'This space is available!', state.footer, leaderboardUrl)
+  const text = state.hidden ? 'This message was hidden by moderation.' : state.message || 'This space is available!'
+  return buildBillboard(board, text, state.footer, leaderboardUrl)
 }
 
 export function billboardSignature(state: BillboardState): string {
-  return `${billboardLine(state.message)}\u0000${state.footer}`
+  return `${billboardLine(state.message)}\u0000${state.footer}${state.hidden ? '\u0000hidden' : ''}`
 }
 
 export interface SyncOutcome { status: number; body: Record<string, unknown> }
@@ -286,6 +306,8 @@ export async function syncMarkeeFile(normalizedAddress: `0x${string}`, knownStat
   try {
     state = knownState ?? await readBillboardState(normalizedAddress)
   } catch (err) {
+    if (err instanceof ModerationUnavailableError)
+      return { status: 503, body: { error: 'The new message is still being checked by moderation. Try again in a few minutes' } }
     console.error('[update-markee-file] chain read error:', err)
     return { status: 500, body: { error: 'Chain read failed' } }
   }

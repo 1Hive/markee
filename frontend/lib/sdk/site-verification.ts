@@ -19,6 +19,19 @@ export function siteUrl(value: unknown): URL {
   url.hash = ''; url.search = '';
   return url;
 }
+// Hosts where anyone can serve HTML they choose under a shared domain: request inspectors, echo and
+// mock APIs, and raw-file CDNs. A marker on a page there proves nothing about who runs a site.
+const SHARED_CONTENT_HOSTS = [
+  'webhook.site', 'webhook.cool', 'typedwebhook.tools', 'requestbin.com', 'requestbin.net', 'pipedream.net',
+  'beeceptor.com', 'mockbin.org', 'mockbin.io', 'httpbin.org', 'postb.in', 'hookbin.com', 'requestcatcher.com',
+  'ptsv2.com', 'ptsv3.com', 'putsreq.com', 'mocky.io', 'run.mocky.io', 'requestinspector.com', 'webhookinbox.com',
+  'oast.pro', 'oast.live', 'oast.site', 'oast.online', 'oast.fun', 'oast.me', 'burpcollaborator.net', 'interact.sh',
+  'raw.githack.com', 'rawcdn.githack.com', 'cdpn.io', 'htmlpreview.github.io',
+];
+export function sharedContentHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return SHARED_CONTENT_HOSTS.some(h => host === h || host.endsWith(`.${h}`));
+}
 export function hasSiteMarker(html: string, board: string): boolean {
   const visit = (node: DefaultTreeAdapterMap['node']): boolean => {
     if ('tagName' in node && !['script', 'style', 'template'].includes(node.tagName) && node.attrs.some(attr => attr.name === 'data-markee-address' && attr.value.toLowerCase() === board.toLowerCase())) return true;
@@ -44,11 +57,17 @@ export async function fetchSiteHtml(url: URL): Promise<string> {
     req.on('error', reject); req.end();
   });
 }
-const MERGE = `local raw=redis.call('GET',KEYS[1]) or (KEYS[2] and redis.call('GET',KEYS[2])); local m=raw and cjson.decode(raw) or {}; local urls=m.verifiedUrls or {}; if m.verifiedUrl and #urls==0 then table.insert(urls,m.verifiedUrl) end; for _,u in ipairs(urls) do if u==ARGV[1] then return cjson.encode(urls) end end; if #urls>=100 then return redis.error_reply('Site limit reached') end; table.insert(urls,ARGV[1]); m.verifiedUrls=urls; m.verifiedUrl=urls[1]; m.status='verified'; redis.call('SET',KEYS[1],cjson.encode(m)); return cjson.encode(urls)`;
-export async function verifySite(p: Placement, value: unknown, origin: string | null) {
+const MERGE = `local raw=redis.call('GET',KEYS[1]) or (KEYS[2] and redis.call('GET',KEYS[2])); local m=raw and cjson.decode(raw) or {}; local urls=m.verifiedUrls or {}; if m.verifiedUrl and #urls==0 then table.insert(urls,m.verifiedUrl) end; for _,u in ipairs(urls) do if u==ARGV[1] then return cjson.encode(urls) end end; if #urls>=100 then return redis.error_reply('Site limit reached') end; table.insert(urls,ARGV[1]); m.verifiedUrls=urls; m.verifiedUrl=urls[1]; m.status='verified'; redis.call('SET',KEYS[1],cjson.encode(m)); return '+'..cjson.encode(urls)`;
+// Who attached a site, for tracing abuse later. Only new attachments log: the SDK re-registers its
+// site on every page load.
+export interface SiteRequestContext { userAgent?: string | null; country?: string | null }
+export async function verifySite(p: Placement, value: unknown, origin: string | null, context: SiteRequestContext = {}) {
   if (p.kind !== 'board' || p.chainId !== 8453) throw new SDKError('UNSUPPORTED_SITE', 'Website verification currently supports Base boards.');
   const url = siteUrl(value);
-  if (origin && origin !== url.origin) throw new SDKError('SITE_ORIGIN_MISMATCH', 'The site must match the requesting app origin.', 403);
+  if (sharedContentHost(url.hostname)) throw new SDKError('INVALID_SITE', 'Anyone can publish pages on this host, so it cannot be a verified site.');
+  // Browsers always send Origin on this cross-origin POST, so the SDK is unaffected. A request without
+  // one is a script, and it must not attach a site the board never ran.
+  if (!origin || origin !== url.origin) throw new SDKError('SITE_ORIGIN_MISMATCH', 'The site must match the requesting app origin.', 403);
   const { board, legacyBoard } = await boardContext(p.chainId, p.address);
   let html: string;
   try { html = await fetchSiteHtml(url); } catch (e) { if (e instanceof SDKError) throw e; throw new SDKError('SITE_UNREACHABLE', 'Could not read this public site.', 422); }
@@ -56,5 +75,9 @@ export async function verifySite(p: Placement, value: unknown, origin: string | 
   const result = await kv.eval(MERGE, [`oi:meta:${board.toLowerCase()}`, ...(legacyBoard ? [`oi:meta:${legacyBoard.toLowerCase()}`] : [])], [url.href]);
   await kv.set('sdk:snapshots:generation', randomUUID());
   await Promise.all(['cache:openinternet:leaderboards', 'cache:forsale:leaderboards', 'cache:streaming:leaderboards', 'cache:ecosystem:leaderboards', ...['openinternet', 'forsale', 'streaming'].map(platform => `sdk:snapshots:v1:listings:cache:${platform}:leaderboards`)].map(key => kv.del(key)));
-  return { verified: true, url: url.href, verifiedUrls: (typeof result === 'string' ? JSON.parse(result) : result) as string[] };
+  // The KV client parses a JSON reply itself; the '+' marking a new attachment keeps it a string.
+  const added = typeof result === 'string' && result.startsWith('+');
+  const verifiedUrls = (added ? JSON.parse((result as string).slice(1)) : typeof result === 'string' ? JSON.parse(result) : result) as string[];
+  if (added) console.info('[sdk:sites/verify] attached', JSON.stringify({ board: board.toLowerCase(), url: url.href, origin, userAgent: context.userAgent?.slice(0, 300) ?? null, country: context.country ?? null }));
+  return { verified: true, url: url.href, verifiedUrls };
 }

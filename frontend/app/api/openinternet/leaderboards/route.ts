@@ -38,41 +38,6 @@ const NO_CACHE = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-// ─── Hardcoded partner meta ───────────────────────────────────────────────────
-// These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
-// They live in the legacy OI factory but have no KV meta, so we hardcode
-// verified status here rather than requiring a one-time KV write.
-
-const PARTNER_META: Record<string, {
-  logoUrl: string | null
-  siteUrl: string
-  verifiedUrl: string
-  verifiedUrls: string[]
-  status: 'verified'
-}> = {
-  '0x0590b56430426a38d0fa065b839c10d542e75ccd': { // Markee Cooperative (v1.3)
-    logoUrl: '/markee-logo.png',
-    siteUrl: 'https://markee.xyz',
-    verifiedUrl: 'https://markee.xyz',
-    verifiedUrls: ['https://markee.xyz'],
-    status: 'verified',
-  },
-  '0x2768bc6e90266248bd8bcf5401c36d8049cdf671': { // Gardens (v1.3)
-    logoUrl: '/partners/gardens.png',
-    siteUrl: 'https://app.gardens.fund',
-    verifiedUrl: 'https://app.gardens.fund',
-    verifiedUrls: ['https://app.gardens.fund'],
-    status: 'verified',
-  },
-  '0xdf4769a9593cb8e40d0409def2645651412a8a97': { // Clawchemy (v1.3)
-    logoUrl: '/partners/clawchemy.png',
-    siteUrl: 'https://clawchemy.xyz',
-    verifiedUrl: 'https://clawchemy.xyz',
-    verifiedUrls: ['https://clawchemy.xyz'],
-    status: 'verified',
-  },
-}
-
 // ─── Client ───────────────────────────────────────────────────────────────────
 
 function getClient() {
@@ -183,9 +148,7 @@ async function loadListing(request: Request) {
         markeeCallIndex += 3
       }
 
-      const kvMeta = kvMetas[i]
-      const partnerMeta = PARTNER_META[originalBoard(addr, predecessorOf).toLowerCase()]
-      const meta = partnerMeta ?? kvMeta
+      const meta = kvMetas[i]
       const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,
