@@ -20,8 +20,16 @@ spends gas.
 
 Backers come from the Superfluid subgraph (every sender that ever streamed into a board, closed streams
 included), owed amounts from `pendingSettlement` read in multicalls. There is no log scan, so run time
-does not grow with chain history. Shares below `minPending` (default 0.0001 ETHx, overridable with
-`?minPending=<wei>`) are left for a later run because the settle would cost more than it routes.
+does not grow with chain history. Settling costs gas per backer every time it runs, whether or not the
+backer is new, so three limits leave work for a later run, each overridable as a query parameter.
+
+- `minPending` (default 0.0001 ETHx). Shares below it are ignored, since the settle would cost more
+  than it routes.
+- `minBoardPending` (default 0.01 ETHx). A board is settled only once its owed backers together pass it,
+  so small boards build up over several days instead of paying gas daily.
+- `maxFeeBps` (default 100, i.e. 1%). A settle call whose estimated fee (gas estimate times the current
+  gas price) is above this share of what it routes is reported as `skipped` and retried on a later run,
+  when gas is cheaper or more has accrued.
 
 Each `settle` costs about 1.9M gas plus 0.7M per extra backer (the RevNet pay), so a board's backers are
 split into calls of at most 8. Calls are gas-estimated one by one, then bundled into Multicall3

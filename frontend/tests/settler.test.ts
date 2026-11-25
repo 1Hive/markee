@@ -18,7 +18,7 @@ function backer(n: number): Address {
 interface Call { functionName: string; address: Address; args?: unknown[] }
 interface Write { address: Address; args: [{ target: Address; callData: Hex }[]]; gas: bigint }
 
-function fakeChain(pending: Record<Address, Record<Address, bigint>>, opts: { gasPerBacker?: bigint; revertBoards?: Address[]; failInBatch?: Address[] } = {}) {
+function fakeChain(pending: Record<Address, Record<Address, bigint>>, opts: { gasPerBacker?: bigint; gasPrice?: bigint; revertBoards?: Address[]; failInBatch?: Address[] } = {}) {
   const writes: Write[] = []
   const boards = Object.keys(pending) as Address[]
   const publicClient = {
@@ -38,6 +38,9 @@ function fakeChain(pending: Record<Address, Record<Address, bigint>>, opts: { ga
       if (opts.revertBoards?.includes(to)) throw new Error('execution reverted')
       const { args: [backers] } = decodeFunctionData({ abi: [SETTLE], data })
       return 1_900_000n + (opts.gasPerBacker ?? 700_000n) * BigInt(backers.length - 1)
+    },
+    async getGasPrice() {
+      return opts.gasPrice ?? 1_000_000n
     },
     async waitForTransactionReceipt() {
       return { status: 'success' as const }
@@ -70,7 +73,7 @@ function settledBackers(w: Write) {
 test('settles every owed backer across boards in one multicall and skips dust', async () => {
   const { publicClient, walletClient, fetchBackers, writes } = fakeChain({
     [boardA]: { [backer(1)]: ETHX / 100n, [backer(2)]: 1n },
-    [boardB]: { [backer(3)]: ETHX / 1000n },
+    [boardB]: { [backer(3)]: ETHX / 50n },
     [boardC]: { [backer(4)]: 0n },
   })
   const report = await runSettler({ publicClient, walletClient, factory, fetchBackers })
@@ -79,7 +82,7 @@ test('settles every owed backer across boards in one multicall and skips dust', 
   assert.equal(writes[0].address, MULTICALL3)
   assert.deepEqual(settledBackers(writes[0]), [[boardA, [backer(1)]], [boardB, [backer(3)]]])
   assert.equal(report.backers, 2)
-  assert.equal(report.pending, ETHX / 100n + ETHX / 1000n)
+  assert.equal(report.pending, ETHX / 100n + ETHX / 50n)
   assert.ok(report.actions.every(a => a.status === 'confirmed'))
 })
 
@@ -131,4 +134,37 @@ test('a settle call that fails inside a mined batch is reported while the rest c
 
   assert.equal(writes.length, 1)
   assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'error'], [boardB, 'confirmed']])
+})
+
+test('a board owed less than the board minimum waits even when each backer is above dust', async () => {
+  const { publicClient, walletClient, fetchBackers, writes } = fakeChain({
+    [boardA]: { [backer(1)]: ETHX / 400n, [backer(2)]: ETHX / 400n },
+    [boardB]: { [backer(3)]: ETHX / 400n, [backer(4)]: ETHX / 200n, [backer(5)]: ETHX / 200n },
+  })
+  const report = await runSettler({ publicClient, walletClient, factory, fetchBackers })
+
+  assert.deepEqual(settledBackers(writes[0]), [[boardB, [backer(3), backer(4), backer(5)]]])
+  assert.deepEqual(report.actions.map(a => a.board), [boardB])
+})
+
+test('a settle whose fee is over the fee cap is skipped while cheaper ones go out', async () => {
+  const { publicClient, walletClient, fetchBackers, writes } = fakeChain(
+    { [boardA]: { [backer(1)]: ETHX / 100n }, [boardB]: { [backer(2)]: ETHX } },
+    { gasPrice: 1_000_000_000n },
+  )
+  const report = await runSettler({ publicClient, walletClient, factory, fetchBackers })
+
+  assert.deepEqual(settledBackers(writes[0]), [[boardB, [backer(2)]]])
+  assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'skipped'], [boardB, 'confirmed']])
+})
+
+test('nothing is signed when every settle is over the fee cap', async () => {
+  const { publicClient, walletClient, fetchBackers, writes } = fakeChain(
+    { [boardA]: { [backer(1)]: ETHX / 100n } },
+    { gasPrice: 1_000_000_000n },
+  )
+  const report = await runSettler({ publicClient, walletClient, factory, fetchBackers })
+
+  assert.equal(writes.length, 0)
+  assert.deepEqual(report.actions.map(a => a.status), ['skipped'])
 })
