@@ -11,6 +11,8 @@ import { NextRequest } from 'next/server';
 import { GET, POST, OPTIONS } from '../app/api/sdk/v1/[...path]/route';
 import { publicDataProxyEnabled, readPresentationData, recordPublicView } from '../lib/sdk/presentation-data';
 import { buyerPayment, quoteReward } from '../lib/sdk/reward-quote';
+import { POST as activateCommunity } from '../lib/sdk/gardens/activate';
+import { getEnvPublicClient } from '../lib/sdk/chains';
 
 const a = '0x1111111111111111111111111111111111111111' as const;
 const b = '0x2222222222222222222222222222222222222222' as const;
@@ -109,6 +111,65 @@ test('community activations stop at each daily limit without counting refused re
   await assert.rejects(reserve('a'), MarkeeChallengeRateLimitError);
   await reserve('b');
   await assert.rejects(reserve('c'), MarkeeChallengeRateLimitError);
+});
+test('activation preflight failures leave the allowance intact and a full allowance prevents broadcasting', async (t) => {
+  const names = ['MARKEE_GARDENS_KEEPER_PRIVATE_KEY', 'MARKEE_ROUTER_ADDRESS_BASE', 'MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE'];
+  const previous = names.map(name => process.env[name]);
+  let mode = 'permission';
+  let simulations = 0;
+  const client = getEnvPublicClient(8453);
+  const communityClient = getEnvPublicClient(42220);
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(communityClient, 'verifyTypedData', async () => true);
+  t.mock.method(communityClient, 'readContract', async ({ functionName }: { functionName: string }) => functionName === 'councilSafe' ? b : true);
+  t.mock.method(client, 'readContract', async ({ functionName }: { functionName: string }) => functionName === 'keepers' ? mode !== 'permission' : { leaderboard: '0x0000000000000000000000000000000000000000' });
+  t.mock.method(client, 'simulateContract', async () => {
+    simulations++;
+    if (mode === 'simulation') throw new Error('simulation reverted');
+    return { request: {}, result: [] };
+  });
+  t.mock.method(client, 'estimateContractGas', async () => 100n);
+  t.mock.method(client, 'getGasPrice', async () => 1n);
+  t.mock.method(client, 'getBalance', async () => mode === 'balance' ? 0n : 10n ** 18n);
+  // Any accidental signing/broadcast is a test failure, never an external call.
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected network or broadcast'); });
+  try {
+    process.env.MARKEE_GARDENS_KEEPER_PRIVATE_KEY = `0x${'1'.repeat(64)}`;
+    process.env.MARKEE_ROUTER_ADDRESS_BASE = c;
+    process.env.MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE = c;
+    clearMarkeeChallengesForTests();
+    let nonce = 9000;
+    const verify = async () => {
+      const value = String(++nonce);
+      await saveMarkeeChallenge({ namespace: 'opt-in', nonce: value, ttlSeconds: 60, value: {
+        authorizer: a, authorizationRole: 'councilOwner', chainId: 42220, community: a,
+        councilSafe: b, deadline: Math.floor(Date.now() / 1000) + 60,
+        leaderboardFactory: c, message: {}, nonce: value,
+      } });
+      return activateCommunity(new Request('http://localhost/activate', { method: 'POST',
+        body: JSON.stringify({ action: 'verify', nonce: value, signature: '0x1234' }) }));
+    };
+    for (const failure of ['permission', 'simulation', 'balance']) {
+      mode = failure;
+      for (let i = 0; i < 4; i++) assert.equal((await verify()).status, 502);
+    }
+    // All twelve failed preflights left every real activation slot available.
+    const reserve = () => reserveMarkeeActivation({ namespace: 'opt-in', limits: [
+      { subject: 'global', max: 25 }, { subject: `council:${b}`, max: 3 },
+      { subject: `authorizer:${a}`, max: 3 }, { subject: 'ip:unknown', max: 3 },
+    ] });
+    await reserve(); await reserve(); await reserve();
+    mode = 'ready';
+    const before = simulations;
+    const response = await verify();
+    assert.equal(response.status, 429);
+    assert.match((await response.json()).error, /activation limit/);
+    assert.equal(simulations, before + 1, 'preflight completes before the atomic quota check');
+    await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+  } finally {
+    names.forEach((name, i) => previous[i] === undefined ? delete process.env[name] : process.env[name] = previous[i]);
+    clearMarkeeChallengesForTests();
+  }
 });
 test('replaying an admin request returns its saved result without executing a second time', async () => {
   let calls = 0;
