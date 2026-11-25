@@ -1,4 +1,5 @@
 // Adapted from Gardens V2 apps/web/utils/markeeChallengeStore.ts at 078d17954ad38dba7a142eb3cee59002f44d303f.
+import { randomUUID } from 'node:crypto';
 const REDIS_REQUEST_TIMEOUT_MS = 5_000;
 const KEY_PREFIX = "markee:sdk:authorization";
 const ISSUE_WINDOW_SECONDS = 60;
@@ -209,11 +210,17 @@ export const reserveMarkeeChallengeIssue = async ({
 const ACTIVATION_WINDOW_SECONDS = 24 * 60 * 60;
 
 export type MarkeeActivationLimit = { subject: string; max: number };
+type ActivationReservation = {
+  state: 'pending' | 'deployed' | 'reverted';
+  completedKeys: string[];
+  pendingKeys: string[];
+};
+const memoryActivationReservations = new Map<string, ActivationReservation>();
 
 /**
- * Counts one keeper-funded activation against every limit in a rolling day
- * window. Nothing is counted unless all limits still have room, so a refused
- * request never uses up capacity for others.
+ * Reserve capacity in the UTC day without increasing the deployed-board count.
+ * Pending capacity prevents concurrent broadcasts overrunning the daily limits.
+ * Only a successful receipt commits it; a confirmed revert releases it.
  */
 export const reserveMarkeeActivation = async ({
   namespace,
@@ -227,36 +234,77 @@ export const reserveMarkeeActivation = async ({
   const keys = limits.map(
     ({ subject }) => `${KEY_PREFIX}:activation:{${namespace}}:${bucket}:${subject}`,
   );
+  const pendingKeys = keys.map(key => key.replace(':activation:', ':activation-pending:'));
+  const reservationKey = `${KEY_PREFIX}:activation-reservation:{${namespace}}:${randomUUID()}`;
+  const reservation: ActivationReservation = { state: 'pending', completedKeys: keys, pendingKeys };
   const config = getRedisConfig();
 
   let allowed: number;
   if (config != null) {
     allowed = await redisCommand<number>([
       "EVAL",
-      "for i, key in ipairs(KEYS) do if tonumber(redis.call('GET', key) or '0') >= tonumber(ARGV[i + 1]) then return 0; end; end; for _, key in ipairs(KEYS) do if redis.call('INCR', key) == 1 then redis.call('EXPIRE', key, ARGV[1]); end; end; return 1",
-      keys.length,
+      "local n = (#KEYS - 1) / 2; for i = 1, n do local used = tonumber(redis.call('GET', KEYS[i]) or '0') + tonumber(redis.call('GET', KEYS[n + i]) or '0'); if used >= tonumber(ARGV[i + 2]) then return 0 end end; for i = 1, n do if redis.call('INCR', KEYS[n + i]) == 1 then redis.call('EXPIRE', KEYS[n + i], ARGV[1]) end end; redis.call('SET', KEYS[#KEYS], ARGV[2], 'EX', ARGV[1]); return 1",
+      keys.length * 2 + 1,
       ...keys,
+      ...pendingKeys,
+      reservationKey,
       ACTIVATION_WINDOW_SECONDS * 2,
+      JSON.stringify(reservation),
       ...limits.map(({ max }) => max),
     ]);
   } else {
     const now = Math.floor(Date.now() / 1000);
-    const current = keys.map((key) => {
+    const count = (key: string) => {
       const stored = memoryIssueCounts.get(key);
       return stored == null || stored.expiresAt <= now ? 0 : stored.count;
-    });
+    };
+    const current = keys.map((key, i) => count(key) + count(pendingKeys[i]));
     allowed = current.every((count, i) => count < limits[i].max) ? 1 : 0;
     if (allowed === 1) {
-      keys.forEach((key, i) =>
+      pendingKeys.forEach((key) =>
         memoryIssueCounts.set(key, {
-          count: current[i] + 1,
+          count: count(key) + 1,
           expiresAt: now + ACTIVATION_WINDOW_SECONDS * 2,
         }),
       );
+      memoryActivationReservations.set(reservationKey, reservation);
     }
   }
 
   if (allowed !== 1) throw new MarkeeChallengeRateLimitError();
+  return reservationKey;
+};
+
+/** Idempotent receipt settlement, including after an interrupted HTTP request. */
+export const finalizeMarkeeActivation = async (reservationKey: string, deployed: boolean) => {
+  requireDurableStoreInProduction();
+  const config = getRedisConfig();
+  const stored = config
+    ? await redisCommand<string | null>(['GET', reservationKey])
+    : memoryActivationReservations.get(reservationKey);
+  if (!stored) return;
+  const reservation: ActivationReservation = typeof stored === 'string' ? JSON.parse(stored) : stored;
+  if (reservation.state !== 'pending') return;
+  const settled = { ...reservation, state: deployed ? 'deployed' : 'reverted' };
+  if (config) {
+    await redisCommand<number>(['EVAL',
+      "local raw = redis.call('GET', KEYS[1]); if not raw or raw ~= ARGV[4] then return 0 end; local n = (#KEYS - 1) / 2; for i = 1, n do local pending = KEYS[1 + n + i]; if tonumber(redis.call('GET', pending) or '0') > 0 then redis.call('DECR', pending) end; if ARGV[1] == '1' then if redis.call('INCR', KEYS[1 + i]) == 1 then redis.call('EXPIRE', KEYS[1 + i], ARGV[2]) end end end; redis.call('SET', KEYS[1], ARGV[3], 'EX', ARGV[2]); return 1",
+      1 + reservation.completedKeys.length * 2, reservationKey,
+      ...reservation.completedKeys, ...reservation.pendingKeys,
+      deployed ? 1 : 0, ACTIVATION_WINDOW_SECONDS * 2, JSON.stringify(settled), stored as string,
+    ]);
+  } else {
+    const now = Math.floor(Date.now() / 1000);
+    reservation.pendingKeys.forEach(key => {
+      const old = memoryIssueCounts.get(key);
+      if (old) old.count = Math.max(0, old.count - 1);
+    });
+    if (deployed) reservation.completedKeys.forEach(key => {
+      const old = memoryIssueCounts.get(key);
+      memoryIssueCounts.set(key, { count: (old && old.expiresAt > now ? old.count : 0) + 1, expiresAt: now + ACTIVATION_WINDOW_SECONDS * 2 });
+    });
+    memoryActivationReservations.set(reservationKey, settled as ActivationReservation);
+  }
 };
 
 export const consumeMarkeeChallenge = async <T>({
@@ -296,8 +344,9 @@ export const clearMarkeeChallengesForTests = (namespace?: string) => {
     if (key.startsWith(namespacePrefix)) memoryChallenges.delete(key);
   }
   for (const key of memoryIssueCounts.keys()) {
-    if (key.startsWith(`${KEY_PREFIX}:rate:`) || key.startsWith(`${KEY_PREFIX}:activation:`)) {
+    if (key.startsWith(`${KEY_PREFIX}:rate:`) || key.startsWith(`${KEY_PREFIX}:activation:`) || key.startsWith(`${KEY_PREFIX}:activation-pending:`)) {
       memoryIssueCounts.delete(key);
     }
   }
+  memoryActivationReservations.clear();
 };

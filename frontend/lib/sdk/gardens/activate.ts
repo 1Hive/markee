@@ -20,6 +20,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   clearMarkeeChallengesForTests,
   consumeMarkeeChallenge,
+  finalizeMarkeeActivation,
   MarkeeChallengeRateLimitError,
   MarkeeChallengeStoreUnavailableError,
   reserveMarkeeActivation,
@@ -255,7 +256,7 @@ const ALREADY_ACTIVE_ERROR = "This community already has a Markee leaderboard.";
 
 const executeRouterCreation = async (
   challenge: Challenge,
-  reserveActivation: () => Promise<void>,
+  reserveActivation: () => Promise<string | null>,
 ) => {
   const execution = getMarkeeExecutionConfig(challenge.chainId);
   if (!execution.router) {
@@ -301,7 +302,7 @@ const executeRouterCreation = async (
   // Configuration, permission, simulation and funding failures must not consume
   // the keeper-funded allowance. Reserve atomically before any broadcast;
   // retain the reservation once sending starts, even if its outcome is unknown.
-  await reserveActivation();
+  const activationReservation = await reserveActivation();
 
   const walletClient = createWalletClient({
     account,
@@ -312,11 +313,14 @@ const executeRouterCreation = async (
     ...simulation.request,
     gas,
   });
-  await recordAdminBroadcast({ transactionHash, markeeChainId: execution.chainId, chainId: challenge.chainId, community: challenge.community, bridgeProtocol: "none", bridged: false });
+  await recordAdminBroadcast({ transactionHash, markeeChainId: execution.chainId, chainId: challenge.chainId, community: challenge.community, bridgeProtocol: "none", bridged: false }, activationReservation ?? undefined);
   const receipt = await client.waitForTransactionReceipt({
     timeout: 30_000,
     hash: transactionHash,
   });
+  if (activationReservation) {
+    await finalizeMarkeeActivation(activationReservation, receipt.status === 'success');
+  }
   if (receipt.status !== "success") {
     throw new Error("Markee leaderboard creation transaction reverted");
   }
@@ -493,8 +497,8 @@ const requesterAddress = (request: Request) =>
   request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 
 const reserveActivation = async (challenge: Challenge, requester: string) => {
-  if (challenge.authorizationRole === "keeper") return;
-  await reserveMarkeeActivation({
+  if (challenge.authorizationRole === "keeper") return null;
+  return reserveMarkeeActivation({
     namespace: CHALLENGE_NAMESPACE,
     limits: [
       { subject: "global", max: MAX_ACTIVATIONS_PER_DAY },
