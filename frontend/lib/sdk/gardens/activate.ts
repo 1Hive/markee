@@ -253,7 +253,10 @@ const hasCommunityLeaderboard = async (chainId: number, community: Address) => {
 
 const ALREADY_ACTIVE_ERROR = "This community already has a Markee leaderboard.";
 
-const executeRouterCreation = async (challenge: Challenge) => {
+const executeRouterCreation = async (
+  challenge: Challenge,
+  reserveActivation: () => Promise<void>,
+) => {
   const execution = getMarkeeExecutionConfig(challenge.chainId);
   if (!execution.router) {
     throw new Error("Markee router is not configured for this environment");
@@ -294,6 +297,11 @@ const executeRouterCreation = async (challenge: Challenge) => {
   if (keeperBalance < requiredKeeperBalance) {
     throw new Error("Markee keeper needs more ETH to create the leaderboard");
   }
+
+  // Configuration, permission, simulation and funding failures must not consume
+  // the keeper-funded allowance. Reserve atomically before any broadcast;
+  // retain the reservation once sending starts, even if its outcome is unknown.
+  await reserveActivation();
 
   const walletClient = createWalletClient({
     account,
@@ -597,8 +605,12 @@ const verifyChallenge = async (body: VerifyRequest, requester: string) => {
     if (await hasCommunityLeaderboard(challenge.chainId, challenge.community)) {
       return jsonError(ALREADY_ACTIVE_ERROR, 409);
     }
+    let routerExecution;
     try {
-      await reserveActivation(challenge, requester);
+      routerExecution = await executeRouterCreation(
+        challenge,
+        () => reserveActivation(challenge, requester),
+      );
     } catch (error) {
       if (error instanceof MarkeeChallengeRateLimitError) {
         return jsonError(
@@ -614,8 +626,6 @@ const verifyChallenge = async (body: VerifyRequest, requester: string) => {
       }
       throw error;
     }
-
-    const routerExecution = await executeRouterCreation(challenge);
 
     return jsonSuccess({
       authorized: true,
