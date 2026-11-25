@@ -77,8 +77,8 @@ export function FixedPriceModal({ isOpen, onClose, fixedMarkee, onSuccess }: Fix
   const isWrongChain = hasActiveWalletConnection && chain?.id !== CANONICAL_CHAIN.id
 
   const [newMessage, setNewMessage] = useState('')
-  const messageModeration = useMessageModeration(newMessage, isOpen)
   const [name, setName] = useState('')
+  const messageModeration = useMessageModeration(newMessage, isOpen, { name })
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)

@@ -10,7 +10,7 @@ export async function moderateEmbed<T extends { topMarkeeAddress: string | null;
     if (board.includes(flagKey(payload.topMarkeeAddress))) return { ...payload, flagged: true, message: '', name: '' }
     if (autoEnabled()) {
       const [verdict] = await embedModerationDeps.checkPublished([payload.topMarkeeAddress])
-      if (!verdict || verdict.state === 'unavailable' || verdict.contentHash !== contentHash(payload.message)) throw new Error('No current moderation verdict')
+      if (!verdict || verdict.state === 'unavailable' || verdict.contentHash !== contentHash(payload.message) || (verdict.nameHash !== undefined && verdict.nameHash !== contentHash(payload.name))) throw new Error('No current moderation verdict')
       if (verdict.state !== 'visible') return { ...payload, flagged: true, message: '', name: '' }
     }
     return payload

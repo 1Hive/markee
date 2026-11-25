@@ -103,6 +103,7 @@ function setup(t: any) {
         let result: any
         if (c.functionName === 'message') result = 'shit'
         if (c.functionName === 'pricingStrategy') result = board
+        if (c.functionName === 'name') result = ''
         if (c.functionName === 'factory') result = FACTORIES.GITHUB
         if (c.functionName === 'isFactoryLeaderboard') result = c.args[0] === board
         if (c.functionName === 'isMarkeeOnLeaderboard') result = c.args[0] === markee
@@ -139,6 +140,7 @@ test('homepage fixed strategies trust only their actual Markee and preserve mode
     return contracts.map((c: any) => {
       if (c.functionName === 'message') return { status: 'success', result: text }
       if (c.functionName === 'pricingStrategy') return { status: 'success', result: strategy }
+      if (c.functionName === 'name') return { status: 'success', result: '' }
       if (c.functionName === 'markeeAddress' && available) return { status: 'success', result: markee }
       return { status: 'failure' }
     })
@@ -334,6 +336,11 @@ test('cached embed text is withheld on moderation outage, new manual flag, auto 
   assert.equal((await moderateEmbed(payload)).message, '')
   t.mock.method(embedModerationDeps, 'checkPublished', async () => [{ markee, board, state: 'visible', siteState: 'visible', contentHash: contentHash('Hello'), policyVersion: AUTO_POLICY }])
   assert.equal((await moderateEmbed(payload)).message, 'Hello')
+  // A verdict on a different display name than the cached embed shows is not current.
+  t.mock.method(embedModerationDeps, 'checkPublished', async () => [{ markee, board, state: 'visible', siteState: 'visible', contentHash: contentHash('Hello'), nameHash: contentHash('Renamed'), policyVersion: AUTO_POLICY }])
+  assert.equal((await moderateEmbed(payload)).name, '')
+  t.mock.method(embedModerationDeps, 'checkPublished', async () => [{ markee, board, state: 'visible', siteState: 'visible', contentHash: contentHash('Hello'), nameHash: contentHash('Author'), policyVersion: AUTO_POLICY }])
+  assert.equal((await moderateEmbed(payload)).name, 'Author')
 })
 
 test('queue keeps a flagged message listed after its text is cleared, so it can be unflagged', async t => {

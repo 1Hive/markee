@@ -6,11 +6,18 @@ Empty or unrecognized values keep moderation enabled.
 No AI credentials, model server, or SDK integrator configuration is needed. Set this on the Markee
 backend, never in a host app. Preview and production can be enabled independently.
 
-The policy is `website-rules-v1+profanity-3.3.0-en-v2`: deterministic website rules plus pinned
-`@2toad/profanity@3.3.0`. The dictionary checker checks message text only with the package's English
+The policy is `website-rules-v1+profanity-3.3.0-en-v2+names-v1`: deterministic website rules plus pinned
+`@2toad/profanity@3.3.0`. The dictionary checker uses the package's English
 dictionary, Unicode-aware whole-word boundaries, and NFKC
 normalization for matching. Hashes cover exact original UTF-8 text; the original message is never
-rewritten. Names are still subject to manual moderation. This detects dictionary matches, not
+rewritten.
+
+The author's display name is judged by the same rules as the message (`+names-v1`), including a
+board's Strict or custom rules. A match in either flags the Markee, and every surface hides the
+message and the name together: markee.xyz blurs both, SDK signs and the modal hide both, and website
+embeds clear both. A name match's reason begins "The display name". `contentHash` remains the hash of
+the message alone, so published SDK clients that compare it with the text they show are unaffected;
+published verdicts add an optional `nameHash`. This detects dictionary matches, not
 general contextual threats or hate. The additional rules detect specific solicitation patterns, not
 every scam. An engine interface allows a future OpenAI Moderation adapter.
 
@@ -83,7 +90,8 @@ API accepts these keys back as `severity`.
 
 ## Public interfaces
 
-- `POST /api/moderation/check`, `{kind:'draft', message}`: returns `enabled`, `state` (`pass`,
+- `POST /api/moderation/check`, `{kind:'draft', message, name?}`: judges the optional display name
+  with the message and returns `enabled`, `state` (`pass`,
   `soft-flagged`, `unavailable`), `contentHash`, `engine`, `policyVersion`, and an optional reason.
   It does not persist a published flag. Draft bodies are limited to 4096 UTF-8 bytes.
 - The same draft operation is available through `/api/sdk/v1/moderation/check` and
@@ -109,11 +117,14 @@ A passing edit restores it on the next status refresh; it never removes a manual
 or storage failures produce unavailable and hide unverified content. No financial transaction is
 submitted automatically. Draft warnings offer Edit message, Retry, and Continue anyway.
 
-`POST /api/moderation/false-positive` accepts chainId, markee, contentHash, timestamp, moderator,
-signature, and optional `scope` (`all` or legacy `site`; omitted means `site`). The signature binds
+`POST /api/moderation/false-positive` accepts chainId, markee, contentHash, optional `nameHash`,
+timestamp, moderator, signature, and optional `scope` (`all` or legacy `site`; omitted means `site`). The signature binds
 a canonical message containing the action, chain, identifier,
 hash, timestamp, and exact scope. New UI approvals use v2 with `all`; v1 site signatures cannot
-authorize all surfaces. Existing board moderators/owners and global admins are eligible.
+authorize all surfaces. When the Markee has a display name, `nameHash` (SHA-256 of the exact name)
+is required and signed (false-positive v3, approve v2), so an approval covers the name the moderator
+saw; a renamed revision is rejected. An exception recorded without a `nameHash` still covers a flagged
+message, but never a flagged name. Existing board moderators/owners and global admins are eligible.
 The server re-reads the current revision before persisting an exception. It never clears manual
 flags. Exceptions are per Markee and exact text, persist across engine updates, and new `all` approvals restore both
 Markee-site and SDK visibility. Legacy site-only approvals remain listed with “Approve for SDK too”

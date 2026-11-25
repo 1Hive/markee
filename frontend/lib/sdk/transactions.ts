@@ -195,7 +195,7 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   if (action.kind === 'stream' || action.kind === 'fund' || action.kind === 'create' && value > 0n) {
     paymentRouting = await paymentRoutingForReview(c);
   }
-  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
+  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message' || action.kind === 'edit-name') ? { moderation: action.kind === 'create' ? checkDraft(action.message, severity, action.name) : action.kind === 'edit-name' ? checkDraft('', severity, action.name) : checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {

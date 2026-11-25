@@ -247,7 +247,7 @@ async function applyRetainedModeration(result: Snapshot, severity: ModerationSev
     const boardFlags = new Set(flags.board);
     result = { ...result, entries: result.entries.map(entry => {
       const manuallyFlagged = boardFlags.has(flagKey(entry.address));
-      const verdict = enabled ? checkDraft(entry.message, severity) : null;
+      const verdict = enabled ? checkDraft(entry.message, severity, entry.name ?? '') : null;
       const unavailable = verdict?.state === 'unavailable';
       return { ...entry, moderated: manuallyFlagged ? true : unavailable ? null : verdict?.state === 'soft-flagged',
         moderation: manuallyFlagged ? { state: 'manual-flagged' as const, contentHash: verdict?.contentHash || '', policyVersion: verdict?.policyVersion || '' }
@@ -269,7 +269,7 @@ export async function applySnapshotModeration(result: Snapshot, severity: Modera
   if (autoEnabled() && result.chainId === 8453 && result.board) {
     try {
       const flags = await automaticDeps.flags();
-      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, board: result.board! })), flags, severity);
+      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, name: entry.name ?? '', board: result.board! })), flags, severity);
       result = { ...result, entries: result.entries.map((entry, i) => {
         const verdict = moderation[i];
         return { ...entry, moderation: verdict, moderated: verdict.state === 'unavailable' ? null : verdict.state !== 'visible' };
