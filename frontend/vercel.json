@@ -9,6 +9,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/streaming-settle",
+      "schedule": "5 3 * * *"
+    },
+    {
       "path": "/api/cron/moderation-scan",
       "schedule": "*/5 * * * *"
     },
