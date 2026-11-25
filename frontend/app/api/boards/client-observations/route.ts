@@ -1,24 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAddress, type Address } from 'viem'
+import { isAddress } from 'viem'
 import { verificationStatusFor } from '@/lib/leaderboards/verificationStatus'
-import { readSdkVersionsForVerifiedUrls } from '@/lib/sdk/client-observations'
+import { readSdkVersionsForBoards } from '@/lib/sdk/client-observations'
 import { underRateLimit, clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
+const NO_STORE = { 'Cache-Control': 'no-store' }
 
-// This returns only positive SDK signals for already verified website hosts.
-// Unmarked traffic cannot distinguish an older SDK from a custom client.
-export async function GET(request: NextRequest) {
-  if (!await underRateLimit('boards:client-observations', clientIp(request), 60, 60)) {
-    return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { 'Retry-After': '60', 'Cache-Control': 'no-store' } })
+// Link-only operator view. Return only verified sites and positive, self-reported
+// SDK signals; unmarked traffic cannot distinguish an older SDK from a custom client.
+export async function POST(request: NextRequest) {
+  if (!await underRateLimit('boards:client-observations', clientIp(request), 20, 60)) {
+    return NextResponse.json({ error: 'Rate limited' }, { status: 429, headers: { ...NO_STORE, 'Retry-After': '60' } })
   }
-  const board = request.nextUrl.searchParams.get('board')?.toLowerCase()
-  if (!board || !isAddress(board)) return NextResponse.json({ error: 'Invalid board' }, { status: 400 })
+  const body = await request.json().catch(() => null)
+  if (!Array.isArray(body?.addresses) || body.addresses.length > 200 || body.addresses.some((address: unknown) => typeof address !== 'string' || !isAddress(address))) {
+    return NextResponse.json({ error: 'Expected up to 200 board addresses' }, { status: 400, headers: NO_STORE })
+  }
+  const addresses = [...new Set((body.addresses as string[]).map(address => address.toLowerCase()))]
   try {
-    const verifiedUrls = (await verificationStatusFor([board]))[board]?.verifiedUrls ?? []
-    return NextResponse.json(await readSdkVersionsForVerifiedUrls(board as Address, verifiedUrls), { headers: { 'Cache-Control': 'no-store' } })
+    const verification = await verificationStatusFor(addresses)
+    const sdk = await readSdkVersionsForBoards(Object.fromEntries(addresses.map(address => [address, verification[address]?.verifiedUrls ?? []])))
+    return NextResponse.json({ verification, sdk }, { headers: NO_STORE })
   } catch (error) {
     console.error('[boards/client-observations] read failed', error)
-    return NextResponse.json({ error: 'Client evidence unavailable' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json({ error: 'Integration evidence unavailable' }, { status: 503, headers: NO_STORE })
   }
 }

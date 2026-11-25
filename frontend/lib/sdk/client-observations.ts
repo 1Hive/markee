@@ -68,8 +68,15 @@ export function sdkVersionsForVerifiedUrls(
   return result;
 }
 
-export async function readSdkVersionsForVerifiedUrls(board: Address, verifiedUrls: string[]) {
-  if (verifiedUrls.length === 0) return {};
-  const fields = await kv.hgetall<Record<string, string | number>>(`sdk:client-observations:v1:8453:${board.toLowerCase()}`);
-  return sdkVersionsForVerifiedUrls(fields, verifiedUrls);
+export async function readSdkVersionsForBoards(verifiedUrlsByBoard: Record<string, string[]>) {
+  const boards = Object.keys(verifiedUrlsByBoard).filter(board => verifiedUrlsByBoard[board].length > 0);
+  const result: Record<string, Record<string, { version: string; lastSeen: number }>> = {};
+  for (let i = 0; i < boards.length; i += 50) {
+    const chunk = boards.slice(i, i + 50);
+    const pipeline = kv.pipeline();
+    for (const board of chunk) pipeline.hgetall(`sdk:client-observations:v1:8453:${board}`);
+    const fields = await pipeline.exec<(Record<string, string | number> | null)[]>();
+    chunk.forEach((board, j) => { result[board] = sdkVersionsForVerifiedUrls(fields[j], verifiedUrlsByBoard[board]); });
+  }
+  return result;
 }
