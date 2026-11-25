@@ -1804,6 +1804,7 @@ function AccountDashboard() {
           strategyAddress={editMessageTarget.strategyId as `0x${string}`}
           markeeAddress={editMessageTarget.address as `0x${string}`}
           currentMessage={editMessageTarget.message}
+          currentName={editMessageTarget.name}
           onSuccess={() => { setEditMessageTarget(null); refreshMessages() }}
         />
       )}

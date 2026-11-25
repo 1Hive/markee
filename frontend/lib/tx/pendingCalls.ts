@@ -4,8 +4,12 @@ import type { Address } from 'viem'
 // account out forever.
 export const PENDING_CALLS_TTL_MS = 24 * 60 * 60 * 1000
 
+// A wallet that can't report on a stored batch (a different connector or session than the one that
+// sent it) blocks only this long, so the account isn't locked out for the full TTL.
+export const UNKNOWN_CALLS_GRACE_MS = 60 * 60 * 1000
+
 export const PROPOSAL_PENDING_MESSAGE = 'Your previous transaction is still waiting in your wallet. Execute or reject it there (for a Safe, in the Safe queue) before trying again.'
-export const PROPOSAL_EXECUTED_MESSAGE = 'Your previous transaction from your wallet already went through. Refresh the page to see it.'
+export const PROPOSAL_UNKNOWN_MESSAGE = "We couldn't check on your previous transaction from this wallet. If it is still waiting (for a Safe, in the Safe queue), execute or reject it there; otherwise try again within the hour."
 
 export type PriorCallsStatus = 'pending' | 'success' | 'failure' | 'unknown'
 
@@ -19,7 +23,7 @@ function storageKey(account: Address, chainId: number) {
   return `markee:pending-calls:${chainId}:${account.toLowerCase()}`
 }
 
-export function readPendingCalls(store: PendingCallsStore, account: Address, chainId: number, now: number): string | null {
+export function readPendingCalls(store: PendingCallsStore, account: Address, chainId: number, now: number): { id: string; at: number } | null {
   try {
     const raw = store.get(storageKey(account, chainId))
     if (!raw) return null
@@ -28,7 +32,7 @@ export function readPendingCalls(store: PendingCallsStore, account: Address, cha
       store.remove(storageKey(account, chainId))
       return null
     }
-    return id
+    return { id, at }
   } catch {
     return null
   }
@@ -42,13 +46,13 @@ export function clearPendingCalls(store: PendingCallsStore, account: Address, ch
   try { store.remove(storageKey(account, chainId)) } catch {}
 }
 
-// A prior batch that may still execute (pending, or a status the wallet could not report) blocks a
-// new one so nothing is paid twice; one that already executed blocks too, since resubmitting would pay
-// again. Only a failed batch clears the way.
-export function priorCallsBlock(status: PriorCallsStatus): string | null {
-  if (status === 'failure') return null
-  if (status === 'success') return PROPOSAL_EXECUTED_MESSAGE
-  return PROPOSAL_PENDING_MESSAGE
+// A prior batch that may still execute blocks a new one so nothing is paid twice. One that executed or
+// failed is settled and clears the way; the new action reads chain state fresh. A status the wallet
+// can't report blocks only within UNKNOWN_CALLS_GRACE_MS of the proposal.
+export function priorCallsBlock(status: PriorCallsStatus, ageMs: number): string | null {
+  if (status === 'pending') return PROPOSAL_PENDING_MESSAGE
+  if (status === 'unknown' && ageMs < UNKNOWN_CALLS_GRACE_MS) return PROPOSAL_UNKNOWN_MESSAGE
+  return null
 }
 
 export const browserPendingCallsStore: PendingCallsStore = {

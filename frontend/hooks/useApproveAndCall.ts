@@ -49,15 +49,16 @@ export function useApproveAndCall() {
   ): Promise<ApproveAndCallResult> => {
     if (!publicClient) throw new Error('Network client is not ready. Please try again.')
 
-    const { account, call: { chainId } } = params
-    const priorId = readPendingCalls(browserPendingCallsStore, account, chainId, Date.now())
-    if (priorId) {
-      const prior: PriorCallsStatus = await getCallsStatus(config, { id: priorId })
+    const { account, amount, call: { chainId } } = params
+    // An action that pulls nothing can't pay twice, so a stored batch never blocks it.
+    const prior = amount > 0n ? readPendingCalls(browserPendingCallsStore, account, chainId, Date.now()) : null
+    if (prior) {
+      const status: PriorCallsStatus = await getCallsStatus(config, { id: prior.id })
         .then(r => (r.status === 'pending' || r.status === 'success' || r.status === 'failure' ? r.status : 'unknown'))
         .catch(() => 'unknown')
-      if (prior !== 'pending' && prior !== 'unknown') clearPendingCalls(browserPendingCallsStore, account, chainId)
-      const block = priorCallsBlock(prior)
+      const block = priorCallsBlock(status, Date.now() - prior.at)
       if (block) throw new Error(block)
+      clearPendingCalls(browserPendingCallsStore, account, chainId)
     }
 
     const result = await approveAndCall(params, {
