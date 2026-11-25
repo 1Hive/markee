@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { siteUrl, publicIPv4, hasSiteMarker } from '../lib/sdk/site-verification';
+import { siteUrl, publicIPv4, hasSiteMarker, sharedContentHost, verifySite } from '../lib/sdk/site-verification';
 const board = '0x1111111111111111111111111111111111111111';
 test('site URL normalization rejects credentials, private literals and alternate protocols/ports', () => {
   assert.equal(siteUrl('example.com/path?token=secret#fragment').href, 'https://example.com/path');
@@ -18,4 +18,15 @@ test('only the matching markup verifies, not script strings or comments', () => 
   assert.equal(hasSiteMarker(`<script>${JSON.stringify(marker)}</script>`, board), false);
   assert.equal(hasSiteMarker(`<!--${marker}-->`, board), false);
   assert.equal(hasSiteMarker(marker, '0x2222222222222222222222222222222222222222'), false);
+});
+test('hosts where anyone can publish HTML are never verified sites', async () => {
+  for (const host of ['webhook.site', 'WEBHOOK.SITE.', 'eo1x.m.pipedream.net', 'x.free.beeceptor.com', 'raw.githack.com', 'abc.oast.fun']) assert.equal(sharedContentHost(host), true, host);
+  for (const host of ['frogandgoose.space', 'notwebhook.site', 'gardens.fund', 'markee.xyz', 'user.github.io']) assert.equal(sharedContentHost(host), false, host);
+  const url = 'https://webhook.site/d21b2946-3aab-4141-af95-b979b31d0c15';
+  await assert.rejects(verifySite({ kind: 'board', chainId: 8453, address: board }, url, 'https://webhook.site'), { code: 'INVALID_SITE' });
+});
+test('site verification needs the requesting origin to match the site', async () => {
+  const p = { kind: 'board', chainId: 8453, address: board } as const;
+  await assert.rejects(verifySite(p, 'https://example.com', null), { code: 'SITE_ORIGIN_MISMATCH', status: 403 });
+  await assert.rejects(verifySite(p, 'https://example.com', 'https://other.example'), { code: 'SITE_ORIGIN_MISMATCH', status: 403 });
 });
