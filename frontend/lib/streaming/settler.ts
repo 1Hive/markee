@@ -3,6 +3,7 @@ import { fetchAllBoards, shortErr, type KeeperPublicClient, type KeeperWalletCli
 
 export type SettlerPublicClient = KeeperPublicClient & {
   estimateGas(args: unknown): Promise<bigint>
+  getGasPrice(): Promise<bigint>
 }
 
 const BOARD_PENDING_SETTLEMENT = parseAbiItem('function pendingSettlement(address backer) view returns (uint256)')
@@ -14,6 +15,10 @@ export const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11' as Addres
 
 // Smallest share worth the gas: below it a settle costs more ETH than it routes.
 export const DEFAULT_MIN_PENDING = 100_000_000_000_000n
+// A board is settled only once its owed backers together pass this, so small boards wait and batch up.
+export const DEFAULT_MIN_BOARD_PENDING = 10_000_000_000_000_000n
+// A settle whose estimated fee is above this share of what it routes waits for cheaper gas.
+export const DEFAULT_MAX_FEE_BPS = 100n
 const PENDING_READ_CHUNK = 300
 // Each backer adds ~0.7M gas on top of a ~1.9M base (the RevNet pay), so 8 keeps one settle near 7M.
 const BACKERS_PER_SETTLE = 8
@@ -26,7 +31,7 @@ export interface SettleAction {
   board: Address
   backers: Address[]
   amount: bigint
-  status: 'planned' | 'confirmed' | 'error'
+  status: 'planned' | 'confirmed' | 'skipped' | 'error'
   txHash?: Hex
   detail?: string
 }
@@ -45,6 +50,8 @@ export interface RunSettlerParams {
   factory: Address
   fetchBackers(boards: Address[]): Promise<Map<string, string[]>>
   minPending?: bigint
+  minBoardPending?: bigint
+  maxFeeBps?: bigint
   log?: (msg: string) => void
 }
 
@@ -56,6 +63,8 @@ type PendingRead = { status: 'success'; result: unknown } | { status: 'failure';
 export async function runSettler(p: RunSettlerParams): Promise<SettlerReport> {
   const log = p.log ?? (() => {})
   const minPending = p.minPending ?? DEFAULT_MIN_PENDING
+  const minBoardPending = p.minBoardPending ?? DEFAULT_MIN_BOARD_PENDING
+  const maxFeeBps = p.maxFeeBps ?? DEFAULT_MAX_FEE_BPS
 
   const boards = await fetchAllBoards(p.publicClient, p.factory)
   const sendersByBoard = await p.fetchBackers(boards)
@@ -85,6 +94,11 @@ export async function runSettler(p: RunSettlerParams): Promise<SettlerReport> {
 
   const actions: SettleAction[] = []
   for (const [board, entries] of owed) {
+    const boardPending = entries.reduce((sum, e) => sum + e.amount, 0n)
+    if (boardPending < minBoardPending) {
+      log(`${board}: ${boardPending} owed across ${entries.length} backer(s), under the board minimum`)
+      continue
+    }
     for (let i = 0; i < entries.length; i += BACKERS_PER_SETTLE) {
       const slice = entries.slice(i, i + BACKERS_PER_SETTLE)
       actions.push({
@@ -108,12 +122,20 @@ export async function runSettler(p: RunSettlerParams): Promise<SettlerReport> {
     return report
   }
 
+  const gasPrice = actions.length ? await p.publicClient.getGasPrice() : 0n
   const estimated: { action: SettleAction; data: Hex; gas: bigint }[] = []
   for (const action of actions) {
     const data = encodeFunctionData({ abi: [BOARD_SETTLE], functionName: 'settle', args: [action.backers] })
     try {
       const gas = await p.publicClient.estimateGas({ account: account.address, to: action.board, data })
       if (gas > BATCH_GAS_BUDGET) throw new Error(`settle needs ${gas} gas, over the batch budget`)
+      const fee = gas * gasPrice
+      if (fee * 10_000n > action.amount * maxFeeBps) {
+        action.status = 'skipped'
+        action.detail = `fee ${fee} wei is over ${maxFeeBps} bps of ${action.amount}`
+        log(`settle on ${action.board} skipped: ${action.detail}`)
+        continue
+      }
       estimated.push({ action, data, gas })
     } catch (e) {
       action.status = 'error'
