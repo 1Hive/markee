@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { authorName } from '@/lib/moderation/author-name'
 import { useAccount } from 'wagmi'
 import { Eye, Pencil } from 'lucide-react'
 import { CANONICAL_CHAIN_ID } from '@/lib/contracts/addresses'
@@ -77,7 +78,7 @@ export function ExpandableMarkeeRow({
     }
   }, [markee.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const displayName = markee.name || formatAddress(markee.owner)
+  const displayName = authorName(markee.name, markee.owner) || formatAddress(markee.owner)
 
   return (
     <div style={{ borderBottom: `1px solid ${BORDER}`, background: featured ? `${PINK}0A` : 'transparent' }}>

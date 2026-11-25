@@ -492,10 +492,12 @@ test('display names are judged by the same rules; the message hash and its reaso
   const both = checkDraft('shit', 'standard', 'shit')
   assert.deepEqual(both.reasonCodes, ['PROFANITY'])
   assert.match(both.reason!, /This message .*The display name/)
-  // Strict and custom rules apply to names too.
-  assert.equal(checkDraft('Hello gardens', 'strict', 'visit bit.ly').state, 'soft-flagged')
-  assert.equal(checkDraft('Hello gardens', moderationPolicy(undefined, 'ens'), 'alice.eth').state, 'soft-flagged')
-  assert.equal(checkDraft('Hello gardens', 'standard', 'alice.eth').state, 'pass')
+  // Strict's link rule applies to names, but address and ENS rules never flag a name: such a name is
+  // withheld from display instead, leaving the message visible.
+  assert.equal(checkDraft('Hello gardens', 'strict', 'visit example.com').state, 'soft-flagged')
+  for (const severity of ['standard', 'strict', moderationPolicy(undefined, 'ens'), moderationPolicy(undefined, 'addresses,links')] as const) {
+    for (const name of ['alice.eth', '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', '0xd8dA…6045']) assert.equal(checkDraft('Hello gardens', severity, name).state, 'pass', `${severity} ${name}`)
+  }
 })
 
 test('a flagged name hides published content; only an approval of that exact name clears it', async t => {

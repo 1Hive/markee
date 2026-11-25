@@ -1,6 +1,7 @@
 'use client'
 
 import { useMessageModeration } from '@/hooks/useMessageModeration'
+import { authorName } from '@/lib/moderation/author-name'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
@@ -251,7 +252,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
             <FeaturedCard
               markeeAddress={topMarkee.address}
               message={topMarkee.message || 'No message set'}
-              displayName={topMarkee.name || undefined}
+              displayName={authorName(topMarkee.name, topMarkee.owner) || undefined}
               ownerAddress={topMarkee.owner}
               views={topViews}
               viewsLoading={viewsLoading}
@@ -563,7 +564,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
   onEditMessage: () => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
-  const displayName = markee.name || fmtAddr(markee.owner)
+  const displayName = authorName(markee.name, markee.owner) || fmtAddr(markee.owner)
 
   // Only the current #1 has a live, self-verified "since when" timestamp (see useTopSince) -- other
   // rows show "—" rather than a fabricated historical total, since Superfluid streams flow into the

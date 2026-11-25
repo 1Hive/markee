@@ -4,6 +4,7 @@
 // streaming detail render the same hero card, metrics bar, embed/verify panel and skeleton from here.
 
 import { useState, useEffect, useRef } from 'react'
+import { authorName } from '@/lib/moderation/author-name'
 import { useAccount, useSignMessage } from 'wagmi'
 import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
@@ -1468,7 +1469,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   </div>
                 ) : (
                   <p className="text-sm text-[#EDEEFF]">
-                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin}>{event.name || '(cleared)'}</ModeratedAuthor></span>
+                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin}>{!event.name ? '(cleared)' : authorName(event.name, event.actor) || '(withheld: looks like a wallet address or ENS name)'}</ModeratedAuthor></span>
                   </p>
                 )}
                 {event.actor && (

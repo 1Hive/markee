@@ -23,6 +23,7 @@ import { BOARD_MIGRATORS, FACTORIES, FOR_SALE_FACTORY_DEPLOY_BLOCK, V14_FACTORIE
 import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
+import { authorName } from '@/lib/moderation/author-name'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -138,8 +139,9 @@ async function loadListing(request: Request) {
       if (topMarkeeAddresses[i]) {
         const m = markeeResultOffsets[i]
         topMessage      = (markeeResults[m]?.result as string) || null
-        topMessageOwner = (markeeResults[m + 1]?.result as string) || null
         topMarkeeOwner  = (markeeResults[m + 2]?.result as string) || null
+        // A name that looks like another wallet's address or ENS name is withheld (see authorName).
+        topMessageOwner = authorName(markeeResults[m + 1]?.result as string, topMarkeeOwner) || null
       }
 
       const meta = kvMetas[i]

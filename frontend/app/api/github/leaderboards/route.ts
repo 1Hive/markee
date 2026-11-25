@@ -8,6 +8,7 @@ import { BASE_MARKEE_EVENTS_FROM_BLOCK, BOARD_MIGRATORS, V14_FACTORIES } from '@
 import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { getLinkedFilesBatch } from '@/lib/github/linkedFiles'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
+import { authorName } from '@/lib/moderation/author-name'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -199,7 +200,8 @@ async function loadListing(request: Request) {
         minimumPriceRaw: minimumPrice.toString(),
         topFundsAddedRaw: topFundsRaw.toString(),
         topMessage: topMarkee?.message || null,
-        topMessageOwner: topMarkee?.name || null,
+        // A name that looks like another wallet's address or ENS name is withheld (see authorName).
+        topMessageOwner: authorName(topMarkee?.name) || null,
         topMarkeeAddress: topMarkeeAddr ?? null,
         linkedFiles,
         repoVerified: !!primaryFile?.verified,

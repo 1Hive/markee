@@ -1,6 +1,7 @@
 'use client'
 
 import { useMessageModeration } from '@/hooks/useMessageModeration'
+import { authorName } from '@/lib/moderation/author-name'
 
 // Streaming ("For Rent") analog of MarkeeSignModal.tsx — same "Change the Markee Sign" list+fund
 // UI, but backed by the working Superfluid write flows (useCreateStreamFlow/useOpenStreamFlow/
@@ -324,7 +325,7 @@ function SignRow({
   boardAdmin?: string | null
 }) {
   const isTop = rank === 1
-  const subtitle = markee.name || fmtAddr(markee.owner)
+  const subtitle = authorName(markee.name, markee.owner) || fmtAddr(markee.owner)
   const monthlyEth = Number(formatEther(ratePerSecToMonthly(markee.rate))).toFixed(3)
   return (
     <div style={{
@@ -1146,7 +1147,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                             <MessageMeta
                               views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                               isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                              authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
+                              authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{authorName(target.name, target.owner) || fmtAddr(target.owner)}</ModeratedAuthor>}
                             />
                           </div>
                         </>
@@ -1235,7 +1236,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                           <MessageMeta
                             views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                             isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                            authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{target.name || fmtAddr(target.owner)}</ModeratedAuthor>}
+                            authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{authorName(target.name, target.owner) || fmtAddr(target.owner)}</ModeratedAuthor>}
                           />
                         </div>
                       </div>

@@ -66,6 +66,16 @@ function ruleMatches(text: string, severity: ModerationSeverity): RuleMatch[] {
   else if (isCustomPolicy(severity)) matches.push(...checkSelectedRules(text, rules))
   return matches
 }
+// A display name gets the same rules except the address and ENS restrictions: an address or ENS name in a
+// name is withheld from display instead (impersonatesWallet), leaving the message visible. Strict's link
+// rule still applies, without counting ENS names as links.
+function nameRuleMatches(name: string, severity: ModerationSeverity): RuleMatch[] {
+  const matches = [...automaticDeps.rules(name)]
+  const rules = moderationRules(severity)
+  if (rules.profanity && automaticDeps.engine.check(name)) matches.push({ code: 'PROFANITY', reason: AUTO_REASON })
+  if (rules.links) matches.push(...checkSelectedRules(name, { links: true, addresses: false, ens: false }))
+  return matches
+}
 // Rule reasons describe a message; a match in the display name says so instead.
 const nameReason = (reason: string) => reason.replace(/^This message\b/, 'The display name')
 /** Judges a message and its author's display name with the same rules. Either one matching flags both. */
@@ -77,7 +87,7 @@ export function checkDraft(message: string, severity: ModerationSeverity = 'stan
   const cached = verdictCache.get(key)
   if (cached) return cached
   try {
-    const nameMatches = name.trim() ? ruleMatches(name, severity).map(m => ({ code: m.code, reason: nameReason(m.reason) })) : []
+    const nameMatches = name.trim() ? nameRuleMatches(name, severity).map(m => ({ code: m.code, reason: nameReason(m.reason) })) : []
     const matches = [...ruleMatches(message, severity), ...nameMatches]
     const result: AutoVerdict = { ...base, state: matches.length ? 'soft-flagged' : 'pass', ...(matches.length ? { reason: matches.map(m => m.reason).join(' '), reasonCodes: [...new Set(matches.map(m => m.code))] } : {}), ...(nameMatches.length ? { nameFlagged: true } : {}) }
     if (verdictCache.size >= 2000) verdictCache.delete(verdictCache.keys().next().value!)

@@ -13,7 +13,12 @@ normalization for matching. Hashes cover exact original UTF-8 text; the original
 rewritten.
 
 The author's display name is judged by the same rules as the message (`+names-v1`), including a
-board's Strict or custom rules. A match in either flags the Markee, and every surface hides the
+board's Strict or custom link rule, but not the address or ENS rules. A name containing an ENS name, or
+an address other than the Markee owner's own (full or shortened as `0x1234…abcd`), could pass as
+another wallet, so it is withheld from display instead of flagged: SDK snapshot entries send
+`name: ''` with `nameWithheld: true`, website embeds do the same, the public leaderboard listings
+omit it from `topMessageOwner`, and markee.xyz shows the owner's address. The message stays visible,
+and moderators still see the raw name in the queue. A rule match in the message or the name flags the Markee, and every surface hides the
 message and the name together: markee.xyz blurs both, SDK signs and the modal hide both, and website
 embeds clear both. A name match's reason begins "The display name". `contentHash` remains the hash of
 the message alone, so published SDK clients that compare it with the text they show are unaffected;

@@ -10,6 +10,7 @@ import type { BoostedMarkee } from '@/app/api/superfluid/boosted/route'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 import { isDisqualifiedBoard } from '@/lib/leaderboards/disqualified'
+import { authorName } from '@/lib/moderation/author-name'
 
 const BOOSTED_KEY = 'superfluid:s6:boosted'
 
@@ -138,7 +139,8 @@ async function loadListing(request: Request) {
 
       if (topMarkeeAddresses[i]) {
         topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
-        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
+        // A name that looks like another wallet's address or ENS name is withheld (see authorName); the owner is not read here, so any address is.
+        topMessageOwner = authorName(markeeResults[markeeCallIndex + 1]?.result as string) || null
         markeeCallIndex += 2
       }
 

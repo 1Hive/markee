@@ -18,6 +18,7 @@ import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
+import { authorName } from '@/lib/moderation/author-name'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -178,8 +179,9 @@ async function loadListing(request: Request) {
       let topMarkeeOwner: string | null = null
       if (topMarkeeAddresses[i]) {
         topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
-        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
         topMarkeeOwner  = (markeeResults[markeeCallIndex + 2]?.result as string) || null
+        // A name that looks like another wallet's address or ENS name is withheld (see authorName).
+        topMessageOwner = authorName(markeeResults[markeeCallIndex + 1]?.result as string, topMarkeeOwner) || null
         markeeCallIndex += 3
       }
 

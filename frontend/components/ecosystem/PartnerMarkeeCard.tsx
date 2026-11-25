@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { authorName } from '@/lib/moderation/author-name'
 import Link from 'next/link'
 import { useReadContract } from 'wagmi'
 import { formatEther } from 'viem'
@@ -99,8 +100,8 @@ export function PartnerMarkeeCard({
                 <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
                   {winningMarkee.message}
                 </p>
-                {winningMarkee.name && (
-                  <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {winningMarkee.name}</p>
+                {authorName(winningMarkee.name, winningMarkee.owner) && (
+                  <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {authorName(winningMarkee.name, winningMarkee.owner)}</p>
                 )}
               </div>
             </div>

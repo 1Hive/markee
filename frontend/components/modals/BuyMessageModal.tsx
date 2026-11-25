@@ -1,6 +1,7 @@
 'use client'
 
 import { useMessageModeration } from '@/hooks/useMessageModeration'
+import { authorName } from '@/lib/moderation/author-name'
 
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useReadContract, useSwitchChain } from 'wagmi'
@@ -655,8 +656,8 @@ export function BuyMessageModal({
                       {userMarkee?.message || <MessageLoading />}
                     </div>
                   </ModeratedContent>
-                  {userMarkee?.name && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userMarkee.name}</ModeratedAuthor></div>
+                  {userMarkee && authorName(userMarkee.name, userMarkee.owner) && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{authorName(userMarkee.name, userMarkee.owner)}</ModeratedAuthor></div>
                   )}
                 </div>
               )}
