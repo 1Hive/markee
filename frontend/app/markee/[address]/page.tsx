@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
+import { authorName } from '@/lib/moderation/author-name'
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatEther } from 'viem'
@@ -159,7 +160,7 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
             <FeaturedCard
               markeeAddress={topMarkee.address}
               message={topMarkee.message || 'No message yet'}
-              displayName={topMarkee.name || undefined}
+              displayName={authorName(topMarkee.name, topMarkee.owner) || undefined}
               ownerAddress={topMarkee.owner}
               views={topViews}
               viewsLoading={viewsLoading}
@@ -201,7 +202,7 @@ function FixedMarkeeDetail({ leaderboardAddress, version }: { leaderboardAddress
                       markee={{
                         address: m.address,
                         message: m.message,
-                        name: m.name || fmtAddr(m.owner),
+                        name: authorName(m.name, m.owner) || fmtAddr(m.owner),
                         owner: m.owner,
                         totalFundsAdded: m.totalFundsAdded,
                       }}

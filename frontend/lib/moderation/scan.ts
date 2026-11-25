@@ -342,7 +342,8 @@ export async function runModerationScan(): Promise<ScanReport> {
   const flagged = await scanDeps.readAllFlagged()
   const flaggedSets = { board: new Set(flagged.board), site: new Set(flagged.site) }
   if (autoEnabled()) {
-    await evaluateObservedBatch(observations, flagged, 'standard', { client, blockNumber: block.number })
+    // Display names are judged with the message; a failed name read is judged by the stored name, as below.
+    await evaluateObservedBatch(observations.map((o, i) => ({ ...o, name: o.name ?? prevs[i]?.name ?? '' })), flagged, 'standard', { client, blockNumber: block.number })
   }
   const changed = observations.flatMap((obs, i) => {
     const key = flagKey(obs.markee)

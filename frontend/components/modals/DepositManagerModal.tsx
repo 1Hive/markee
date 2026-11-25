@@ -6,6 +6,7 @@
 // and from a button on /account -- entirely wallet-scoped, so it takes no board/markee props.
 
 import { useCallback, useEffect, useState } from 'react'
+import { authorName } from '@/lib/moderation/author-name'
 import { useAccount, useBalance, useSwitchChain } from 'wagmi'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
@@ -523,7 +524,7 @@ export function DepositManagerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                         <div style={{ minWidth: 0 }}>
                           <ModeratedContent chainId={CANONICAL_CHAIN_ID} message={s.message ?? ''} markeeId={s.markeeAddress}>
                             <div style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
-                              {s.message || s.name || fmtAddr(s.markeeAddress)}
+                              {s.message || authorName(s.name) || fmtAddr(s.markeeAddress)}
                             </div>
                           </ModeratedContent>
                           <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 1 }}>

@@ -47,13 +47,14 @@ export function useModerationQueue() {
           const item = (action === 'approve' ? queueQuery.data?.items : queueQuery.data?.flagged)?.find(it => it.markee === id.toLowerCase())
           if (!item || (action === 'false-positive' && !item.automatic)) throw new Error('Refresh the moderation queue and try again.')
           const timestamp = Math.floor(Date.now() / 1000)
-          const hash = action === 'approve'
-            ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(item.message))), byte => byte.toString(16).padStart(2, '0')).join('')
-            : item.automatic!.contentHash
-          const body = { chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, scope: 'all', intent: action, moderator: addr, timestamp }
+          const sha256 = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), byte => byte.toString(16).padStart(2, '0')).join('')
+          const hash = action === 'approve' ? await sha256(item.message) : item.automatic!.contentHash
+          // Display names are moderated too: the approval covers the name shown in the queue.
+          const nameHash = item.name ? await sha256(item.name) : undefined
+          const body = { chainId: CANONICAL_CHAIN_ID, markee: id, contentHash: hash, ...(nameHash ? { nameHash } : {}), scope: 'all', intent: action, moderator: addr, timestamp }
           const response = action === 'approve'
-            ? await walletFetch(`${MODERATION_API}/false-positive`, { method: 'POST', address: addr, body, message: () => approveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp) })
-            : await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, signature: await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all') }) }) })
+            ? await walletFetch(`${MODERATION_API}/false-positive`, { method: 'POST', address: addr, body, message: () => approveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, nameHash) })
+            : await fetch(`${MODERATION_API}/false-positive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, signature: await signMessageAsync({ message: falsePositiveMessage(CANONICAL_CHAIN_ID, id, hash, timestamp, 'all', nameHash) }) }) })
           if (!response.ok) throw new Error((await response.json()).error || 'Unable to approve message')
         }
         await queryClient.invalidateQueries({ queryKey: ['message-moderation'] })

@@ -34,9 +34,10 @@ const MARKEE_ABI = [
   { inputs: [], name: 'message',         outputs: [{ name: '', type: 'string'  }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'name',            outputs: [{ name: '', type: 'string'  }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'totalFundsAdded', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'owner',           outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const
 
-type EmbedPayload = { topMarkeeAddress: string | null; message: string; name: string; flagged: boolean; [key: string]: unknown }
+type EmbedPayload = { topMarkeeAddress: string | null; topMarkeeOwner?: string | null; message: string; name: string; flagged: boolean; [key: string]: unknown }
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -89,25 +90,30 @@ export async function GET(
   let message         = ''
   let name            = ''
   let totalFundsAdded = '0'
+  let owner: string | null = null
   let flagged         = false
 
   const ZERO = '0x0000000000000000000000000000000000000000'
   if (topMarkeeAddress && topMarkeeAddress !== ZERO) {
     const mAddr = topMarkeeAddress as `0x${string}`
-    const [msg, nm, funds] = await Promise.all([
+    const [msg, nm, funds, own] = await Promise.all([
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'message'         }).catch(() => ''),
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'name'            }).catch(() => ''),
       rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'totalFundsAdded' }).catch(() => 0n),
+      // The author, for display: a name that looks like another wallet is withheld in favor of it.
+      rpc.readContract({ address: mAddr, abi: MARKEE_ABI, functionName: 'owner'           }).catch(() => null),
     ])
     message         = flagged ? '' : msg as string
     name            = flagged ? '' : nm  as string
     totalFundsAdded = (funds as bigint).toString()
+    owner           = own ? (own as string).toLowerCase() : null
   }
 
   const payload = {
     address: board,
     leaderboardName: leaderboardName as string,
     topMarkeeAddress: topMarkeeAddress ?? null,
+    topMarkeeOwner: owner,
     topFundsRaw,
     message,
     name,

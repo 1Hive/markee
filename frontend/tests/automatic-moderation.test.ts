@@ -14,6 +14,7 @@ import { POST } from '../app/api/moderation/false-positive/route'
 import { itemKey } from '../lib/moderation/server'
 import { moderationPolicy } from '../lib/moderation/severity'
 import { boardPolicyDeps } from '../lib/moderation/board-policy'
+import { draftModeration } from '../lib/sdk/transactions'
 
 const id = '0x1111111111111111111111111111111111111111'
 const board = '0x2222222222222222222222222222222222222222'
@@ -477,4 +478,104 @@ test('Strict snapshots hide links on sale and rent without changing financial da
   t.mock.method(automaticDeps, 'membership', async () => [null])
   const result = await applySnapshotModeration({ chainId: 8453, board, warnings: [], entries: [{ address: id, message: 'hello', moderated: false }] } as any, 'relaxed')
   assert.equal(result.entries[0].moderated, null)
+})
+
+test('display names are judged by the same rules; the message hash and its reasons stay separate', t => {
+  enable(t)
+  const clean = checkDraft('Hello gardens', 'standard', 'Gossman')
+  assert.equal(clean.state, 'pass'); assert.equal(clean.nameFlagged, undefined)
+  const named = checkDraft('Hello gardens', 'standard', 'shit')
+  assert.equal(named.state, 'soft-flagged'); assert.equal(named.nameFlagged, true)
+  // Published SDK clients compare contentHash with the message they show, so it never covers the name.
+  assert.equal(named.contentHash, contentHash('Hello gardens'))
+  assert.match(named.reason!, /^The display name matched the profanity filter\./)
+  assert.deepEqual(named.reasonCodes, ['PROFANITY'])
+  const both = checkDraft('shit', 'standard', 'shit')
+  assert.deepEqual(both.reasonCodes, ['PROFANITY'])
+  assert.match(both.reason!, /This message .*The display name/)
+  // Strict's link rule applies to names, but address and ENS rules never flag a name: such a name is
+  // withheld from display instead, leaving the message visible.
+  assert.equal(checkDraft('Hello gardens', 'strict', 'visit example.com').state, 'soft-flagged')
+  for (const severity of ['standard', 'strict', moderationPolicy(undefined, 'ens'), moderationPolicy(undefined, 'addresses,links')] as const) {
+    for (const name of ['alice.eth', '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', '0xd8dA…6045']) assert.equal(checkDraft('Hello gardens', severity, name).state, 'pass', `${severity} ${name}`)
+  }
+})
+
+test('a flagged name hides published content; only an approval of that exact name clears it', async t => {
+  enable(t); const { records, soft } = storage(t)
+  const manual = { board: false, site: false }
+  const hidden = await evaluateObserved(id, 'Hello gardens', board, manual, 'shit')
+  assert.equal(hidden.state, 'soft-flagged'); assert.equal(hidden.nameHash, contentHash('shit'))
+  assert.equal(soft.has(id), true)
+  const hash = contentHash('Hello gardens')
+  // An override recorded before names were judged (no nameHash) does not cover a flagged name.
+  records.set(sharedOverrideKey(id, hash), { scope: 'all', contentHash: hash })
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, manual, 'shit')).state, 'soft-flagged')
+  records.set(sharedOverrideKey(id, hash), { scope: 'all', contentHash: hash, nameHash: contentHash('shit') })
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, manual, 'shit')).state, 'visible')
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, manual, 'bullshit')).state, 'soft-flagged')
+  // A legacy override still covers a flagged message when the name is clean.
+  const flaggedHash = contentHash('shit')
+  records.set(sharedOverrideKey(id, flaggedHash), { scope: 'all', contentHash: flaggedHash })
+  assert.equal((await evaluateObserved(id, 'shit', board, manual, 'Gossman')).state, 'visible')
+  // Renaming to a clean name recovers without any approval.
+  assert.equal((await evaluateObserved(id, 'Hello gardens', board, manual, 'Gossman')).state, 'visible')
+  // Published checks judge the name read from the chain.
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'Unapproved text', name: 'shit' }])
+  assert.equal((await checkPublished([id]))[0].state, 'soft-flagged')
+})
+
+test('approvals bind the display name the moderator saw and reject renamed revisions', async t => {
+  enable(t); const { records } = storage(t)
+  const moderator = privateKeyToAccount(`0x${'33'.repeat(32)}`)
+  const hash = contentHash('Hello gardens'), nameHash = contentHash('shit'), timestamp = Math.floor(Date.now() / 1000)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'Hello gardens', name: 'shit' }])
+  const req = (body: object) => new NextRequest('https://markee.xyz/api/moderation/false-positive', { method: 'POST', body: JSON.stringify({ chainId: 8453, markee: id, moderator: moderator.address, contentHash: hash, timestamp, scope: 'all', ...body }) })
+  // The pre-name signature format no longer approves a named revision.
+  const legacy = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp, 'all') })
+  assert.equal((await POST(req({ signature: legacy }))).status, 409)
+  // A signature binds the name hash; changing it in the body breaks the signature.
+  const signature = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp, 'all', nameHash) })
+  assert.equal((await POST(req({ signature, nameHash: contentHash('other') }))).status, 401)
+  assert.equal((await POST(req({ signature, nameHash: 'not-a-hash' }))).status, 400)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'Hello gardens', name: 'renamed while signing' }])
+  assert.equal((await POST(req({ signature, nameHash }))).status, 409)
+  assert.equal(records.has(sharedOverrideKey(id, hash)), false)
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'Hello gardens', name: 'shit' }])
+  assert.equal((await POST(req({ signature, nameHash }))).status, 200)
+  assert.equal(records.get(sharedOverrideKey(id, hash)).nameHash, nameHash)
+  assert.equal((await checkPublished([id]))[0].state, 'visible')
+  assert.notEqual(approveMessage(8453, id, hash, timestamp, nameHash), approveMessage(8453, id, hash, timestamp))
+})
+
+test('draft API judges an optional display name and rejects an invalid one', async t => {
+  enable(t); storage(t)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  const check = (body: object) => checkRoute(new NextRequest('https://markee.xyz/api/moderation/check', { method: 'POST', body: JSON.stringify({ kind: 'draft', message: 'Hello gardens', ...body }) }))
+  assert.equal((await (await check({})).json()).state, 'pass')
+  assert.equal((await (await check({ name: 'shit' })).json()).state, 'soft-flagged')
+  assert.equal((await check({ name: 7 })).status, 400)
+})
+
+test('SDK reviews judge the name a message edit keeps, and nameless approvals record no nameHash', async t => {
+  enable(t); const { records } = storage(t)
+  const markee = id as `0x${string}`
+  assert.equal(draftModeration({ kind: 'edit-message', markee, message: 'Hello gardens' }, 'standard', 'Gossman')?.state, 'pass')
+  const kept = draftModeration({ kind: 'edit-message', markee, message: 'Hello gardens' }, 'standard', 'shit')!
+  assert.equal(kept.state, 'soft-flagged'); assert.equal(kept.nameFlagged, true)
+  assert.equal(draftModeration({ kind: 'create', message: 'Hello gardens', name: 'shit' }, 'standard', '')?.state, 'soft-flagged')
+  assert.equal(draftModeration({ kind: 'edit-name', markee, name: 'shit' }, 'standard', '')?.state, 'soft-flagged')
+  assert.equal(draftModeration({ kind: 'fund', markee, amount: '1' }, 'standard', ''), undefined)
+  // An approval of a nameless Markee stores no nameHash, matching the documented legacy shape.
+  const moderator = privateKeyToAccount(`0x${'33'.repeat(32)}`)
+  const hash = contentHash('shit'), timestamp = Math.floor(Date.now() / 1000)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit', name: '' }])
+  const signature = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp, 'all') })
+  const response = await POST(new NextRequest('https://markee.xyz/api/moderation/false-positive', { method: 'POST', body: JSON.stringify({ chainId: 8453, markee: id, moderator: moderator.address, contentHash: hash, timestamp, scope: 'all', signature }) }))
+  assert.equal(response.status, 200)
+  assert.equal('nameHash' in records.get(sharedOverrideKey(id, hash)), false)
 })

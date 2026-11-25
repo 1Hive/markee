@@ -35,6 +35,17 @@ const primaryBtnStyle = (enabled: boolean): React.CSSProperties => ({
   opacity: enabled ? 1 : 0.6, transition: 'opacity 140ms',
 })
 
+// Compact buttons for the moderation rules' Save / Cancel row.
+const smallBtnStyle = (primary: boolean, enabled: boolean): React.CSSProperties => ({
+  background: primary ? PINK : 'transparent',
+  color: primary ? BG : TEXT2,
+  border: primary ? `1px solid ${PINK}` : `1px solid ${BORDER}`,
+  borderRadius: 8, padding: '7px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: 13,
+  cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.6, transition: 'opacity 140ms',
+})
+
+const POLICY_LOAD_ERROR = 'Could not load the saved board policy. Retry before changing it.'
+
 // The optional auto-moderation rules, in display order. Scams & phishing are always checked.
 const MODERATION_ROWS: { key: keyof ModerationRuleSet; label: string }[] = [
   { key: 'profanity', label: 'Profanity' },
@@ -112,6 +123,12 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
   const [savedRules, setSavedRules] = useState<ModerationRuleSet | null>(null)
   const [savingPolicy, setSavingPolicy] = useState(false)
   const [policyError, setPolicyError] = useState<string | null>(null)
+  const [policyJustSaved, setPolicyJustSaved] = useState(false)
+  // The rules in effect: the board's saved policy, or Standard when it has none. Save and Cancel only
+  // appear once the toggles differ from them.
+  const policyBaseline = savedRules ?? DEFAULT_RULES
+  const policyDirty = MODERATION_ROWS.some(row => rules[row.key] !== policyBaseline[row.key])
+  useEffect(() => { if (policyDirty) setPolicyJustSaved(false) }, [policyDirty])
   const { address: owner } = useAccount()
   const verifySite = useSiteVerify()
   const walletFetch = useWalletAuthFetch()
@@ -139,7 +156,7 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
         setRules(next)
         setSavedRules(next)
       })
-      .catch(() => { if (live) setPolicyError('Could not load the saved board policy. Retry before changing it.') })
+      .catch(() => { if (live) setPolicyError(POLICY_LOAD_ERROR) })
     return () => { live = false }
   }, [address])
 
@@ -158,8 +175,15 @@ export function WebsiteEmbedWizard({ address, name, strategy, onHeaderChange, on
       })
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Could not save moderation rules')
       setSavedRules({ ...rules })
+      setPolicyJustSaved(true)
     } catch (error) { setPolicyError(error instanceof Error ? error.message : 'Could not save moderation rules') }
     finally { setSavingPolicy(false) }
+  }
+
+  function cancelPolicyChanges() {
+    setRules({ ...policyBaseline })
+    // A failed save no longer applies once its changes are discarded; a failed load still does.
+    setPolicyError(error => error === POLICY_LOAD_ERROR ? error : null)
   }
 
   useEffect(() => {
@@ -373,12 +397,21 @@ const sign = createMarkeeSign(document.querySelector('#markee'), {
           )
         })}
       </div>
-      <p style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.5, margin: '10px 0' }}>
-        Save these rules for this board. The saved policy applies to existing SDK embeds on their next refresh.
-      </p>
-      <button type="button" onClick={savePolicy} disabled={savingPolicy || JSON.stringify(savedRules) === JSON.stringify(rules)} style={primaryBtnStyle(!savingPolicy && JSON.stringify(savedRules) !== JSON.stringify(rules))}>
-        {savingPolicy ? 'Saving…' : savedRules && JSON.stringify(savedRules) === JSON.stringify(rules) ? 'Saved for this board' : 'Save moderation rules'}
-      </button>
+      {policyDirty ? (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 12px', marginTop: 10 }}>
+          <p style={{ flex: '1 1 220px', color: MUTED, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+            Save these rules for this board. The saved policy applies to existing SDK embeds on their next refresh.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button type="button" onClick={cancelPolicyChanges} disabled={savingPolicy} style={smallBtnStyle(false, !savingPolicy)}>Cancel</button>
+            <button type="button" onClick={savePolicy} disabled={savingPolicy} style={smallBtnStyle(true, !savingPolicy)}>{savingPolicy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      ) : policyJustSaved && (
+        <p role="status" style={{ display: 'flex', alignItems: 'center', gap: 6, color: TEXT2, fontSize: 12.5, margin: '10px 0 0' }}>
+          <Check size={14} color={PINK} aria-hidden="true" /> Saved for this board
+        </p>
+      )}
       {policyError && <p role="alert" style={{ color: DANGER, fontSize: 12.5 }}>{policyError}</p>}
     </div>
   )

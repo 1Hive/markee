@@ -57,14 +57,14 @@ export async function GET(req: NextRequest) {
     const all = verifiedStored.map(it => {
       const observation = freshById.get(it.markee)
       if (!observation || observation.board !== it.board) throw new Error('Current queue message unavailable')
-      return observeMessage(it, { ...it, message: observation.message, blockNumber: observation.blockNumber ?? it.blockNumber, at: Math.floor(Date.now() / 1000) }, { flagged: { board: false, site: false }, preexisting: false }) ?? it
+      return observeMessage(it, { ...it, message: observation.message, name: observation.name ?? it.name, blockNumber: observation.blockNumber ?? it.blockNumber, at: Math.floor(Date.now() / 1000) }, { flagged: { board: false, site: false }, preexisting: false }) ?? it
     })
     for (const record of soft) {
       const observation = freshById.get(record.markee)
-      if (!observation || observation.board !== record.board || !scopesOf.has(observation.board) || contentHash(observation.message) !== record.contentHash) { softMap.delete(record.markee); continue }
+      if (!observation || observation.board !== record.board || !scopesOf.has(observation.board) || contentHash(observation.message) !== record.contentHash || (record.nameHash !== undefined && contentHash(observation.name ?? '') !== record.nameHash)) { softMap.delete(record.markee); continue }
       const existing = all.find(it => it.markee === record.markee)
-      if (existing) existing.message = observation.message
-      else all.push({ markee: record.markee, board: observation.board, message: observation.message, name: '', author: '', kind: 'created', previousMessage: null, blockNumber: '0', at: 0, reviews: { board: { status: 'approved', reviewedBy: null, reviewedAt: null }, site: { status: 'approved', reviewedBy: null, reviewedAt: null } } })
+      if (existing) { existing.message = observation.message; existing.name = observation.name ?? existing.name }
+      else all.push({ markee: record.markee, board: observation.board, message: observation.message, name: observation.name ?? '', author: '', kind: 'created', previousMessage: null, blockNumber: '0', at: 0, reviews: { board: { status: 'approved', reviewedBy: null, reviewedAt: null }, site: { status: 'approved', reviewedBy: null, reviewedAt: null } } })
     }
 
     const boardFlagged = new Set(flags.board)

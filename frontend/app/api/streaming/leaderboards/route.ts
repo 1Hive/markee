@@ -19,6 +19,7 @@ import { STREAMING_BASE } from '@/lib/superfluid/streaming'
 import { VERTICAL_PLATFORM, verticalFromPlatform, type Vertical } from '@/lib/strategy'
 import { StreamingLeaderboardFactoryABI, StreamingLeaderboardABI, MarkeeABI } from '@/lib/contracts/abis'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
+import { authorName } from '@/lib/moderation/author-name'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -159,7 +160,8 @@ async function loadListing(request: Request) {
       if (topMarkeeAddresses[i]) {
         const m = markeeResultBase[i]
         topMessage      = (markeeResults[m]?.result as string) || null
-        topMessageOwner = (markeeResults[m + 1]?.result as string) || null
+        // A name that looks like another wallet's address or ENS name is withheld (see authorName); the owner is not read here, so any address is.
+        topMessageOwner = authorName(markeeResults[m + 1]?.result as string) || null
       }
 
       const taggedPlatform = (platformResults[i]?.result as [string, string] | undefined)?.[0]

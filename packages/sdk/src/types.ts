@@ -32,6 +32,8 @@ export interface Entry {
   address: Address; owner: Address; message: string; name: string;
   score: string; totalFunds: string; aggregateRate: string; legacyFloor: string;
   moderation?: EntryModeration; moderated: boolean | null; views: number | null;
+  /** True when the API withheld `name` (sent as '') because it looked like another wallet's address or ENS name. Show the owner instead. */
+  nameWithheld?: boolean;
 }
 export interface WalletState {
   address: Address; eth: string; markee: string | null; ethx: string;

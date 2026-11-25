@@ -1,6 +1,8 @@
 import 'server-only'
 import { domainToASCII, domainToUnicode } from 'node:url'
-import { normalize } from 'viem/ens'
+import { ensTarget, FULL_ADDRESS, ruleText, SHORT_ADDRESS } from './author-name'
+
+export { ruleText }
 
 export interface RuleMatch { code: string; reason: string }
 export const RULE_REASONS = {
@@ -22,25 +24,14 @@ const REQUEST = /\b(?:send|share|provide|enter|paste|submit|type|dm|disclose|giv
 const PAYMENT = /\b(?:send|pay|transfer|deposit|donate)\b/gi
 const CRYPTO = /\b(?:eth|ether|ethereum|btc|bitcoin|usdc|usdt|crypto|tokens?)\b/i
 
-// Compare a copy only; original on-chain text and its hash remain untouched.
-export const ruleText = (text: string) => text.normalize('NFKC').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '').replace(/\s+/g, ' ')
 function negated(text: string, index: number) {
   return /(?:\bnever|\bnot|\bdon't|\bdo not|\bwill never ask you to|\bwill not ask you to)\s+(?:ever\s+)?$/i.test(text.slice(Math.max(0, index - 60), index))
 }
 function instruction(text: string, pattern: RegExp, target: (tail: string) => boolean) {
   return [...text.matchAll(pattern)].some(match => !negated(text, match.index!) && target(text.slice(match.index!, match.index! + 180)))
 }
-function ensTarget(text: string) {
-  // ENS permits names (including emoji) that are not ordinary DNS hostnames.
-  for (const match of text.matchAll(/(?:[\p{L}\p{N}\p{M}\p{Extended_Pictographic}\ufe0f\u200d_-]+\.)+eth\b/giu)) {
-    try { normalize(match[0]); return true } catch { /* Invalid names are not validated ENS targets. */ }
-  }
-  return false
-}
 function paymentTarget(text: string) {
-  return /\b0x[0-9a-f]{40}(?![0-9a-f])/i.test(text)
-    || /\b0x[0-9a-f]{4,38}(?:\.{2,3}|…)[0-9a-f]{4,38}(?![0-9a-f])/i.test(text)
-    || ensTarget(text)
+  return FULL_ADDRESS.test(text) || SHORT_ADDRESS.test(text) || ensTarget(text)
 }
 const CONFUSABLES: Record<string, string> = { 'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'у': 'y', 'х': 'x', 'і': 'i', 'ѕ': 's', 'ӏ': 'l', 'ο': 'o' }
 function brandLabel(label: string) {
@@ -99,7 +90,7 @@ export function checkSelectedRules(message: string, rules: { links: boolean; add
   if (rules.links && (/https?:\/\/|www\./i.test(text) || [...text.matchAll(DOMAIN)].some(m => !m[0].toLowerCase().endsWith('.eth')))) {
     matches.push({ code: 'LINK', reason: 'This message contains a link or domain, which this site does not allow.' })
   }
-  if (rules.addresses && (/\b0x[0-9a-f]{40}(?![0-9a-f])/i.test(text) || /\b0x[0-9a-f]{4,38}(?:\.{2,3}|…)[0-9a-f]{4,38}(?![0-9a-f])/i.test(text))) {
+  if (rules.addresses && (FULL_ADDRESS.test(text) || SHORT_ADDRESS.test(text))) {
     matches.push({ code: 'WALLET_ADDRESS', reason: 'This message contains a wallet or contract address, which this site does not allow.' })
   }
   if (rules.ens && ensTarget(text)) {

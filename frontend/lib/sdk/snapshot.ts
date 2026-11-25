@@ -1,5 +1,6 @@
 import type { ModerationSeverity } from '../moderation/severity';
 import { automaticDeps, autoEnabled, checkDraft, evaluateObservedBatch } from '../moderation/automatic';
+import { impersonatesWallet } from '../moderation/author-name';
 import { flagKey } from '../moderation/server';
 import { getAddress, parseAbi, zeroAddress, type Abi, type Address, type PublicClient } from 'viem';
 import type { CommunityState, Entry, Placement, Snapshot, WalletState } from '../../../packages/sdk/src/types';
@@ -213,7 +214,7 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
       result = { ...result, wallet: null, warnings: [...result.warnings,
         `Showing saved board data from ${new Date(cached.updatedAt).toISOString()}. Wallet balances and ranking may have changed. Payments require live chain access.`] };
       // Community permissions must be refreshed even for a stale display.
-      if (p.kind === 'board') return applyRetainedModeration(result, severity);
+      if (p.kind === 'board') return withholdImpersonatingNames(await applyRetainedModeration(result, severity));
     }
   } else {
     if (process.env.NODE_ENV === 'production') throw new SDKError('NOT_CONFIGURED', 'Snapshot storage is not configured.', 503);
@@ -236,7 +237,15 @@ export async function snapshot(p: Placement, account?: Address, offset?: number,
       result = { ...result, community: current };
     }
   }
-  return applySnapshotModeration(result, severity);
+  return withholdImpersonatingNames(await applySnapshotModeration(result, severity));
+}
+
+// A display name that could pass as another wallet (an ENS name, or an address that is not the owner's)
+// is withheld after moderation has judged it; clients show the owner, as for an unnamed Markee.
+export function withholdImpersonatingNames(result: Snapshot): Snapshot {
+  const withheld = (entry: Entry) => !!entry.name && impersonatesWallet(entry.name, entry.owner);
+  if (!result.entries.some(withheld)) return result;
+  return { ...result, entries: result.entries.map(entry => withheld(entry) ? { ...entry, name: '', nameWithheld: true } : entry) };
 }
 
 async function applyRetainedModeration(result: Snapshot, severity: ModerationSeverity): Promise<Snapshot> {
@@ -247,7 +256,7 @@ async function applyRetainedModeration(result: Snapshot, severity: ModerationSev
     const boardFlags = new Set(flags.board);
     result = { ...result, entries: result.entries.map(entry => {
       const manuallyFlagged = boardFlags.has(flagKey(entry.address));
-      const verdict = enabled ? checkDraft(entry.message, severity) : null;
+      const verdict = enabled ? checkDraft(entry.message, severity, entry.name ?? '') : null;
       const unavailable = verdict?.state === 'unavailable';
       return { ...entry, moderated: manuallyFlagged ? true : unavailable ? null : verdict?.state === 'soft-flagged',
         moderation: manuallyFlagged ? { state: 'manual-flagged' as const, contentHash: verdict?.contentHash || '', policyVersion: verdict?.policyVersion || '' }
@@ -269,7 +278,7 @@ export async function applySnapshotModeration(result: Snapshot, severity: Modera
   if (autoEnabled() && result.chainId === 8453 && result.board) {
     try {
       const flags = await automaticDeps.flags();
-      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, board: result.board! })), flags, severity);
+      const moderation = await evaluateObservedBatch(result.entries.map(entry => ({ markee: entry.address, message: entry.message, name: entry.name ?? '', board: result.board! })), flags, severity);
       result = { ...result, entries: result.entries.map((entry, i) => {
         const verdict = moderation[i];
         return { ...entry, moderation: verdict, moderated: verdict.state === 'unavailable' ? null : verdict.state !== 'visible' };
