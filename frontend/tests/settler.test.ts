@@ -18,7 +18,7 @@ function backer(n: number): Address {
 interface Call { functionName: string; address: Address; args?: unknown[] }
 interface Write { address: Address; args: [{ target: Address; callData: Hex }[]]; gas: bigint }
 
-function fakeChain(pending: Record<Address, Record<Address, bigint>>, opts: { gasPerBacker?: bigint; revertBoards?: Address[] } = {}) {
+function fakeChain(pending: Record<Address, Record<Address, bigint>>, opts: { gasPerBacker?: bigint; revertBoards?: Address[]; failInBatch?: Address[] } = {}) {
   const writes: Write[] = []
   const boards = Object.keys(pending) as Address[]
   const publicClient = {
@@ -46,7 +46,15 @@ function fakeChain(pending: Record<Address, Record<Address, bigint>>, opts: { ga
   const walletClient = {
     account: { address: keeper },
     async writeContract(args: unknown) {
-      writes.push(args as Write)
+      const write = args as Write
+      writes.push(write)
+      for (const call of write.args[0]) {
+        if (opts.failInBatch?.includes(call.target)) continue
+        for (const b of decodeFunctionData({ abi: [SETTLE], data: call.callData }).args[0]) {
+          const key = Object.keys(pending[call.target]).find(a => a.toLowerCase() === b.toLowerCase()) as Address
+          pending[call.target][key] = 0n
+        }
+      }
       return `0x${writes.length.toString(16).padStart(64, '0')}` as Hex
     },
   }
@@ -82,7 +90,7 @@ test('packs batches under the per-transaction gas cap', async () => {
   await runSettler({ publicClient, walletClient, factory, fetchBackers })
 
   assert.deepEqual(writes.map(w => w.args[0].length), [6, 4])
-  assert.ok(writes.every(w => w.gas <= 16_000_000n))
+  assert.ok(writes.every(w => w.gas <= 2n ** 24n))
 })
 
 test('splits a board with many backers into several settle calls', async () => {
@@ -112,4 +120,15 @@ test('dry run plans without estimating or signing', async () => {
 
   assert.equal(writes.length, 0)
   assert.deepEqual(report.actions.map(a => [a.status, a.detail]), [['planned', 'dry-run']])
+})
+
+test('a settle call that fails inside a mined batch is reported while the rest confirm', async () => {
+  const { publicClient, walletClient, fetchBackers, writes } = fakeChain(
+    { [boardA]: { [backer(1)]: ETHX }, [boardB]: { [backer(2)]: ETHX } },
+    { failInBatch: [boardA] },
+  )
+  const report = await runSettler({ publicClient, walletClient, factory, fetchBackers })
+
+  assert.equal(writes.length, 1)
+  assert.deepEqual(report.actions.map(a => [a.board, a.status]), [[boardA, 'error'], [boardB, 'confirmed']])
 })

@@ -36,9 +36,7 @@ export async function handleKeeperRoute(
     return NextResponse.json({ ok: true, skipped: 'streaming disabled' })
   }
 
-  // The factory lives on whatever chain NEXT_PUBLIC_BASE_RPC_URL points at (the same RPC the client
-  // streaming hooks read), so prefer it and fall back to Alchemy.
-  const rpc = process.env.NEXT_PUBLIC_BASE_RPC_URL || process.env.ALCHEMY_BASE_URL
+  const rpc = process.env.ALCHEMY_BASE_URL || process.env.NEXT_PUBLIC_BASE_RPC_URL
   if (!rpc) return NextResponse.json({ error: 'no rpc configured' }, { status: 500 })
 
   const key = process.env.KEEPER_PRIVATE_KEY

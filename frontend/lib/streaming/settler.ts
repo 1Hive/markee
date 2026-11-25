@@ -18,9 +18,9 @@ const PENDING_READ_CHUNK = 300
 // Each backer adds ~0.7M gas on top of a ~1.9M base (the RevNet pay), so 8 keeps one settle near 7M.
 const BACKERS_PER_SETTLE = 8
 // Base caps a transaction at 2^24 gas (EIP-7825). Estimates are packed up to this budget and the batch
-// is sent with 30% headroom, which nested RevNet calls need because each CALL forwards only 63/64.
+// is sent with 30% headroom (still under the cap), which nested RevNet calls need because each CALL
+// forwards only 63/64.
 const BATCH_GAS_BUDGET = 12_000_000n
-const TX_GAS_CAP = 16_000_000n
 
 export interface SettleAction {
   board: Address
@@ -138,23 +138,23 @@ export async function runSettler(p: RunSettlerParams): Promise<SettlerReport> {
 
   for (const batch of batches) {
     const sum = batch.reduce((g, item) => g + item.gas, 0n)
-    const gas = sum * 13n / 10n + 100_000n
     try {
       const hash = await p.walletClient.writeContract({
         address: MULTICALL3,
         abi: [MULTICALL3_AGGREGATE3],
         functionName: 'aggregate3',
-        args: [batch.map(item => ({ target: item.action.board, allowFailure: false, callData: item.data }))],
-        gas: gas > TX_GAS_CAP ? TX_GAS_CAP : gas,
+        args: [batch.map(item => ({ target: item.action.board, allowFailure: true, callData: item.data }))],
+        gas: sum * 13n / 10n + 100_000n,
         chain: p.walletClient.chain,
       })
       const receipt = await p.publicClient.waitForTransactionReceipt({ hash })
-      const status = receipt.status === 'success' ? 'confirmed' : 'error'
+      const settled = receipt.status === 'success' ? await settledActions(p.publicClient, batch.map(item => item.action)) : new Set()
       for (const { action } of batch) {
         action.txHash = hash
-        action.status = status
+        action.status = settled.has(action) ? 'confirmed' : 'error'
+        if (action.status === 'error') action.detail = receipt.status === 'success' ? 'settle call failed inside the batch' : 'batch reverted'
       }
-      log(`settled ${batch.length} board call(s) in ${hash} → ${status}`)
+      log(`settled ${settled.size}/${batch.length} board call(s) in ${hash}`)
     } catch (e) {
       for (const { action } of batch) {
         action.status = 'error'
@@ -165,4 +165,24 @@ export async function runSettler(p: RunSettlerParams): Promise<SettlerReport> {
   }
 
   return report
+}
+
+// A batch call that reverted leaves its backers' shares in place, so an action counts as settled only
+// once every one of its backers is owed less than before the batch.
+async function settledActions(client: SettlerPublicClient, actions: SettleAction[]): Promise<Set<SettleAction>> {
+  const owedBefore = new Map(actions.map(a => [a, a.amount]))
+  const reads = (await client.multicall({
+    allowFailure: true,
+    contracts: actions.flatMap(a => a.backers.map(backer => ({
+      address: a.board, abi: [BOARD_PENDING_SETTLEMENT], functionName: 'pendingSettlement', args: [backer],
+    }))),
+  })) as PendingRead[]
+  const settled = new Set<SettleAction>()
+  let i = 0
+  for (const action of actions) {
+    const after = action.backers.map(() => reads[i++])
+    const remaining = after.reduce((sum, r) => sum + (r.status === 'success' ? (r.result as bigint) : owedBefore.get(action)!), 0n)
+    if (after.every(r => r.status === 'success') && remaining < owedBefore.get(action)!) settled.add(action)
+  }
+  return settled
 }
