@@ -2,7 +2,7 @@
 //
 // 1. Removes webhook.site pages that were attached as "verified sites" through the SDK's
 //    sites/verify endpoint before it refused shared-content hosts.
-// 2. Writes the hardcoded partner sites (PARTNER_META in app/api/openinternet/leaderboards/route.ts)
+// 2. Writes the partner sites that were hardcoded in app/api/openinternet/leaderboards/route.ts
 //    into the partner boards' v1.4 oi:meta, so every reader agrees with the listing.
 //
 // Dry run by default; pass --apply to write. Needs KV_REST_API_URL and KV_REST_API_TOKEN for the

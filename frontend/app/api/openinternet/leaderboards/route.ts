@@ -38,42 +38,6 @@ const NO_CACHE = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-// ─── Hardcoded partner meta ───────────────────────────────────────────────────
-// Fallback for the partner boards whose sites predate KV meta. Their sites now live in oi:meta like
-// every other board's (scripts/cleanup-shared-host-sites.mjs), so KV wins whenever it lists sites.
-// Every other reader (integrations, verification status, the SDK) only reads KV; once production
-// KV holds these sites, this block can be deleted.
-
-const PARTNER_META: Record<string, {
-  logoUrl: string | null
-  siteUrl: string
-  verifiedUrl: string
-  verifiedUrls: string[]
-  status: 'verified'
-}> = {
-  '0x0590b56430426a38d0fa065b839c10d542e75ccd': { // Markee Cooperative (v1.3)
-    logoUrl: '/markee-logo.png',
-    siteUrl: 'https://markee.xyz',
-    verifiedUrl: 'https://markee.xyz',
-    verifiedUrls: ['https://markee.xyz'],
-    status: 'verified',
-  },
-  '0x2768bc6e90266248bd8bcf5401c36d8049cdf671': { // Gardens (v1.3)
-    logoUrl: '/partners/gardens.png',
-    siteUrl: 'https://app.gardens.fund',
-    verifiedUrl: 'https://app.gardens.fund',
-    verifiedUrls: ['https://app.gardens.fund'],
-    status: 'verified',
-  },
-  '0xdf4769a9593cb8e40d0409def2645651412a8a97': { // Clawchemy (v1.3)
-    logoUrl: '/partners/clawchemy.png',
-    siteUrl: 'https://clawchemy.xyz',
-    verifiedUrl: 'https://clawchemy.xyz',
-    verifiedUrls: ['https://clawchemy.xyz'],
-    status: 'verified',
-  },
-}
-
 // ─── Client ───────────────────────────────────────────────────────────────────
 
 function getClient() {
@@ -184,9 +148,7 @@ async function loadListing(request: Request) {
         markeeCallIndex += 3
       }
 
-      const kvMeta = kvMetas[i]
-      const partnerMeta = PARTNER_META[originalBoard(addr, predecessorOf).toLowerCase()]
-      const meta = partnerMeta && !(kvMeta?.verifiedUrls?.length || kvMeta?.verifiedUrl) ? partnerMeta : kvMeta
+      const meta = kvMetas[i]
       const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,

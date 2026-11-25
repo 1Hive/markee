@@ -344,7 +344,7 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite, onGitH
     if (ghRefresh.status !== 'success') return
     const t = setTimeout(() => setGhRefresh({ status: 'idle' }), 8000)
     return () => clearTimeout(t)
-  }, [ghRefresh])
+  }, [ghRefresh.status])
   const ref = useRef<HTMLDivElement>(null)
   // Rendered through a portal (see below) so the dropdown isn't clipped by the hero section's
   // overflow:hidden (needed there for the scanline/background effect) -- position computed from the

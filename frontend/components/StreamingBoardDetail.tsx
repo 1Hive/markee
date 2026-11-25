@@ -190,6 +190,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       .catch(() => {})
   }, [topAddress, topMessage])
 
+  // A GitHub refresh in Served on credits repo traffic to the top message.
+  const handleGitHubRefreshed = useCallback((views?: number) => {
+    if (views !== undefined && topAddress) setViewsMap(m => new Map(m).set(topAddress.toLowerCase(), views))
+  }, [topAddress])
+
   const topMarkee = enforcedTopMarkee ?? null
   const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
   // "Total views" in the metrics bar is every message on this board, not just the current top one.
@@ -272,7 +277,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               totalNode={totalStreamedNode}
               messagesLabel="Messages"
               onAddToSite={() => setEmbedOpen(true)}
-              onGitHubRefreshed={views => { if (views !== undefined && topAddress) setViewsMap(m => new Map(m).set(topAddress.toLowerCase(), views)) }}
+              onGitHubRefreshed={handleGitHubRefreshed}
             />
           </section>
 
