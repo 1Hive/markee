@@ -68,15 +68,36 @@ export function sdkVersionsForVerifiedUrls(
   return result;
 }
 
-export async function readSdkVersionsForBoards(verifiedUrlsByBoard: Record<string, string[]>) {
+/** Unmarked snapshot requests prove SDK API use, not use of the npm package. */
+export function unmarkedApiCallsForVerifiedUrls(
+  fields: Record<string, string | number> | null,
+  verifiedUrls: string[],
+): Record<string, { lastSeen: number }> {
+  const verifiedHosts = new Set(verifiedUrls.map(normalizeHost).filter((host): host is string => !!host));
+  const result: Record<string, { lastSeen: number }> = {};
+  for (const [field, rawTime] of Object.entries(fields ?? {})) {
+    if (!field.startsWith('unattributed|')) continue;
+    const host = normalizeHost(field.slice('unattributed|'.length));
+    const lastSeen = Number(rawTime);
+    if (!host || !verifiedHosts.has(host) || !Number.isFinite(lastSeen) || lastSeen <= 0) continue;
+    if (!result[host] || result[host].lastSeen < lastSeen) result[host] = { lastSeen };
+  }
+  return result;
+}
+
+export async function readClientEvidenceForBoards(verifiedUrlsByBoard: Record<string, string[]>) {
   const boards = Object.keys(verifiedUrlsByBoard).filter(board => verifiedUrlsByBoard[board].length > 0);
-  const result: Record<string, Record<string, { version: string; lastSeen: number }>> = {};
+  const sdk: Record<string, Record<string, { version: string; lastSeen: number }>> = {};
+  const apiObserved: Record<string, Record<string, { lastSeen: number }>> = {};
   for (let i = 0; i < boards.length; i += 50) {
     const chunk = boards.slice(i, i + 50);
     const pipeline = kv.pipeline();
     for (const board of chunk) pipeline.hgetall(`sdk:client-observations:v1:8453:${board}`);
     const fields = await pipeline.exec<(Record<string, string | number> | null)[]>();
-    chunk.forEach((board, j) => { result[board] = sdkVersionsForVerifiedUrls(fields[j], verifiedUrlsByBoard[board]); });
+    chunk.forEach((board, j) => {
+      sdk[board] = sdkVersionsForVerifiedUrls(fields[j], verifiedUrlsByBoard[board]);
+      apiObserved[board] = unmarkedApiCallsForVerifiedUrls(fields[j], verifiedUrlsByBoard[board]);
+    });
   }
-  return result;
+  return { sdk, apiObserved };
 }
