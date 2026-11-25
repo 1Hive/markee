@@ -6,7 +6,7 @@ import { Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
-import { impersonatesWallet } from '@/lib/moderation/author-name'
+import { ensTarget, impersonatesWallet, ruleText } from '@/lib/moderation/author-name'
 import { MONO, PINK, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG } from '@/lib/design-tokens'
 import { type QueueAction, type ModerationItem, type QueueBoard, type VisibleMessage } from '@/lib/moderation/queue'
 import { AttnGroup, Pager, PanelHead, SegToggle, WalletPending, fmtAddr, isUserRejection } from '@/components/account/primitives'
@@ -19,13 +19,19 @@ const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8,
 // Opens the message's board page, where it shows on the Markee sign. It stretches over its row
 // (.row-link), so the whole row opens the page while the row's buttons keep their own clicks.
 // Moderators see the raw display name. One that looks like another wallet's address or ENS name is
-// withheld everywhere else (the owner's address shows instead), so the queue says so.
+// withheld everywhere else (the owner's address shows instead), so the queue says so. A row with no
+// known owner (from the soft-flag index) can't tell the owner's own address from another, so an
+// address there is only marked as possibly withheld.
 function QueueName({ name, author }: { name: string; author: string }) {
   if (!name) return null
+  const withheld = author ? impersonatesWallet(name, author) : ensTarget(ruleText(name))
+  const maybe = !withheld && !author && impersonatesWallet(name)
+  const note = { color: MUTED, fontWeight: 400, fontSize: 12 }
   return (
     <span style={{ color: TEXT2 }}>
       {' - '}{name}
-      {impersonatesWallet(name, author) && <span style={{ color: MUTED, fontWeight: 400, fontSize: 12 }} title="This name looks like a wallet address or ENS name, so signs show the owner's address instead."> (withheld from display)</span>}
+      {withheld && <span style={note} title="This name looks like a wallet address or ENS name, so signs show the owner's address instead."> (withheld from display)</span>}
+      {maybe && <span style={note} title="Signs show this name only if the address in it is the owner's own; otherwise they show the owner's address."> (withheld unless it is the owner&apos;s address)</span>}
     </span>
   )
 }

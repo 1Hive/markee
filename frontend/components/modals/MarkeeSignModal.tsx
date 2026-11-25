@@ -350,7 +350,8 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
   const [target, setTarget] = useState<LeaderboardMarkee | null>(null)
   const [message, setMessage] = useState('')
   const [name, setName] = useState('')
-  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: view !== 'edit', name })
+  // An edit keeps the Markee's display name, so it is judged with that name, as the published check will.
+  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: view !== 'edit', name: view === 'edit' ? target?.name ?? '' : name })
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)

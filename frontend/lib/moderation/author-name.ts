@@ -3,7 +3,7 @@ import { normalize } from 'viem/ens'
 // Shared by the server rules and the browser, so it must stay free of server-only imports.
 
 // Compare a copy only; original on-chain text and its hash remain untouched.
-export const ruleText = (text: string) => text.normalize('NFKC').replace(/[​-‏‪-‮⁠-⁯﻿]/g, '').replace(/\s+/g, ' ')
+export const ruleText = (text: string) => text.normalize('NFKC').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '').replace(/\s+/g, ' ')
 
 export const FULL_ADDRESS = /\b0x[0-9a-f]{40}(?![0-9a-f])/i
 // The shortened form signs display (0x1234…abcd), the most convincing one to fake.
@@ -11,7 +11,7 @@ export const SHORT_ADDRESS = /\b0x[0-9a-f]{4,38}(?:\.{2,3}|…)[0-9a-f]{4,38}(?!
 
 export function ensTarget(text: string) {
   // ENS permits names (including emoji) that are not ordinary DNS hostnames.
-  for (const match of text.matchAll(/(?:[\p{L}\p{N}\p{M}\p{Extended_Pictographic}️‍_-]+\.)+eth\b/giu)) {
+  for (const match of text.matchAll(/(?:[\p{L}\p{N}\p{M}\p{Extended_Pictographic}\ufe0f\u200d_-]+\.)+eth\b/giu)) {
     try { normalize(match[0]); return true } catch { /* Invalid names are not validated ENS targets. */ }
   }
   return false

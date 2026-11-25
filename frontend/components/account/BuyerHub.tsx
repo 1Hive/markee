@@ -361,7 +361,7 @@ function InlineEdit({ m, onDone, onCancel }: { m: MyMessage; onDone: () => void;
   const [hash, setHash] = useState<Hex | undefined>()
   const { isLoading: confirming, isSuccess, isError: reverted, error: receiptError } = useTrackedReceipt({ marksListings: true, hash, chainId: CANONICAL_CHAIN.id })
   const [draft, setDraft] = useState(m.message)
-  const messageModeration = useMessageModeration(draft.trim(), true, { checkWhileTyping: false })
+  const messageModeration = useMessageModeration(draft.trim(), true, { checkWhileTyping: false, name: m.name })
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
   const wrongChain = !!chain && chain.id !== CANONICAL_CHAIN.id

@@ -578,7 +578,8 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   // call StreamingBoardDetail's StreamMessageEditModal makes (Markee.setMessage is board-only).
   const [editingMessage, setEditingMessage] = useState(false)
   const [editMessageText, setEditMessageText] = useState('')
-  const editModeration = useMessageModeration(editMessageText, isOpen, { checkWhileTyping: false })
+  // The Markee keeps its display name, so the edit is judged with it, as the published check will.
+  const editModeration = useMessageModeration(editMessageText, isOpen, { checkWhileTyping: false, name: target?.name ?? '' })
   const [editMessageError, setEditMessageError] = useState<string | null>(null)
   const { writeContractAsync: writeEditMessage, isPending: editMessagePending } = useSponsoredWriteContract()
   const [editMessageTxHash, setEditMessageTxHash] = useState<Hex | undefined>(undefined)

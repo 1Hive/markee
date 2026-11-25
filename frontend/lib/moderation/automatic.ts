@@ -47,11 +47,13 @@ export const automaticDeps = {
       { address: id as Address, abi, functionName: 'pricingStrategy' as const },
       { address: id as Address, abi, functionName: 'name' as const },
     ]) })
-    // The name is judged with the message, so a failed name read leaves no verdict rather than a partial one.
+    // A failed name read is judged as an empty name, so the message is still moderated; the verdict's
+    // nameHash then covers '' and a surface that did read a name waits for the next check.
     const observations = ids.flatMap((markee, i) => {
-      const message = reads[i * 3], board = reads[i * 3 + 1], name = reads[i * 3 + 2]
-      if (message.status !== 'success' || board.status !== 'success' || name.status !== 'success' || typeof message.result !== 'string' || typeof board.result !== 'string' || typeof name.result !== 'string') return []
-      return [{ markee: markee.toLowerCase(), message: message.result, name: name.result, board: board.result.toLowerCase(), blockNumber: blockNumber.toString() }]
+      const message = reads[i * 3], board = reads[i * 3 + 1], read = reads[i * 3 + 2]
+      if (message.status !== 'success' || board.status !== 'success' || typeof message.result !== 'string' || typeof board.result !== 'string') return []
+      const name = read.status === 'success' && typeof read.result === 'string' ? read.result : ''
+      return [{ markee: markee.toLowerCase(), message: message.result, name, board: board.result.toLowerCase(), blockNumber: blockNumber.toString() }]
     })
     const members = await automaticDeps.membership(observations, client, blockNumber)
     return observations.filter((_, i) => members[i] === true)

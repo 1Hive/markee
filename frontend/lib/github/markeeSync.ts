@@ -230,7 +230,11 @@ export class ModerationUnavailableError extends Error {
 async function moderationHides(topMarkee: string, message: string): Promise<boolean> {
   // Imported here so this module stays loadable outside the server (the footer tests import it).
   const { moderateEmbed } = await import('@/lib/moderation/embed')
-  const result = await moderateEmbed({ topMarkeeAddress: topMarkee, message, name: '', flagged: false })
+  // The verdict judges the display name too, so it is checked against the live name even though a
+  // README never shows it. A Markee whose name can't be read is judged with an empty name, as it is by
+  // the moderation scan.
+  const name = await client.readContract({ address: topMarkee as `0x${string}`, abi: MARKEE_ABI, functionName: 'name' }).catch(() => '')
+  const result = await moderateEmbed({ topMarkeeAddress: topMarkee, message, name, flagged: false })
   if ('moderationUnavailable' in result && result.moderationUnavailable) throw new ModerationUnavailableError()
   return result.flagged
 }
