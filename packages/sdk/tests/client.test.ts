@@ -91,7 +91,7 @@ test('site registration sends placement and URL once without wallet or credentia
   const placement = { kind: 'board' as const, chainId: 8453, address: other };
   const client = new MarkeeClient({ siteUrl: 'https://app.example', fetch: async (url, init) => {
     calls++;
-    assert.ok(String(url).endsWith('/sites/verify'));
+    assert.equal(new URL(String(url)).pathname, '/api/sdk/v1/sites/verify');
     assert.equal(init?.credentials, 'omit');
     assert.deepEqual(JSON.parse(String(init?.body)), { placement, siteUrl: 'https://app.example' });
     return Response.json({ verified: true, url: 'https://app.example/' });
@@ -100,6 +100,19 @@ test('site registration sends placement and URL once without wallet or credentia
   client.registerSite(placement);
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(calls, 1);
+});
+
+test('snapshot and preparation identify the SDK version without changing the v1 body or recovery URLs', async () => {
+  const urls: URL[] = [];
+  const client = new MarkeeClient({ wallet: { getProvider: async () => ({ request: async () => [account] }) }, fetch: async url => {
+    urls.push(new URL(String(url)));
+    return Response.json({});
+  } });
+  await client.snapshot(preparation().placement);
+  await client.prepare(preparation().placement, { kind: 'edit-message', markee: other, message: 'hello' });
+  await client.verifySite(preparation().placement, 'https://example.org');
+  assert.deepEqual(urls.map(url => url.searchParams.get('client')), ['markee-sdk@0.1.0-beta.17', 'markee-sdk@0.1.0-beta.17', null]);
+  assert.equal(urls[0].searchParams.has('placement'), true);
 });
 
 test('admin acceptance is bound to the community and cannot be sent twice while pending', async () => {

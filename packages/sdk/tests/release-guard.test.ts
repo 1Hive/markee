@@ -4,6 +4,12 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { SDK_VERSION } from '../src/version';
+
+test('SDK request marker matches the package release version', async () => {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(SDK_VERSION, pkg.version);
+});
 
 test('stable publication rejects staging while prerelease overrides remain possible', async t => {
   const root = await mkdtemp(join(tmpdir(), 'markee-release-guard-'));

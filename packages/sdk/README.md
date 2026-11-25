@@ -6,6 +6,10 @@ Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent 
 
 The package also includes a standalone **Markee sign button**. It shows the board's current winner, follows Markee's moderation decisions, and opens the payment modal when clicked.
 
+### Beta.17 integration diagnostics
+
+SDK snapshot and preparation requests identify themselves as `markee-sdk@0.1.0-beta.17` to Markee's API. This is a self-reported diagnostic marker, not authentication or proof that a website has been verified. The API retains bounded, board-level observations of the SDK version and requesting origin host; it does not record a wallet, IP, or page path for this purpose. Older SDKs and custom clients without a marker remain indistinguishable. Existing `/api/sdk/v1` request bodies, responses, transaction recovery, and wallet behavior are unchanged.
+
 ### Beta.16 migration note
 
 `CommunityState.integration.status` now also includes `pending_admin` and `disabled`. TypeScript consumers with exhaustive status switches must handle these two states when upgrading from beta.15. Existing `placement` integrations continue to work; `multiBoard` is optional, and platform activation remains disabled unless Markee enables the registered platform on its API.

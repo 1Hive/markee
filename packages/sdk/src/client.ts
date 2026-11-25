@@ -1,4 +1,5 @@
 import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
+import { SDK_VERSION } from './version.js';
 import { errorMessage } from './errors.js';
 import type { MessageCheck, Action, ModerationOptions, ModerationSeverity, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
@@ -70,7 +71,12 @@ export class MarkeeClient {
     this.fetcher = options.fetch || globalThis.fetch.bind(globalThis);
   }
   async request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-    const response = await this.fetcher(`${this.apiUrl}/${path}`, {
+    // Mark board reads and new preparations, not recovery requests tied to an
+    // older API origin. The query is ignored by older v1 servers and avoids a
+    // CORS preflight on public snapshots. It is not an authentication claim.
+    const url = new URL(`${this.apiUrl}/${path}`);
+    if (path === 'snapshot' || path.startsWith('snapshot?') || path === 'prepare') url.searchParams.set('client', `markee-sdk@${SDK_VERSION}`);
+    const response = await this.fetcher(url.href, {
       method: body === undefined ? 'GET' : 'POST', body: body === undefined ? undefined : JSON.stringify(body),
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       credentials: 'omit', signal: signal || AbortSignal.timeout(55_000),
