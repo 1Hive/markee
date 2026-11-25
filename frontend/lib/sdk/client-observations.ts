@@ -1,5 +1,6 @@
 import { kv } from '@vercel/kv';
 import type { Address } from 'viem';
+import { normalizeHost } from '@/lib/views/host';
 
 const WINDOW_MS = 30 * 60_000;
 const RETENTION_SECONDS = 90 * 86400;
@@ -47,3 +48,28 @@ export async function observeSdkClient(board: Address | null, marker: string | n
 }
 
 export function clearClientObservationsForTests() { recent.clear(); }
+
+/** Positive, self-reported SDK evidence for verified website hosts only. */
+export function sdkVersionsForVerifiedUrls(
+  fields: Record<string, string | number> | null,
+  verifiedUrls: string[],
+): Record<string, { version: string; lastSeen: number }> {
+  const verifiedHosts = new Set(verifiedUrls.map(normalizeHost).filter((host): host is string => !!host));
+  const result: Record<string, { version: string; lastSeen: number }> = {};
+  for (const [field, rawTime] of Object.entries(fields ?? {})) {
+    const separator = field.indexOf('|');
+    if (separator < 0) continue;
+    const label = field.slice(0, separator);
+    const host = normalizeHost(field.slice(separator + 1));
+    const lastSeen = Number(rawTime);
+    if (clientLabel(label) !== label || label === 'unattributed' || !host || !verifiedHosts.has(host) || !Number.isFinite(lastSeen) || lastSeen <= 0) continue;
+    if (!result[host] || result[host].lastSeen < lastSeen) result[host] = { version: label.slice('markee-sdk@'.length), lastSeen };
+  }
+  return result;
+}
+
+export async function readSdkVersionsForVerifiedUrls(board: Address, verifiedUrls: string[]) {
+  if (verifiedUrls.length === 0) return {};
+  const fields = await kv.hgetall<Record<string, string | number>>(`sdk:client-observations:v1:8453:${board.toLowerCase()}`);
+  return sdkVersionsForVerifiedUrls(fields, verifiedUrls);
+}
