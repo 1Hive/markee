@@ -5,8 +5,8 @@ import { parseAction, placement, assertTextLength } from '../lib/sdk/validation'
 import { paymentRoutingForReview, signEnvelope, verifyEnvelope } from '../lib/sdk/transactions';
 import { lifiStatus } from '../lib/sdk/bridge';
 import { buildMarkeeOpenStreamOperations, getMarkeeStreamAmounts, getMarkeeAutoFunding } from '../lib/sdk/gardens/streaming';
-import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests, reserveMarkeeActivation, MarkeeChallengeRateLimitError } from '../lib/sdk/gardens/challenge-store';
-import { executeAdmin, operationStatus } from '../lib/sdk/operations';
+import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests, reserveMarkeeActivation, finalizeMarkeeActivation, MarkeeChallengeRateLimitError } from '../lib/sdk/gardens/challenge-store';
+import { executeAdmin, operationStatus, recordAdminBroadcast } from '../lib/sdk/operations';
 import { NextRequest } from 'next/server';
 import { GET, POST, OPTIONS } from '../app/api/sdk/v1/[...path]/route';
 import { publicDataProxyEnabled, readPresentationData, recordPublicView } from '../lib/sdk/presentation-data';
@@ -111,6 +111,54 @@ test('community activations stop at each daily limit without counting refused re
   await assert.rejects(reserve('a'), MarkeeChallengeRateLimitError);
   await reserve('b');
   await assert.rejects(reserve('c'), MarkeeChallengeRateLimitError);
+});
+test('only deployed boards consume quota; pending slots and reverted receipts settle idempotently', async () => {
+  const reserve = () => reserveMarkeeActivation({ namespace: 'receipt-quota', limits: [{ subject: 'global', max: 2 }] });
+  const first = await reserve();
+  const second = await reserve();
+  await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+  await finalizeMarkeeActivation(first, false);
+  await finalizeMarkeeActivation(first, false);
+  const third = await reserve();
+  await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+  await finalizeMarkeeActivation(second, true);
+  await finalizeMarkeeActivation(second, true);
+  await finalizeMarkeeActivation(second, false); // A settled receipt cannot be undone.
+  await finalizeMarkeeActivation(third, false);
+  const fourth = await reserve(); // One deployed board plus one pending slot.
+  await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+  await finalizeMarkeeActivation(fourth, false);
+  const fifth = await reserve();
+  await finalizeMarkeeActivation(fifth, true);
+  await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+});
+test('submitted activation recovery counts a successful receipt once, releases a revert, and hides reservation metadata', async (t) => {
+  let receiptStatus: 'success' | 'reverted' | 'pending' = 'pending';
+  t.mock.method(getEnvPublicClient(8453), 'getTransactionReceipt', async () => {
+    if (receiptStatus === 'pending') throw Object.assign(new Error('not mined'), { name: 'TransactionReceiptNotFoundError' });
+    return { status: receiptStatus };
+  });
+  for (const outcome of ['success', 'reverted'] as const) {
+    const reserve = () => reserveMarkeeActivation({ namespace: `recover-${outcome}`, limits: [{ subject: 'global', max: 1 }] });
+    const reservation = await reserve();
+    receiptStatus = 'pending';
+    const body = { nonce: outcome === 'success' ? '99001' : '99002', signature: '0x1234' };
+    const response = await executeAdmin('quota-recovery-test', new Request('http://localhost/admin'), body, async () => {
+      await recordAdminBroadcast({ transactionHash: `0x${'a'.repeat(64)}`, markeeChainId: 8453 }, reservation);
+      return Response.json({ error: 'Receipt timed out' }, { status: 502 });
+    });
+    const pending = await response.json();
+    assert.equal(pending.status, 'submitted');
+    assert.equal(JSON.stringify(pending).includes(reservation), false);
+    await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+    receiptStatus = outcome;
+    const settled = await operationStatus(pending.id);
+    assert.equal(settled.status, outcome === 'success' ? 'complete' : 'failed');
+    assert.equal(JSON.stringify(settled).includes(reservation), false);
+    await operationStatus(pending.id);
+    if (outcome === 'success') await assert.rejects(reserve(), MarkeeChallengeRateLimitError);
+    else await finalizeMarkeeActivation(await reserve(), false);
+  }
 });
 test('activation preflight failures leave the allowance intact and a full allowance prevents broadcasting', async (t) => {
   const names = ['MARKEE_GARDENS_KEEPER_PRIVATE_KEY', 'MARKEE_ROUTER_ADDRESS_BASE', 'MARKEE_STREAMING_LEADERBOARD_FACTORY_ADDRESS_BASE'];

@@ -5,10 +5,13 @@ import { type Hex } from 'viem';
 import { getEnvPublicClient } from './chains';
 import { SDKError } from './validation';
 import { invalidateVerifiedDisplay } from './cached-display';
+import { finalizeMarkeeActivation } from './gardens/challenge-store';
 
 interface Operation {
   id: string; status: 'working' | 'submitted' | 'complete' | 'failed';
   result?: Record<string, unknown>; error?: string; createdAt: number;
+  /** Server-only quota receipt metadata; never returned to SDK consumers. */
+  activationReservation?: string;
 }
 const memory = new Map<string, { value: unknown; expires: number }>();
 function durable() {
@@ -31,11 +34,11 @@ async function set(key: string, value: unknown, nx = false, ttl = 86400): Promis
 const key = (id: string) => `sdk:v1:operation:${id}`;
 const context = new AsyncLocalStorage<string>();
 /** Save the broadcast hash before waiting for a receipt, so network timeouts are recoverable. */
-export async function recordAdminBroadcast(result: Record<string, unknown>) {
+export async function recordAdminBroadcast(result: Record<string, unknown>, activationReservation?: string) {
   const id = context.getStore();
   if (!id) return;
   const old = await get<Operation>(key(id));
-  if (old) await set(key(id), { ...old, status: 'submitted', result });
+  if (old) await set(key(id), { ...old, status: 'submitted', result, ...(activationReservation ? { activationReservation } : {}) });
 }
 export async function operationStatus(id: string): Promise<Operation> {
   if (!/^[\da-f]{64}$/.test(id)) throw new SDKError('INVALID_OPERATION', 'Invalid operation identifier.');
@@ -44,6 +47,7 @@ export async function operationStatus(id: string): Promise<Operation> {
   if (op.status === 'submitted' && op.result) {
     try {
       const receipt = await getEnvPublicClient(Number(op.result.markeeChainId)).getTransactionReceipt({ hash: op.result.transactionHash as Hex });
+      if (op.activationReservation) await finalizeMarkeeActivation(op.activationReservation, receipt.status === 'success');
       op.status = receipt.status === 'success' ? 'complete' : 'failed';
       if (op.status === 'failed') op.error = 'The community transaction reverted.';
       await set(key(id), op);
@@ -53,7 +57,8 @@ export async function operationStatus(id: string): Promise<Operation> {
   if (op.status === 'complete' && typeof op.result?.transactionHash === 'string') {
     await invalidateVerifiedDisplay(Number(op.result.markeeChainId || 8453), op.result.transactionHash);
   }
-  return op;
+  const { activationReservation: _internalReservation, ...publicOperation } = op;
+  return publicOperation;
 }
 export async function executeAdmin(kind: string, request: Request, body: { nonce: string; signature: string }, handler: (request: Request) => Promise<Response>) {
   const id = createHash('sha256').update(`${kind}:${body.nonce}:${body.signature}`).digest('hex');
