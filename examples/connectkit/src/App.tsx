@@ -38,7 +38,7 @@ export function App() {
   const [signTheme, setSignTheme] = useState<ThemeName>('charcoal');
   const [hoverEnabled, setHoverEnabled] = useState(true);
   const [modalTheme, setModalTheme] = useState<ThemeName>('light');
-  const [rent, setRent] = useState(import.meta.env.VITE_RENT_BOARD || '0xAce1e0dfD123525B1270a69CF9b1C5b6F850f1e6');
+  const [rent, setRent] = useState(import.meta.env.VITE_RENT_BOARD || '0x76E71a2659e814f164a05f8FBd9F9c577A7401ac');
   const [community, setCommunity] = useState(import.meta.env.VITE_COMMUNITY_ADDRESS || '');
   const [chainId, setChainId] = useState(Number(import.meta.env.VITE_COMMUNITY_CHAIN_ID || 100));
   const [platformId, setPlatformId] = useState<'gardens' | 'giveth'>('gardens');
