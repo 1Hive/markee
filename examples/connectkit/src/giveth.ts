@@ -1,4 +1,4 @@
-const GIVETH_GRAPHQL_URL = 'https://mainnet.serve.giveth.io/graphql';
+const MARKEE_API = 'https://www.markee.xyz/api/sdk/v1';
 
 export function givethProjectIdentifier(input: string): { kind: 'id' | 'slug'; value: string } | null {
   let value = input.trim();
@@ -14,26 +14,18 @@ export function givethProjectIdentifier(input: string): { kind: 'id' | 'slug'; v
   }
   if (/^\d+$/.test(value) && value.length <= 200) {
     const id = BigInt(value);
-    return id > 0n ? { kind: 'id', value: id.toString() } : null;
+    return id > 0n && id <= BigInt(Number.MAX_SAFE_INTEGER) ? { kind: 'id', value: id.toString() } : null;
   }
   return value.length <= 200 && !/[\s/?#]/.test(value) ? { kind: 'slug', value } : null;
 }
 
-export async function resolveGivethProjectSlug(slug: string, signal: AbortSignal): Promise<{ id: string; title: string }> {
-  const response = await fetch(GIVETH_GRAPHQL_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      query: 'query ResolveProject($slug: String!) { projectBySlug(slug: $slug) { id title } }',
-      variables: { slug },
-    }),
-    signal,
-  });
+export async function resolveGivethProjectSlug(slug: string, signal: AbortSignal, apiUrl = MARKEE_API): Promise<{ id: string; title: string }> {
+  const url = new URL(`${apiUrl.replace(/\/$/, '')}/platform/giveth/resolve`);
+  url.searchParams.set('slug', slug);
+  const response = await fetch(url, { signal });
   if (!response.ok) throw new Error('Giveth lookup is unavailable.');
-  const result = await response.json() as { data?: { projectBySlug?: { id?: string | number; title?: string } | null }; errors?: unknown[] };
-  const project = result.data?.projectBySlug;
-  if (result.errors?.length || !project) throw new Error('No Giveth project found for this slug.');
+  const project = await response.json() as { id?: string | number; title?: string };
   const id = String(project.id ?? '');
-  if (!/^\d+$/.test(id) || BigInt(id) === 0n) throw new Error('Giveth returned an invalid Project ID.');
+  if (!/^\d+$/.test(id) || BigInt(id) === 0n || BigInt(id) > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Giveth returned an invalid Project ID.');
   return { id: BigInt(id).toString(), title: project.title || '' };
 }

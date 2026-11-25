@@ -25,6 +25,7 @@ import { verifySite } from '@/lib/sdk/site-verification';
 import { SnapshotUnavailable } from '@/lib/sdk/snapshot-cache';
 import { platformActivate } from '@/lib/sdk/platform-activate';
 import { platformAdminStatus } from '@/lib/sdk/platform-admin';
+import { resolveGivethSlug } from '@/lib/sdk/giveth-project';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,6 +62,7 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
       }
       if (path === 'community') return cors(await community.GET(request), request);
       if (path === 'community/quote') return cors(await quote.GET(request), request);
+      if (path === 'platform/giveth/resolve') return cors(NextResponse.json(await resolveGivethSlug(search.get('slug') || '')), request);
       if (path === 'platform/admin-status') return cors(NextResponse.json(await platformAdminStatus(search)), request);
       if (path === 'community/status') {
         const protocol = search.get('protocol');

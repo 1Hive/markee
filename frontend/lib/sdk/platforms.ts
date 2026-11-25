@@ -2,6 +2,7 @@ import { encodeAbiParameters, getAddress, isAddress, keccak256, parseAbi, string
 import type { CommunityState, Placement } from '../../../packages/sdk/src/types';
 import { getEnvPublicClient, registryCommunityABI } from './chains';
 import { SDKError } from './validation';
+import { givethProject } from './giveth-project';
 
 export type PlatformPlacement = Extract<Placement, { kind: 'platform-community' }>;
 export interface PlatformIdentity { kind: 'platform-community'; platformId: string; chainId: number; communityId: string }
@@ -66,9 +67,22 @@ const revnet: PlatformAdapter = {
   },
 };
 
+const giveth: PlatformAdapter = {
+  id: 'giveth',
+  communityId(p) { return `0x${projectId(p).toString(16).padStart(64, '0')}` as Hex; },
+  async recipient(p) { return (await givethProject(p.communityId)).baseRecipient; },
+  async authority(p, account) {
+    const project = await givethProject(p.communityId);
+    // A Base beneficiary is chosen explicitly during activation. Giveth's
+    // configured Base recipient is informational, not a silent default.
+    return { authorized: same(project.owner, account), recipient: project.baseRecipient };
+  },
+};
+
 export function platformAdapter(p: PlatformPlacement): PlatformAdapter {
   if (p.platformId === 'gardens') return gardens;
   if (p.platformId === 'revnet') return revnet;
+  if (p.platformId === 'giveth') return giveth;
   throw new SDKError('UNSUPPORTED_PLATFORM', 'This platform is not enabled.', 422);
 }
 export const platformIdHash = (id: string) => keccak256(stringToHex(id));
@@ -91,9 +105,10 @@ export const registrarABI = parseAbi([
 ]);
 const boardAdminABI = parseAbi(['function admin() view returns (address)', 'function beneficiaryAddress() view returns (address)']);
 export function platformEnabled(p: PlatformPlacement): boolean {
-  // Explicit server-side rollout gates. Giveth has no verified owner source yet.
+  // Explicit server-side rollout gates; the client cannot enable a platform.
   return p.platformId === 'gardens' ? process.env.MARKEE_PLATFORM_GARDENS_ENABLED === 'true'
-    : p.platformId === 'revnet' && process.env.MARKEE_PLATFORM_REVNET_ENABLED === 'true';
+    : p.platformId === 'revnet' ? process.env.MARKEE_PLATFORM_REVNET_ENABLED === 'true'
+    : p.platformId === 'giveth' && process.env.MARKEE_PLATFORM_GIVETH_ENABLED === 'true';
 }
 export function registrarAddress(): Address {
   return configuredAddress('MARKEE_PLATFORM_BOARD_REGISTRAR_ADDRESS_BASE');
@@ -117,7 +132,7 @@ export async function platformCommunity(p: PlatformPlacement, account?: Address)
     markeeChainId: 8453,
     revenue: { claimableAmount: '0', symbol: 'ETH' },
     permissions: account ? { canActivate: !!authority?.authorized && !board, canClaim: false, councilSafe: null } : undefined,
-    platform: { id: p.platformId, communityId: p.communityId, destinationChainId: p.chainId, recipient: null,
+    platform: { id: p.platformId, communityId: p.communityId, destinationChainId: p.chainId, recipient: p.platformId === 'giveth' ? authority?.recipient ?? null : null,
       enabled, beneficiary: beneficiary ? getAddress(beneficiary) : null, boardOwner: integration && integration[3] !== zeroAddress ? getAddress(integration[3]) : null },
   };
 }
