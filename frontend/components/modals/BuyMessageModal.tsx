@@ -207,6 +207,7 @@ export function BuyMessageModal({
     ? rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount
     : null
 
+  const userAuthor = userMarkee ? authorName(userMarkee.name, userMarkee.owner) : ''
   const addFundsTakeFirstAmount = topFundsAdded && userMarkee ? winAmountWei(topFundsAdded, userMarkee.totalFundsAdded) : null
 
   const userIsTop = !!userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
@@ -656,8 +657,8 @@ export function BuyMessageModal({
                       {userMarkee?.message || <MessageLoading />}
                     </div>
                   </ModeratedContent>
-                  {userMarkee && authorName(userMarkee.name, userMarkee.owner) && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{authorName(userMarkee.name, userMarkee.owner)}</ModeratedAuthor></div>
+                  {userMarkee && userAuthor && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userAuthor}</ModeratedAuthor></div>
                   )}
                 </div>
               )}

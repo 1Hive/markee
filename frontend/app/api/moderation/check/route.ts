@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
     // `name` is optional: the author's display name is judged with the same rules when given.
     const isDraft = body?.kind === 'draft' && typeof body.message === 'string' && Buffer.byteLength(body.message) <= 4096
-      && (body.name === undefined || typeof body.name === 'string' && Buffer.byteLength(body.name) <= 4096)
+      && (body.name === undefined || (typeof body.name === 'string' && Buffer.byteLength(body.name) <= 4096))
     const isPublished = body?.kind === 'published' && body.chainId === 8453 && Array.isArray(body.markeeIds)
       && body.markeeIds.length > 0 && body.markeeIds.length <= 50
       && body.markeeIds.every(id => typeof id === 'string' && ADDRESS_PATTERN.test(id))

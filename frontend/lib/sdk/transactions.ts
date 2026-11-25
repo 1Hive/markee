@@ -66,6 +66,16 @@ async function routeExit(c: BoardContext, account: Address, action: Action): Pro
   return canExit(legacyAction, legacyStream) ? { c: legacy, action: legacyAction, stream: legacyStream } : { c, action, stream };
 }
 
+// The review's moderation warning judges the text the action publishes: a new Markee's message and name,
+// an edited message with the name it keeps, or a new name alone.
+export function draftModeration(action: Action, severity: ModerationSeverity, currentName: string) {
+  if (!autoEnabled()) return undefined;
+  if (action.kind === 'create') return checkDraft(action.message, severity, action.name);
+  if (action.kind === 'edit-message') return checkDraft(action.message, severity, currentName);
+  if (action.kind === 'edit-name') return checkDraft('', severity, action.name);
+  return undefined;
+}
+
 export async function prepare(p: Placement, account: Address, requested: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
   const resolved = await resolvePlacement(p);
   if (!resolved.board) throw new SDKError('INACTIVE_COMMUNITY', 'Activate the community Markee first.', 409);
@@ -80,6 +90,8 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   const lines: string[] = [];
   let title: string = action.kind;
   let reward = 'This action does not issue MARKEE.';
+  // The Markee's current display name, read for an edit-message review.
+  let currentName = '';
   if ('markee' in action) {
     if (!await c.r<boolean>('isMarkeeOnLeaderboard', [action.markee])) throw new SDKError('UNKNOWN_MARKEE', 'This message does not belong to the board.');
     const strategy = await read<Address>(c.client, action.markee, messageABI, 'pricingStrategy');
@@ -100,7 +112,13 @@ export async function prepare(p: Placement, account: Address, requested: Action,
     data = encodeFunctionData({ abi: boardABI, functionName: 'addFunds', args: [action.markee] });
     title = 'Fund this Markee'; lines.push('Funding keeps the current message owner.'); reward = saleReward;
   } else if (action.kind === 'edit-message' || action.kind === 'edit-name') {
-    const owner = await read<Address>(c.client, action.markee, messageABI, 'owner');
+    const [owner, name] = await Promise.all([
+      read<Address>(c.client, action.markee, messageABI, 'owner'),
+      // The kept display name is judged with the edited message. The review warning is informational
+      // (published checks enforce), so a failed read only omits the name from it.
+      action.kind === 'edit-message' && autoEnabled() ? read<string>(c.client, action.markee, messageABI, 'name').catch(() => '') : '',
+    ]);
+    currentName = name;
     if (owner.toLowerCase() !== account.toLowerCase()) throw new SDKError('NOT_OWNER', 'Only this message’s owner can edit it.', 403);
     const text = action.kind === 'edit-message' ? action.message : action.name;
     assertTextLength(text, action.kind === 'edit-message' ? c.maxMessageBytes : c.maxNameBytes);
@@ -195,7 +213,8 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   if (action.kind === 'stream' || action.kind === 'fund' || action.kind === 'create' && value > 0n) {
     paymentRouting = await paymentRoutingForReview(c);
   }
-  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message' || action.kind === 'edit-name') ? { moderation: action.kind === 'create' ? checkDraft(action.message, severity, action.name) : action.kind === 'edit-name' ? checkDraft('', severity, action.name) : checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
+  const moderation = draftModeration(action, severity, currentName);
+  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(moderation ? { moderation } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
 }
 
 export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {

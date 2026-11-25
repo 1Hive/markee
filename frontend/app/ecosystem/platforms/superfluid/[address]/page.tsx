@@ -384,6 +384,7 @@ function SuperfluidLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x
   }
 
   const topMarkee = markees[0]
+  const topAuthor = topMarkee ? authorName(topMarkee.name, topMarkee.owner) : ''
 
   return (
     <div className="min-h-screen bg-[#060A2A]">
@@ -503,8 +504,8 @@ function SuperfluidLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x
                     <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} compact />
                   </div>
                   <div className="flex items-center gap-4 mt-3">
-                    {authorName(topMarkee.name, topMarkee.owner) && (
-                      <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{authorName(topMarkee.name, topMarkee.owner)}</ModeratedAuthor></span>
+                    {topAuthor && (
+                      <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topAuthor}</ModeratedAuthor></span>
                     )}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
                     {!NETWORK_PAUSED && !isLegacyContract && (

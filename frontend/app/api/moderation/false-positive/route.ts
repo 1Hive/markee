@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
         held.forEach(scope => pipeline.zrem(pendingKey(scope, item.board), item.markee))
       }
     }
-    pipeline.set(scope === 'all' ? sharedOverrideKey(markee, hash) : overrideKey(markee, hash), { moderator: moderator.toLowerCase(), contentHash: hash, nameHash: currentNameHash, scope, at: timestamp })
+    pipeline.set(scope === 'all' ? sharedOverrideKey(markee, hash) : overrideKey(markee, hash), { moderator: moderator.toLowerCase(), contentHash: hash, ...(currentName ? { nameHash: currentNameHash } : {}), scope, at: timestamp })
     pipeline.set('sdk:snapshots:generation', randomUUID())
     await pipeline.exec()
     await checkPublished([markee])

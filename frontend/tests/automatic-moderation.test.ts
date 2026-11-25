@@ -14,6 +14,7 @@ import { POST } from '../app/api/moderation/false-positive/route'
 import { itemKey } from '../lib/moderation/server'
 import { moderationPolicy } from '../lib/moderation/severity'
 import { boardPolicyDeps } from '../lib/moderation/board-policy'
+import { draftModeration } from '../lib/sdk/transactions'
 
 const id = '0x1111111111111111111111111111111111111111'
 const board = '0x2222222222222222222222222222222222222222'
@@ -556,4 +557,25 @@ test('draft API judges an optional display name and rejects an invalid one', asy
   assert.equal((await (await check({})).json()).state, 'pass')
   assert.equal((await (await check({ name: 'shit' })).json()).state, 'soft-flagged')
   assert.equal((await check({ name: 7 })).status, 400)
+})
+
+test('SDK reviews judge the name a message edit keeps, and nameless approvals record no nameHash', async t => {
+  enable(t); const { records } = storage(t)
+  const markee = id as `0x${string}`
+  assert.equal(draftModeration({ kind: 'edit-message', markee, message: 'Hello gardens' }, 'standard', 'Gossman')?.state, 'pass')
+  const kept = draftModeration({ kind: 'edit-message', markee, message: 'Hello gardens' }, 'standard', 'shit')!
+  assert.equal(kept.state, 'soft-flagged'); assert.equal(kept.nameFlagged, true)
+  assert.equal(draftModeration({ kind: 'create', message: 'Hello gardens', name: 'shit' }, 'standard', '')?.state, 'soft-flagged')
+  assert.equal(draftModeration({ kind: 'edit-name', markee, name: 'shit' }, 'standard', '')?.state, 'soft-flagged')
+  assert.equal(draftModeration({ kind: 'fund', markee, amount: '1' }, 'standard', ''), undefined)
+  // An approval of a nameless Markee stores no nameHash, matching the documented legacy shape.
+  const moderator = privateKeyToAccount(`0x${'33'.repeat(32)}`)
+  const hash = contentHash('shit'), timestamp = Math.floor(Date.now() / 1000)
+  t.mock.method(automaticAuthDeps, 'underRateLimit', async () => true)
+  t.mock.method(automaticAuthDeps, 'authorizedScopes', async () => ({ scopes: new Map([[id, ['board']]]), boardMap: new Map([[id, board]]) }))
+  t.mock.method(automaticDeps, 'read', async () => [{ markee: id, board, message: 'shit', name: '' }])
+  const signature = await moderator.signMessage({ message: falsePositiveMessage(8453, id, hash, timestamp, 'all') })
+  const response = await POST(new NextRequest('https://markee.xyz/api/moderation/false-positive', { method: 'POST', body: JSON.stringify({ chainId: 8453, markee: id, moderator: moderator.address, contentHash: hash, timestamp, scope: 'all', signature }) }))
+  assert.equal(response.status, 200)
+  assert.equal('nameHash' in records.get(sharedOverrideKey(id, hash)), false)
 })

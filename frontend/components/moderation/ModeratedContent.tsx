@@ -181,7 +181,7 @@ export function ModeratedAuthor({ chainId, markeeId, message, boardAdmin, blurAm
   const revealed = useRevealed(`${markeeId.toLowerCase()}:${message ?? ''}`)
   // Until a verdict is in, the label stays blurred like its message's placeholder.
   const pending = message !== undefined && automatic.unavailable
-  if (revealed || canModerate(boardAdmin) || !flagged && !pending) return <>{children}</>
+  if (revealed || canModerate(boardAdmin) || (!flagged && !pending)) return <>{children}</>
   return (
     <span>
       <span className="select-none" style={{ filter: `blur(${blurAmount})` }} aria-hidden="true">{children}</span>
