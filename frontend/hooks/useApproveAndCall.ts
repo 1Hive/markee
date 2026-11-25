@@ -11,9 +11,12 @@ import {
   approveAndCall, supportsAtomicBatch,
   type ApproveAndCallParams, type ApproveAndCallResult, type CallsOutcome, type ContractCall,
 } from '@/lib/tx/approveAndCall'
+import {
+  browserPendingCallsStore, clearPendingCalls, priorCallsBlock, readPendingCalls, writePendingCalls,
+  type PriorCallsStatus,
+} from '@/lib/tx/pendingCalls'
 
 export const BATCH_WAIT_MS = 45_000
-export const PROPOSAL_PENDING_MESSAGE = 'Your previous transaction is still waiting in your wallet. Execute or reject it there (for a Safe, in the Safe queue) before trying again.'
 
 type WriteAsync = (call: ContractCall) => Promise<`0x${string}`>
 
@@ -33,7 +36,6 @@ export function useApproveAndCall() {
   const publicClient = usePublicClient({ chainId: CANONICAL_CHAIN.id })
   const sponsored = useSponsoredWriteContract()
   const { sendCallsAsync, isPending: sendingCalls, reset: resetCalls } = useSendCalls()
-  const proposalRef = useRef<string | null>(null)
 
   const latest = useRef({ externalWallet: sponsored.needsGasReserve })
   latest.current = { externalWallet: sponsored.needsGasReserve }
@@ -47,10 +49,15 @@ export function useApproveAndCall() {
   ): Promise<ApproveAndCallResult> => {
     if (!publicClient) throw new Error('Network client is not ready. Please try again.')
 
-    if (proposalRef.current) {
-      const prior = await getCallsStatus(config, { id: proposalRef.current }).catch(() => null)
-      if (prior?.status === 'pending') throw new Error(PROPOSAL_PENDING_MESSAGE)
-      proposalRef.current = null
+    const { account, call: { chainId } } = params
+    const priorId = readPendingCalls(browserPendingCallsStore, account, chainId, Date.now())
+    if (priorId) {
+      const prior: PriorCallsStatus = await getCallsStatus(config, { id: priorId })
+        .then(r => (r.status === 'pending' || r.status === 'success' || r.status === 'failure' ? r.status : 'unknown'))
+        .catch(() => 'unknown')
+      if (prior !== 'pending' && prior !== 'unknown') clearPendingCalls(browserPendingCallsStore, account, chainId)
+      const block = priorCallsBlock(prior)
+      if (block) throw new Error(block)
     }
 
     const result = await approveAndCall(params, {
@@ -85,7 +92,7 @@ export function useApproveAndCall() {
       onApproved: opts.onApproved,
       isActive: opts.isActive,
     })
-    if (result.kind === 'proposed') proposalRef.current = result.id
+    if (result.kind === 'proposed') writePendingCalls(browserPendingCallsStore, account, chainId, result.id, Date.now())
     return result
   }, [config, publicClient, sendCallsAsync, writeAsync])
 
