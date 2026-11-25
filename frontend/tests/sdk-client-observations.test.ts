@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clientLabel, clearClientObservationsForTests, observationDeps, observeSdkClient, originHost, sdkVersionsForVerifiedUrls } from '../lib/sdk/client-observations';
+import { clientLabel, clearClientObservationsForTests, observationDeps, observeSdkClient, originHost, sdkVersionsForVerifiedUrls, unmarkedApiCallsForVerifiedUrls } from '../lib/sdk/client-observations';
 
 const board = '0x1111111111111111111111111111111111111111';
 
@@ -40,4 +40,18 @@ test('integration evidence reports only marked SDK versions for verified hosts',
   }, ['https://example.org/message']);
   assert.deepEqual(evidence, { 'example.org': { version: '0.1.0-beta.17', lastSeen: 3000 } });
   assert.deepEqual(sdkVersionsForVerifiedUrls({ 'unattributed|example.org': 2000 }, ['https://example.org']), {});
+});
+
+test('unmarked SDK API calls are reported only for verified hosts without claiming package usage', () => {
+  const fields = {
+    'unattributed|www.example.org': 3000,
+    'unattributed|example.org': 2000,
+    'unattributed|unverified.org': 4000,
+    'markee-sdk@0.1.0-beta.17|example.org': 5000,
+    'unattributed|unknown-origin': 6000,
+  };
+  assert.deepEqual(unmarkedApiCallsForVerifiedUrls(fields, ['https://example.org/message']), {
+    'example.org': { lastSeen: 3000 },
+  });
+  assert.deepEqual(unmarkedApiCallsForVerifiedUrls(fields, []), {});
 });
