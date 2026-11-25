@@ -820,6 +820,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
   const streamPaymentPending = !busy && view !== 'manage' && pendingStreams.length > 0
   streamPendingRef.current = streamPaymentPending
   const activeError = view === 'list' ? createFlow.error : view === 'fund' ? (backsOther ? moveFlow.error : openFlow.error) : rateFlow.error
+  const activeNotice = view === 'list' ? createFlow.notice : view === 'fund' ? (backsOther ? moveFlow.notice : openFlow.notice) : rateFlow.notice
 
   const paysFromWallet = view === 'fund' || view === 'list'
   const blocksOnBalance = paysFromWallet && (insufficientBalance || addFundsWei > 0n)
@@ -1041,6 +1042,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     {streamPaymentPending && <div style={{ margin: '0 0 14px' }}><PendingPaymentNotice pending={pendingStreams} /></div>}
                     {activeError && (
                       <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{activeError}</p>
+                    )}
+                    {activeNotice && (
+                      <p style={{ fontSize: 12, color: TEXT2, margin: '0 0 14px' }}>{activeNotice}</p>
                     )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
@@ -1326,6 +1330,9 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
               {view !== 'list' && activeError && !reviewOpen && (
                 <p style={{ fontSize: 12, color: '#FF8E8E', margin: '0 0 14px' }}>{activeError}</p>
               )}
+              {view !== 'list' && activeNotice && !reviewOpen && (
+                <p style={{ fontSize: 12, color: TEXT2, margin: '0 0 14px' }}>{activeNotice}</p>
+              )}
             </div>
 
             {/* ── Footer (fund / manage only — list inlines its own CTA above the leaderboard) ── */}
@@ -1338,6 +1345,7 @@ export function StreamSignModal({ isOpen, onClose, board, initialView, initialTa
                     onConfirm={() => { if (view === 'fund') handleFund(); else handleUpdateRate() }}
                     busy={busy}
                     error={activeError}
+                    notice={activeNotice}
                   />
                 </div>
               ) : (
