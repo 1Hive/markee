@@ -39,9 +39,10 @@ const NO_CACHE = {
 }
 
 // ─── Hardcoded partner meta ───────────────────────────────────────────────────
-// These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
-// They live in the legacy OI factory but have no KV meta, so we hardcode
-// verified status here rather than requiring a one-time KV write.
+// Fallback for the partner boards whose sites predate KV meta. Their sites now live in oi:meta like
+// every other board's (scripts/cleanup-shared-host-sites.mjs), so KV wins whenever it lists sites.
+// Every other reader (integrations, verification status, the SDK) only reads KV; once production
+// KV holds these sites, this block can be deleted.
 
 const PARTNER_META: Record<string, {
   logoUrl: string | null
@@ -185,7 +186,7 @@ async function loadListing(request: Request) {
 
       const kvMeta = kvMetas[i]
       const partnerMeta = PARTNER_META[originalBoard(addr, predecessorOf).toLowerCase()]
-      const meta = partnerMeta ?? kvMeta
+      const meta = partnerMeta && !(kvMeta?.verifiedUrls?.length || kvMeta?.verifiedUrl) ? partnerMeta : kvMeta
       const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,
