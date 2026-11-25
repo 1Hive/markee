@@ -19,7 +19,11 @@ export async function POST(req: NextRequest) {
     const signatureRequired = intent !== 'approve'
     const signatureValid = typeof signature === 'string' && /^0x[0-9a-f]+$/i.test(signature)
     const signatureOk = signatureValid || (!signatureRequired && signature === undefined)
-    if (chainId !== 8453 || typeof markee !== 'string' || !ADDRESS_PATTERN.test(markee) || typeof moderator !== 'string' || !ADDRESS_PATTERN.test(moderator) || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash) || (nameHash !== undefined && (typeof nameHash !== 'string' || !/^[a-f0-9]{64}$/.test(nameHash))) || !signatureOk || typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp)) return NextResponse.json({ error: 'Invalid authorization' }, { status: 400 })
+    const isHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+    const addressesValid = typeof markee === 'string' && ADDRESS_PATTERN.test(markee) && typeof moderator === 'string' && ADDRESS_PATTERN.test(moderator)
+    const hashesValid = isHash(hash) && (nameHash === undefined || isHash(nameHash))
+    const timestampValid = typeof timestamp === 'number' && Number.isSafeInteger(timestamp)
+    if (chainId !== 8453 || !addressesValid || !hashesValid || !signatureOk || !timestampValid) return NextResponse.json({ error: 'Invalid authorization' }, { status: 400 })
     if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) return NextResponse.json({ error: 'Signature expired' }, { status: 401 })
     const auth = await authorizeWallet(req, moderator, signature, () => intent === 'approve' ? approveMessage(chainId, markee, hash, timestamp, nameHash as string | undefined) : falsePositiveMessage(chainId, markee, hash, timestamp, scope, nameHash as string | undefined), { allowSession: intent === 'approve' })
     if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status })
