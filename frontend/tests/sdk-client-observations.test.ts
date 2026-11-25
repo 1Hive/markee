@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clientLabel, clearClientObservationsForTests, observationDeps, observeSdkClient, originHost } from '../lib/sdk/client-observations';
+import { clientLabel, clearClientObservationsForTests, observationDeps, observeSdkClient, originHost, sdkVersionsForVerifiedUrls } from '../lib/sdk/client-observations';
 
 const board = '0x1111111111111111111111111111111111111111';
 
@@ -28,4 +28,16 @@ test('board observations deduplicate, store no wallet or path, and never block s
   assert.equal(writes[1][1], 'unattributed|example.org');
   await observeSdkClient(null, null, null);
   assert.equal(writes.length, 2);
+});
+
+test('integration evidence reports only marked SDK versions for verified hosts', () => {
+  const evidence = sdkVersionsForVerifiedUrls({
+    'unattributed|example.org': 2000,
+    'markee-sdk@0.1.0-beta.17|www.example.org': 3000,
+    'markee-sdk@0.1.0-beta.16|example.org': 1000,
+    'markee-sdk@0.1.0-beta.17|unverified.org': 4000,
+    'custom-client|example.org': 5000,
+  }, ['https://example.org/message']);
+  assert.deepEqual(evidence, { 'example.org': { version: '0.1.0-beta.17', lastSeen: 3000 } });
+  assert.deepEqual(sdkVersionsForVerifiedUrls({ 'unattributed|example.org': 2000 }, ['https://example.org']), {});
 });
