@@ -7,11 +7,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAccount, usePublicClient } from 'wagmi'
-import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useApproveAndCall } from '@/hooks/useApproveAndCall'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
 import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
 import { isPendingTxTracked } from '@/lib/tx/pendingStore'
-import { erc20Abi, decodeEventLog, type Address, type Hex } from 'viem'
+import { BATCH_PROPOSED_NOTICE } from '@/lib/tx/approveAndCall'
+import { decodeEventLog, type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
@@ -62,9 +63,10 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
 
   const [phase, setPhase] = useState<CreateStreamPhase>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
-  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
+  const { approveAndCall, writeContractAsync, isPending, reset } = useApproveAndCall()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
     useTrackedReceipt({ marksListings: true, hash: txHash, chainId: CANONICAL_CHAIN.id })
 
@@ -82,7 +84,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
 
   useEffect(() => {
     if (!isOpen) {
-      setPhase('idle'); setError(null); setTxHash(undefined); createdRef.current = null; reset()
+      setPhase('idle'); setError(null); setNotice(null); setTxHash(undefined); createdRef.current = null; reset()
     }
   }, [isOpen, reset])
 
@@ -100,6 +102,7 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
     name = '',
   ) {
     setError(null)
+    setNotice(null)
     if (!address || !publicClient) return
     if (!message.trim()) { setError('Enter a message.'); return }
     const textError = textLimitError('Message', message, opts.maxLen) ?? textLimitError('Name', name, opts.maxNameLen)
@@ -203,32 +206,15 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
       }
       const { markee: markeeAddress, pool } = createdRef.current
 
-      const [cfaAgreement, gdaAgreement, currentAllowance, heldDeposit] = await Promise.all([
+      const [cfaAgreement, gdaAgreement, heldDeposit] = await Promise.all([
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [CFA_AGREEMENT_ID] }),
         publicClient.readContract({ address: HOST, abi: SUPERFLUID_HOST_ABI, functionName: 'getAgreementClass', args: [GDA_AGREEMENT_ID] }),
-        publicClient.readContract({ address: ETHX, abi: erc20Abi, functionName: 'allowance', args: [address, board] }),
         publicClient.readContract({ address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: [address] }),
       ])
       const depositTopUp = calc.buffer > (heldDeposit as bigint) ? calc.buffer - (heldDeposit as bigint) : 0n
       if (!mountedRef.current) return
 
-      // ── Tx 2: Approve (if needed) ────────────────────────────────────────
-      if (depositTopUp > 0n && (currentAllowance as bigint) < depositTopUp) {
-        setPhase('approving')
-        const approveHash = await writeContractAsync({
-          address: ETHX,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [board, depositTopUp],
-          chainId: CANONICAL_CHAIN.id,
-        })
-        if (!mountedRef.current) return
-        const approveReceipt = await waitForStep(publicClient, approveHash, stepCtx)
-        if (approveReceipt.status !== 'success') throw new Error('Approval transaction reverted.')
-        if (!mountedRef.current) return
-      }
-
-      // ── Tx 3: Open stream ────────────────────────────────────────────────
+      // ── Tx 2 + 3: approve (if needed) and open the stream, as one batch when the wallet can ──
       setPhase('streaming')
       const ops = buildOpenStreamOps({
         ethx: ETHX,
@@ -242,14 +228,33 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
         pool: pool as Address,
         wrapValue: calc.value,
       })
-      const streamHash = await writeContractAsync({
-        address: HOST,
-        abi: SUPERFLUID_HOST_ABI,
-        functionName: 'batchCall',
-        args: [ops],
-        value: calc.value,
-        chainId: CANONICAL_CHAIN.id,
-      })
+      const result = await approveAndCall(
+        {
+          account: address, token: ETHX, spender: board, amount: depositTopUp,
+          call: {
+            address: HOST,
+            abi: SUPERFLUID_HOST_ABI,
+            functionName: 'batchCall',
+            args: [ops],
+            value: calc.value,
+            chainId: CANONICAL_CHAIN.id,
+          },
+        },
+        {
+          step: stepCtx,
+          onApproving: () => setPhase('approving'),
+          onApproved: () => setPhase('streaming'),
+          isActive: () => mountedRef.current,
+        },
+      )
+      if (result.kind === 'aborted') return
+      if (result.kind === 'proposed') {
+        if (!mountedRef.current) return
+        setPhase('idle')
+        setNotice(BATCH_PROPOSED_NOTICE)
+        return
+      }
+      const streamHash = result.hash
       recordSubmitted(streamHash, stepCtx)
       createdRef.current = { ...createdRef.current, streamHash }
       saveCreated(board, createdRef.current)
@@ -264,5 +269,5 @@ export function useCreateStreamFlow(board: Address, isOpen: boolean) {
     }
   }
 
-  return { phase, error, setError, txHash, isPending, isConfirming, isSuccess, activate }
+  return { phase, error, setError, notice, txHash, isPending, isConfirming, isSuccess, activate }
 }

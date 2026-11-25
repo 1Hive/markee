@@ -6,10 +6,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAccount, usePublicClient, useReadContract } from 'wagmi'
-import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useApproveAndCall } from '@/hooks/useApproveAndCall'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
-import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
-import { erc20Abi, type Address, type Hex } from 'viem'
+import { recordSubmitted } from '@/lib/tx/stepReceipt'
+import { BATCH_PROPOSED_NOTICE } from '@/lib/tx/approveAndCall'
+import { type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
@@ -30,9 +31,10 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
   const [approving, setApproving] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
-  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
+  const { approveAndCall, isPending, reset } = useApproveAndCall()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
     useTrackedReceipt({ marksListings: true, hash: txHash, chainId: CANONICAL_CHAIN.id })
 
@@ -55,14 +57,10 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
     address: CFA_FORWARDER, abi: CFA_FORWARDER_ABI, functionName: 'getFlowrate', args: address ? [ETHX, address, board] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled, refetchInterval: retryUntilLoaded },
   })
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: ETHX, abi: erc20Abi, functionName: 'allowance', args: address ? [address, board] : undefined, chainId: CANONICAL_CHAIN.id,
-    query: { enabled, refetchInterval: retryUntilLoaded },
-  })
 
   useEffect(() => {
     if (!isOpen) {
-      setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
+      setError(null); setNotice(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
 
@@ -79,6 +77,7 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
     opts: { nextBelowMin: boolean; minMonthlyEth: string; balanceValue: bigint | undefined },
   ) {
     setError(null)
+    setNotice(null)
     if (!address || !publicClient) return
     if (!cfaAgreement) return
     if (next.nextRate <= 0n) { setError('Enter a monthly rate.'); return }
@@ -89,22 +88,6 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
 
     try {
       setSubmitting(true)
-
-      if (next.depositTopUp > 0n && (allowance ?? 0n) < next.depositTopUp) {
-        setApproving(true)
-        const approveHash = await writeContractAsync({
-          address: ETHX,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [board, next.depositTopUp],
-          chainId: CANONICAL_CHAIN.id,
-        })
-        const approveReceipt = await waitForStep(publicClient!, approveHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
-        if (approveReceipt.status !== 'success') throw new Error('The approval transaction reverted.')
-        await refetchAllowance()
-        if (!openRef.current) return
-        setApproving(false)
-      }
 
       // The wrap covers the deposit the board pulls, so raising the rate never eats the runway the
       // stream is already funded with.
@@ -118,17 +101,30 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
         cfaAgreement: cfaAgreement as Address,
       })
 
-      const hash = await writeContractAsync({
-        address: HOST,
-        abi: SUPERFLUID_HOST_ABI,
-        functionName: 'batchCall',
-        args: [ops],
-        value: next.depositTopUp,
-        chainId: CANONICAL_CHAIN.id,
-      })
-      recordSubmitted(hash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
+      const step = { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id }
+      const result = await approveAndCall(
+        {
+          account: address, token: ETHX, spender: board, amount: next.depositTopUp,
+          call: {
+            address: HOST,
+            abi: SUPERFLUID_HOST_ABI,
+            functionName: 'batchCall',
+            args: [ops],
+            value: next.depositTopUp,
+            chainId: CANONICAL_CHAIN.id,
+          },
+        },
+        { step, onApproving: () => setApproving(true), onApproved: () => setApproving(false), isActive: () => openRef.current },
+      )
+      if (result.kind === 'aborted') return
+      if (result.kind === 'submitted') recordSubmitted(result.hash, step)
       if (!openRef.current) return
-      setTxHash(hash)
+      if (result.kind === 'proposed') {
+        setSubmitting(false)
+        setNotice(BATCH_PROPOSED_NOTICE)
+        return
+      }
+      setTxHash(result.hash)
     } catch (e: unknown) {
       if (!openRef.current) return
       setApproving(false)
@@ -139,9 +135,9 @@ export function useUpdateStreamRateFlow(board: Address, isOpen: boolean) {
   }
 
   return {
-    approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash,
+    approving, submitting, isPending, isConfirming, isSuccess, error, setError, notice, txHash,
     backedMarkee, currentRate, deposit,
-    refetchBacked, refetchDeposit, refetchRate, refetchAllowance,
+    refetchBacked, refetchDeposit, refetchRate,
     updateRate,
   }
 }
