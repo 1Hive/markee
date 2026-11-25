@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test:streaming-campaign": "tsx --test tests/streamingCampaign.test.ts",
     "test:1hive": "tsx --test tests/1hiveCampaign.test.ts",
-    "test:keeper": "tsx --test tests/keeper.test.ts",
+    "test:keeper": "tsx --test tests/keeper.test.ts tests/settler.test.ts",
     "test:embed-prompt": "tsx --test tests/embedPrompt.test.ts",
     "test:amount-input": "tsx --test tests/amountInput.test.ts",
     "test:eth-amount": "tsx --test tests/ethAmount.test.ts",

@@ -366,3 +366,40 @@ export async function fetchBackerPositions(
   }
   return out
 }
+
+const BOARD_SENDERS_QUERY = `query BoardSenders($token: String!, $receivers: [String!]!, $after: String!) {
+  streams(
+    where: { token: $token, receiver_in: $receivers, id_gt: $after }
+    orderBy: id
+    first: ${PAGE}
+  ) {
+    id
+    sender { id }
+    receiver { id }
+  }
+}`
+
+// Every account that has ever streamed into each board, closed streams included: a backer who stopped
+// streaming can still hold an unsettled RevNet share.
+export async function fetchBoardSenders(boards: readonly string[], token: string): Promise<Map<string, string[]>> {
+  const out = new Map<string, Set<string>>()
+  const tokenId = token.toLowerCase()
+  const addrs = boards.map(b => b.toLowerCase())
+
+  for (let i = 0; i < addrs.length; i += ADDR_BATCH) {
+    const receivers = addrs.slice(i, i + ADDR_BATCH)
+    for (let after = ''; ;) {
+      const { streams } = await query<{ streams: { id: string; sender: { id: string }; receiver: { id: string } }[] }>(
+        BOARD_SENDERS_QUERY, { token: tokenId, receivers, after },
+      )
+      for (const s of streams) {
+        const board = s.receiver.id.toLowerCase()
+        if (!out.has(board)) out.set(board, new Set())
+        out.get(board)!.add(s.sender.id.toLowerCase())
+      }
+      if (streams.length < PAGE) break
+      after = streams[streams.length - 1].id
+    }
+  }
+  return new Map([...out].map(([board, senders]) => [board, [...senders]]))
+}

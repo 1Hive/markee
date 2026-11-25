@@ -2,12 +2,12 @@ import { getAddress, parseAbiItem, type Address, type Hex } from 'viem'
 
 // Minimal structural client shapes so any viem PublicClient/WalletClient is accepted without
 // fighting viem's strict transport/chain generics (which createPublicClient bakes in).
-type KeeperPublicClient = {
+export type KeeperPublicClient = {
   readContract(args: unknown): Promise<unknown>
   multicall(args: unknown): Promise<unknown[]>
   waitForTransactionReceipt(args: unknown): Promise<{ status: 'success' | 'reverted' | string }>
 }
-type KeeperWalletClient = {
+export type KeeperWalletClient = {
   chain?: unknown
   account?: unknown
   writeContract(args: unknown): Promise<Hex>
@@ -43,7 +43,7 @@ export interface RunKeeperParams {
   log?: (msg: string) => void
 }
 
-function shortErr(e: unknown): string {
+export function shortErr(e: unknown): string {
   const m = e as { shortMessage?: string; message?: string }
   return (m?.shortMessage || m?.message || String(e)).split('\n')[0]
 }
@@ -66,7 +66,7 @@ export async function runKeeper(p: RunKeeperParams): Promise<KeeperReport> {
   return { boards: boards.length, actions }
 }
 
-async function fetchAllBoards(client: KeeperPublicClient, factory: Address): Promise<Address[]> {
+export async function fetchAllBoards(client: KeeperPublicClient, factory: Address): Promise<Address[]> {
   const all: Address[] = []
   for (let offset = 0n; ; offset += BOARD_PAGE) {
     const page = (await client.readContract({
