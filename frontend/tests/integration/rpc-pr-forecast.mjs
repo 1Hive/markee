@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile, appendFile } from 'node:fs/promises'
+import { readFile, appendFile, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 
 const HOUR = 3_600_000
@@ -37,15 +37,21 @@ async function main() {
   const [usage, base, candidate] = process.argv.slice(2)
   const json = async file => JSON.parse(await readFile(file, 'utf8'))
   const config = JSON.parse(await readFile(new URL('./rpc-monthly-budget.json', import.meta.url), 'utf8'))
-  let report
+  let report, live
   try {
-    report = projectRegression(await json(usage), await json(base), await json(candidate), config)
+    live = await json(usage)
+    report = projectRegression(live, await json(base), await json(candidate), config)
   } catch (error) {
     const message = 'PR forecast unavailable: ' + error.message
     console.log('::warning::' + message)
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, message + '\n')
+    if (process.env.RPC_PR_REPORT) {
+      await writeFile(process.env.RPC_PR_REPORT, '## Alchemy PR forecast\n\nForecast unavailable. See the workflow log for input validation details.\n')
+    }
     return
   }
+  const formatCU = value => value.toLocaleString('en-US') + ' CU'
+  const headroom = report.limit - report.projectedWithPR
   const summary = [
     '## Alchemy PR forecast',
     '',
@@ -53,12 +59,22 @@ async function main() {
     '| ---: | ---: | ---: | ---: |',
     '| ' + [report.projected, report.addedCU, report.projectedWithPR, report.limit].map(value => value.toLocaleString('en-US') + ' CU').join(' | ') + ' |',
     '',
+    '**Budget margin:** ' + formatCU(Math.abs(headroom)) + (headroom < 0 ? ' over limit' : ' remaining'),
+    '',
+    'Alchemy baseline measured at ' + new Date(live.asOf).toISOString() + '.',
+    '',
+    '| Moderation scan | PR change per scan |',
+    '| --- | ---: |',
+    ...Object.entries(report.deltas).map(([scenario, delta]) =>
+      '| ' + scenario + ' | ' + (delta > 0 ? '+' : '') + formatCU(delta) + ' |'),
+    '',
     'Models the largest positive periodic moderation-scan delta at 12 scans/hour. Other traffic keeps the deployed baseline. Undeployed savings are excluded.',
     '',
     'Result: **' + report.status + '**',
   ].join('\n')
   console.log(summary)
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary + '\n')
+  if (process.env.RPC_PR_REPORT) await writeFile(process.env.RPC_PR_REPORT, summary + '\n')
   if (report.status === 'regression-over-limit') {
     console.log('::error::This PR increases modeled RPC usage and the projected account total exceeds the monthly CU limit.')
     process.exitCode = 1
