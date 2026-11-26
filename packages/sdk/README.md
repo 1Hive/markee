@@ -1,74 +1,26 @@
 # Markee SDK
 
-An ESM JavaScript SDK with a self-contained, Shadow DOM modal and an optional React entry point. The SDK knows the Markee API endpoint; the host only supplies its placement and, optionally, its current wallet provider. No Alchemy, Redis, Privy, or bridge-provider key belongs in the consuming app.
+Embed a Markee leaderboard, payment modal, or live sign in a React or plain JavaScript app. The SDK reads the board's For Sale or For Rent strategy from Markee and uses `https://www.markee.xyz/api/sdk/v1` by default.
 
-Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent flows, automatic strategy detection, and a configurable theme. Eligible Base For Sale boards can also offer Markee-hosted card checkout when enabled by Markee. Incoming cross-chain funding is not included.
-
-The package also includes a standalone **Markee sign button**. It shows the board's current winner, follows Markee's moderation decisions, and opens the payment modal when clicked.
-
-### Beta.18 wallet batches and recovery
-
-The modal uses an atomic EIP-5792 wallet batch when the connected wallet reports `atomic.status: 'supported'` (or the legacy `atomicBatch.supported: true`). This includes compatible Safe and smart wallets; wallets without confirmed atomic support keep the existing direct transaction path. A wallet batch is marked confirmed only after Markee's API verifies the exact reviewed call in its on-chain execution trace. If trace verification is unavailable, the payment remains pending for recovery. The SDK does not automatically resubmit a transaction.
-
-Before either wallet prompt, the SDK saves a versioned recovery intent. An accepted batch ID or direct transaction hash replaces it before status polling. A reload retains that record without a time limit. An explicit wallet rejection clears an unsubmitted intent; an ambiguous error blocks another payment until the user checks wallet activity. The modal can verify a transaction hash found there. Existing `markee:sdk:v1:pending` records remain readable, including records bound to the former staging origin.
-
-`MarkeeClient.send(preparation)` keeps its direct transaction and hash return contract. `submit(preparation)` selects the atomic batch when supported and returns a pending operation; `pendingOperation(placement, account)` and `verifyOperation(operation)` recover it. A `confirmed` event still means the API verified the payment. A batch that has only a wallet ID emits no hash-based `submitted` event.
-
-### Integration diagnostics (since beta.17)
-
-SDK snapshot and preparation requests identify themselves as `markee-sdk@<installed version>` to Markee's API. This is a self-reported diagnostic marker, not authentication or proof that a website has been verified. The API retains bounded, board-level observations of the SDK version and requesting origin host; it does not record a wallet, IP, or page path for this purpose. Older SDKs and custom clients without a marker remain indistinguishable.
-
-### Beta.16 migration note
-
-`CommunityState.integration.status` now also includes `pending_admin` and `disabled`. TypeScript consumers with exhaustive status switches must handle these two states when upgrading from beta.15. Existing `placement` integrations continue to work; `multiBoard` is optional, and platform activation remains disabled unless Markee enables the registered platform on its API.
-
-On For Rent boards, a new bid starts at the rounded-up WIN suggestion; an existing winner's bid stays at its current amount. Markee converts a requested monthly bid to the smallest whole-wei-per-second stream that meets or exceeds it. The payment review shows the precise stream rate and any separately funded, refundable buffer when the API supplies those details. Payment destinations and split percentages appear only when verified by Markee's API.
-
-Owners can edit a message and display name from one form. These are separate on-chain actions: when both change, the SDK confirms the message first and then offers a second wallet review for the name. It never submits that second transaction automatically. Pending transactions remain recoverable through the existing SDK flow.
-
-## Installation
+## Install
 
 ```sh
 npm install @markee_team/sdk@latest
 ```
 
-Use React 18 or 19 for the optional React entry point. The plain JavaScript entry point does not require React. Both TypeScript bundler and NodeNext resolution are supported.
+Commit your app's lockfile. React 18 or 19 is needed only for the React entry point.
 
-To build from the source repository:
+Create a leaderboard at [Markee](https://www.markee.xyz/create-a-markee), or use an existing one. Copy its page URL and use the address after `/markee/` as your placement:
 
-```sh
-npm ci --prefix packages/sdk
-npm run build --prefix packages/sdk
+```ts
+const placement = {
+  kind: 'board',
+  chainId: 8453,
+  address: '0xYOUR_BOARD_ADDRESS',
+} as const;
 ```
 
-Coding assistants can follow the packaged [Markee integration skill](https://unpkg.com/@markee_team/sdk@latest/skills/markee-integration/SKILL.md) at `skills/markee-integration/SKILL.md` in the installed package. Install the latest SDK first, then read its installed README and types. Commit the consumer app's lockfile.
-
-## Create and connect your leaderboard
-
-The SDK connects to an existing leaderboard; installing it does not create one.
-
-1. Open [Create a Markee](https://www.markee.xyz/create-a-markee) and complete the leaderboard setup on Markee. Choose For Sale or For Rent there. If you already have a leaderboard, use it instead.
-2. Copy the resulting Markee page link: `https://www.markee.xyz/markee/<address>`.
-3. Extract the `0x…` address from that link and use it in the SDK placement: `{ kind: 'board', chainId: 8453, address: yourLeaderboardAddress }`.
-4. Open the modal to display your leaderboard. If using a coding assistant, give it the Markee page link along with the LLM implementation prompt below.
-
-The SDK reads the leaderboard's strategy from Markee and automatically renders the appropriate For Sale or For Rent flow. You do not configure a strategy in your app.
-
-## Automatic site verification
-
-Pass your public page URL or domain as `siteUrl` to `MarkeeModal` or `createMarkee`, for example `siteUrl="https://your-app.example"`. The React component registers the site when mounted, even while closed; the JavaScript modal registers when opened. No API key is required. Use `onSiteVerification` to inspect success or setup errors; verification does not block browsing or payments.
-
-Markee fetches the public page and verifies that its HTML contains the matching board marker before adding it to **Served on**. The React component renders this marker for server-rendered apps. For client-rendered apps such as Vite, include it in the deployed `index.html` (replace the address with your board):
-
-```html
-<span hidden data-markee-address="0xYOUR_BOARD_ADDRESS"></span>
-```
-
-The marker must be present in the HTML returned by the server, not only injected by JavaScript. The supplied URL must use HTTPS, match the app's origin, and return the final HTML page without redirects. Localhost and private-network sites cannot be publicly verified. Registration currently supports Base boards. It verifies the board's presence, not legal domain ownership.
-
-For `multiBoard`, resolve the community's board address first and render the matching marker in that community page's server-returned HTML. Supplying `multiBoard` alone does not verify a domain; the SDK can request verification only after the board exists.
-
-For an explicit retry after deployment, call `new MarkeeClient().verifySite(placement, siteUrl)`. The endpoint is `POST /api/sdk/v1/sites/verify` with `{ placement, siteUrl }`. Unverified sites are never added to the verified list.
+The SDK connects to the board; installing it does not create one. It selects the payment flow from the board's strategy.
 
 ## Plain JavaScript
 
@@ -76,73 +28,47 @@ For an explicit retry after deployment, call `new MarkeeClient().verifySite(plac
 import { createMarkee } from '@markee_team/sdk';
 
 const markee = createMarkee({
-  // Optional. Reuse the wallet selected by your application's wallet connector.
+  // Optional: reuse your app's selected EIP-1193 wallet.
   wallet: {
     getProvider: async () => appWalletProvider ?? null,
     connect: async () => connectAppWallet(),
   },
-  onEvent: event => console.log(event.type, event.hash),
-});
-
-markee.open({
-  placement: {
-    kind: 'board',
-    chainId: 8453,
-    address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671',
+  onEvent: event => {
+    if (event.type === 'confirmed') refreshYourApp();
   },
 });
 
+markee.open({ placement });
 // markee.close();
 ```
 
-Without a wallet adapter, browsing works without a wallet. On a connect click the modal discovers installed wallets using EIP-6963, with an EIP-1193 fallback. Multiple discovered wallets are offered for explicit selection. An adapter always takes precedence over injected discovery. Eligible boards also offer hosted login and card checkout when enabled by Markee; the host app does not need its own wallet integration.
+Omit `wallet` to let the modal discover browser wallets. It can also offer Markee-hosted checkout on eligible boards when that feature is available.
 
 ## React
 
 ```tsx
-import { MarkeeModal } from '@markee_team/sdk/react';
+import { MarkeeModal, MarkeeSign } from '@markee_team/sdk/react';
 
+<MarkeeSign placement={placement} onOpen={() => setOpen(true)} />
 <MarkeeModal
   open={open}
   onClose={() => setOpen(false)}
+  placement={placement}
   wallet={walletAdapter}
-  placement={{ kind: 'gardens-community', chainId: 100, community: communityAddress }}
-/>;
+  onEvent={event => {
+    if (event.type === 'confirmed') refreshYourApp();
+  }}
+/>
 ```
 
-See [`examples/connectkit`](https://github.com/1Hive/markee/tree/main/examples/connectkit) for a complete adapter. Its connection promise resolves only once ConnectKit has selected a provider and rejects when the picker is dismissed. The SDK does not install a second wallet context.
+`MarkeeSign` shows the current winner and opens the modal by default. Pass `onOpen` to control a separate modal, or `showAction={false}` for a display-only sign. In plain JavaScript, use `createMarkeeSign(container, { placement })`; it returns `refresh()`, `setTheme()`, and `destroy()`. See the [ConnectKit adapter example](https://github.com/1Hive/markee/tree/main/examples/connectkit) for wallet reuse.
 
-## Embed the current Markee sign
+## Match your app's theme
 
-```tsx
-import { MarkeeSign } from '@markee_team/sdk/react';
+Pass `theme` to `createMarkee`, `MarkeeModal`, or `MarkeeSign`:
 
-const placement = { kind: 'board', chainId: 8453, address: '0x2768BC6e90266248BD8bCF5401C36D8049CdF671' } as const;
-<MarkeeSign placement={placement} theme={{ mode: 'dark' }} />;
-```
-
-`MarkeeSign` is a compact, clickable sign with the winner's message, view count, and a suggested monthly rate on For Rent boards. By default, clicking it opens the SDK modal. Pass `onOpen={() => setOpen(true)}` to open your own controlled `MarkeeModal` instead, or `showAction={false}` to render a non-clickable sign. The sign and modal accept separate `theme` values. No app-side moderation database, RPC key, or moderation provider is needed. To render from plain JavaScript, call `createMarkeeSign(containerElement, { placement })`; its return value has `refresh()`, `setTheme()`, and `destroy()`.
-
-The sign fades in the real MARKEE logo behind the message on hover and keyboard focus, following the Gardens sign treatment. It selects the light or dark logo with the sign's theme, including system-mode changes. Set `theme={{ mode: 'dark', sign: { hoverLogo: false } }}` to disable the watermark. `sign.hoverBackground` remains available for an optional hover surface color; otherwise the sign keeps its normal surface. These options apply only to the sign, so the modal can use its own theme.
-
-The SDK snapshot API reads **board moderation flags** from Markee's database. A flagged winner is blurred with a notice. The sign does not offer a reveal action or count a view for flagged content. If moderation data cannot be loaded, it withholds the message until the status is known. Visible, unflagged signs record one view per message. The sign refreshes every 30 seconds while mounted and can be refreshed on demand. Markee-only site flags intentionally apply only on markee.xyz; they do not censor a partner's embedded sign. Moderators still manage flags on Markee; moderation writes invalidate SDK snapshots so embedded signs can pick up changes on their next refresh.
-
-## Modal layout
-
-Both strategies use a consistent, compact 512px panel with a fixed header/footer, a collapsible leaderboard, the selected message or editor, and a prominent amount card. The leaderboard pins your loaded messages and offers inline funding selection. Your active rental message is selected when available; otherwise an owned message or the creation form is shown.
-
-For Sale uses the same arrangement with a one-time ETH amount. For Rent uses an ETHx monthly rate and links to Deposit manager. Wallet balances, rewards, refunds, edits, and community treasury actions remain accessible without top-level tabs. The footer holds the review/confirmation actions and Stop streaming when applicable.
-
-MIN and WIN/2× fill the amount without sending a payment. Suggestions use the loaded ranking, preserve integer precision, and account for the selected message's existing funding or stream contribution. Rankings can change; the server still validates and simulates each reviewed action. New rentals retain the selected rate across message creation and require a separate stream confirmation. Payment reviews and drafts survive navigation back to the editor.
-
-## Theme
-
-Pass a typed `theme` option to `createMarkee` or a `theme` prop to the React modal. Light is the default; `mode: 'dark'` selects the dark palette and `mode: 'system'` follows device changes while the modal is open.
-
-```tsx
-import { createMarkee, type MarkeeTheme } from '@markee_team/sdk';
-
-const theme: MarkeeTheme = {
+```ts
+const theme = {
   mode: 'system',
   fontFamily: '"DM Sans", system-ui, sans-serif',
   radius: 16,
@@ -154,300 +80,86 @@ const theme: MarkeeTheme = {
     accent: '#eac6f1',
     accentText: '#50265b',
   },
-};
-
-// React: <MarkeeModal {...modalProps} theme={theme} />
-// JavaScript:
-const markee = createMarkee({ theme });
-markee.setTheme({ mode: 'dark' });
-markee.setTheme(); // Reset to the default light theme.
+} as const;
 ```
 
-Theme changes update styles in place: drafts, focus, scroll, wallet sessions, and payment reviews stay intact. In JavaScript, `setTheme` replaces the theme for the open modal and future opens. You can also supply `open({ placement, theme })` for a single opening, or call `modal.setTheme(theme)` on the returned modal. In React, update the `theme` prop. Removing it resets the default.
+`mode` accepts `light`, `dark`, or `system`. Colors and radii are optional; see the exported `MarkeeTheme` type for all tokens. The JavaScript modal also supports `markee.setTheme(theme)`.
 
-| Option | Customization |
-| --- | --- |
-| `mode` | `light`, `dark`, or `system` |
-| `fontFamily` | CSS font stack; the app supplies any custom font |
-| `radius` | Panel radius in pixels, 0–48 (default 22) |
-| `cardRadius` | Card radius in pixels, 0–48; defaults to 64% of panel radius |
-| `controlRadius` | Button and input radius in pixels, 0–48; defaults to 45% of panel radius |
-| `colors` | Partial overrides for the semantic tokens below |
-| `sign.hoverLogo` | Show the theme-matched MARKEE logo on hover/focus (default `true`) |
-| `sign.hoverBackground` | Optional sign hover surface color; defaults to the normal surface |
+## Show your app under “Served on”
 
-Color tokens: `background`, `surface`, `text`, `muted`, `border`, `inputBackground`, `inputText`, `primary`, `primaryText`, `accent`, `accentText`, `accentSurface`, `accentSurfaceText`, `accentBorder`, `selected`, `selectedText`, `info`, `infoText`, `error`, `errorText`, `warning`, `warningText`, `warningBorder`, `success`, `successText`, `link`, `focusRing`, and `overlay`. Set foreground/background pairs together and check your brand's contrast in both modes. Overrides apply over either selected palette; omitted values use that palette's defaults. Invalid CSS color/font values fall back to defaults.
+Pass your public page URL as `siteUrl` to `MarkeeModal` or `createMarkee`. React registers when mounted; plain JavaScript registers when the modal opens. Use `onSiteVerification` to inspect the result.
 
-The optional warning colors style moderation notices in the form, confirmation, and payment review:
+Markee checks the returned HTML for your board marker. Server-rendered React integrations add it automatically. For a client-rendered app, add this to its deployed HTML:
 
-```ts
-const theme: MarkeeTheme = {
-  colors: {
-    warning: '#fff8e6',
-    warningText: '#754b08',
-    warningBorder: '#d49a26',
-  },
-};
+```html
+<span hidden data-markee-address="0xYOUR_BOARD_ADDRESS"></span>
 ```
 
-To match an app completely, override `link`, `focusRing`, `border`, `selected`/`selectedText`, and the accent colors as well as the primary button colors. Otherwise those elements retain the SDK palette. Use the typed theme options; arbitrary custom CSS is not currently supported. The sign’s price badge appears on hover or keyboard focus, and stays visible on touch devices.
+The marker must be in the HTML response, not inserted later by JavaScript. Use a public HTTPS URL on your app's origin that serves the final page without redirects. Site verification is currently available for Base boards and does not block the modal. To retry, call `new MarkeeClient().verifySite(placement, siteUrl)`.
 
-Styles are scoped to the modal's Shadow DOM and do not change the host app or its wallet picker. The ConnectKit sample includes light, dark, device, and custom Plum presets.
+## Payments and recovery
 
-## Headless API
+- For Sale uses one-time ETH payments. For Rent uses ETHx streams. The modal prepares each action with Markee, shows a review, and asks for wallet confirmation. An expired review requires a fresh confirmation.
+- When a wallet reports EIP-5792 atomic support, `submit(preparation)` can send an atomic batch. Other wallets use a direct transaction. `send(preparation)` retains its direct transaction and hash-return behavior.
+- The SDK saves a recovery record before opening a wallet prompt. Accepted batch IDs and transaction hashes remain recoverable after reload. Ambiguous wallet responses block another payment until the existing operation is checked; the SDK never automatically resubmits it.
+- `pendingOperation(placement, account)` and `verifyOperation(operation)` resume verification. A `confirmed` event means Markee verified the payment. A wallet batch ID alone is not a confirmed payment or a transaction hash.
+- Older pending records, including records created against the former staging API default, remain readable.
 
-`new MarkeeClient(options)` provides `snapshot`, `prepare`, `send`, `verify`, `pending`, `recordView`, `quote`, `authorize`, `executeAuthorization`, `resumeAuthorization`, and `bridgeStatus`. Exported TypeScript types describe the complete request/response contract.
+When hosted checkout is available for an eligible Base For Sale board, a user without an app wallet can pay on Markee. Card funding alone is not a confirmed payment; the host receives `confirmed` after Markee verifies the transaction. For Rent requires a wallet. To always open hosted checkout in the same tab, set `checkoutWindow: 'redirect'`.
 
-- `snapshot(placement, account?, offset?)`: chain state, metadata, moderation, views, rewards and wallet balances. The first page is ranked; subsequent pages browse the registry. Enforced winner and the wallet's current backing remain included. `count` is the board's on-chain `markeeCount`, which includes the empty seed Markee every board starts with. `entries` leaves that seed out while it has no message and no funds, so a one-page board returns `count - 1` entries.
-- `prepare(placement, action)`: validates membership/ownership, simulates and estimates the exact transaction, and returns a five-minute review. All financial inputs are decimal **wei strings**; use `parseEth` for user input.
-- `send(preparation)`: rechecks account, requests a chain switch when necessary, and sends through the host wallet. It never signs with a backend key.
-- `verify(pending)`: binds the submitted hash to the prepared sender, recipient, calldata and value, waits for two block confirmations, and reports actual token transfers. A reverted transaction or deferred settlement is not a reward success.
-- Pending transactions are stored per API URL, wallet and placement. Closing/reopening resumes verification. Unknown transactions remain pending and block duplicate submissions. A replacement hash is not automatically inferred; inspect it in the wallet/explorer and pass the matching replacement to `reconcile` for an existing direct transaction, or `recoverOperation` for an ambiguous wallet request.
-- Admin signatures have a five-minute challenge window, one-time nonces, and a durable server-side operation record. Retrying the same signature recovers the saved operation instead of spending twice. In-flight signatures are stored locally for recovery and removed after a terminal result. A record interrupted before a hash was saved requires operator reconciliation; it is never automatically executed again.
+## Other placements
 
-## Payment semantics
-
-For Sale supports create/fund/edit. New message ownership belongs to the caller. Funding an existing message does not transfer ownership; MARKEE rewards go to the payer when RevNet is enabled.
-
-For Rent supports message creation, starting/updating/switching/stopping a stream, wrap/unwrap, pool connection/refunds, board-buffer recovery, ranking refresh and settlement. The server builds the complete Superfluid batch, including exact ETHx approval and pool connection. Wallet runway uses the combined CFA and GDA net flow across the wallet, not only the current board. Rental MARKEE comes from actual settled rent, never merely from wrapping or depositing ETH.
-
-Payment reviews remain visible while the wallet requests confirmation, including network switches. If a review expires when confirming, the modal shows **Refreshing payment details…**, prepares an updated review, and requires another confirmation click. It never automatically sends the refreshed transaction.
-
-For Sale reviews are disabled when the entered payment exceeds the loaded ETH balance; the balance uses the error color and the button explains the shortfall. The API also checks network fees before wallet confirmation.
-
-For Rent reviews show estimated **MARKEE/month while winning**, using the selected monthly stream rate and current on-chain reward settings. The estimate is not based on the ETH deposit and is not guaranteed; if quoting is unavailable, the modal shows a qualitative reward description. Rental transaction details contain only Network, Recipient, and Wallet; fees stay in the payment summary.
-
-Refunds flow automatically when connected to the message’s refund pool. **Collect refund** appears only when the loaded wallet snapshot reports a positive claimable balance for that message’s pool. Board-buffer recovery is separate. Community revenue actions are accessed through **Community accumulated revenue**.
-
-Community activation supports the current council Safe, a current Safe owner, or the configured authorized keeper. Revenue claims support the current Safe or its current owners and always pay the council treasury. Existing outbound Across, Squid and LI.FI routing lives on Markee's server.
-
-### Platform communities with many boards
-
-Use the three-value shorthand on the sign and the independently controlled modal. The equivalent plain JavaScript option works in `createMarkeeSign` and `markee.open`. Supply exactly one of `placement` or `multiBoard`.
+Existing `gardens-community` placements remain supported. For a registered platform with multiple communities, use `multiBoard` instead of `placement`:
 
 ```tsx
 const multiBoard = {
-  platformId: 'revnet', // a Markee-registered platform ID
-  chainId: project.chainId, // identity chain, not the board chain
-  communityId: String(project.id), // current route's project ID
+  platformId: 'revnet',
+  chainId: project.chainId,
+  communityId: String(project.id),
 };
+
 <MarkeeSign multiBoard={multiBoard} onOpen={() => setOpen(true)} />
 <MarkeeModal multiBoard={multiBoard} open={open} onClose={() => setOpen(false)} />
 ```
 
-```ts
-createMarkeeSign(container, { multiBoard });
-markee.open({ multiBoard });
-```
+Supply exactly one of `placement` or `multiBoard`. Platform activation is available only when Markee enables it and the connected account is authorized; an unactivated community may have no board to display.
 
-The API checks the Base registrar mapping for this identity. An **active** board displays its current moderated sign. An **unactivated** community can offer a dedicated activation screen when its platform is enabled and the connected account is authorized; activation collects one strategy and requires the person activating to enter a valid, nonzero Base beneficiary address. The field starts blank and is never inferred from the connected wallet or platform recipient. For Sale transfers native ETH on Base, so a contract beneficiary must accept native ETH. For Rent streams ETHx on Base, so the beneficiary must support an incoming Superfluid ETHx stream. Address validation cannot prove that a contract accepts either payment type; confirm its behavior before activation. A board **awaiting admin acceptance** shows setup until its activator accepts ownership on Base. **Disabled** platforms show no activation action, and an **unavailable** lookup withholds the message. This flow does not bridge. `allowedStrategies?: Array<'sale' | 'rent'>` restricts the visible options, while Markee's API independently checks identity and authorization. Gardens is a controlled pilot behind a server gate; Revnet and Giveth activation remain gated prototypes. Existing `board` and `gardens-community` placements remain supported, and the existing Gardens board is not migrated.
+## Moderation
 
-## Integration boundaries
-
-- Current board versions: `1.3.0` and `1.4.0` For Sale and `streaming-1.0.0` and `streaming-1.1.0` For Rent, on Base and configured Sepolia deployments. Additional factories must be enabled on Markee's server. Legacy strategy versions are rejected explicitly.
-- Direct transaction sending expects an EIP-1193 wallet returning an on-chain transaction hash with the connected wallet as the transaction sender. The modal also supports EIP-5792 atomic batches when the wallet reports that capability and the API can verify their on-chain execution. A Safe transaction-service ID is retained as a pending batch, not treated as a confirmed transaction. Community authorization independently supports ERC-1271 Safe signatures.
-- The native ETHx downgrade uses the deployed contract's native transfer path. Contract accounts whose receive function needs more than its transfer stipend may not support it; simulation catches the failure before prompting.
-- The modal renders escaped text, uses isolated CSS, and supports keyboard focus, Escape, mobile sizing and reduced motion. A host CSP must permit the SDK's inline styles and connections to its configured Markee API. No external font or image is needed by the modal.
-- API failures are explicit. Without moderation data, message text is withheld. No mock balances or fabricated rewards are returned by production handlers.
-
-Backend configuration and API reference: [`docs/sdk/implementation.md`](https://github.com/1Hive/markee/blob/main/docs/sdk/implementation.md).
-
-## API endpoint
-
-No API URL or Markee API key is required. The SDK default is:
-
-```text
-https://www.markee.xyz/api/sdk/v1
-```
-
-Markee hosts this API and centralizes on-chain reads, metadata, and transaction preparation. Base placements use real funds. For local development or testing, pass an optional `apiUrl` override to `createMarkee`, `MarkeeClient`, or the React modal. The endpoint used by your installed release is exported as `DEFAULT_MARKEE_API_URL`. Staging is an explicit override: `apiUrl: "https://staging.markee.xyz/api/sdk/v1"`.
-
-When upgrading from the former staging default, pending transactions, community authorizations, and hosted checkouts remain bound to the staging API that created them. Keep that API available until those operations finish. New operations use production; the SDK never automatically resubmits a payment. A missing saved checkout requires recovery rather than silently creating another checkout.
-
-## LLM implementation prompt
-
-Copy this prompt into your coding assistant. It gathers missing requirements before implementing the integration.
-
-```text
-Integrate @markee_team/sdk@latest into this app. Inspect the codebase first and
-follow its existing framework, styling, and wallet patterns. Read the installed
-package README and types for current capabilities.
-
-Before implementing, ask me to create my leaderboard on Markee at
-https://www.markee.xyz/create-a-markee, then provide its resulting Markee page link.
-If I already have a leaderboard, ask for that link instead; do not create a duplicate.
-Example link format:
-https://www.markee.xyz/markee/0x6ceBC87DE40519Fa52fc40a1d49f16FF968bb439
-Never silently substitute a demo board. Wait for my link before wiring the placement.
-
-Extract the board address from the /markee/<address> path. Validate the Markee URL
-and the address (0x followed by 40 hexadecimal characters). Markee website boards
-currently use Base, chain ID 8453. Verify the board through the SDK snapshot API;
-if verification fails, explain the error and ask for a corrected link.
-
-Do not ask me to choose For Sale or For Rent in the host app. That choice is made
-when creating the leaderboard on Markee. The API returns strategy and the SDK
-adapts the modal automatically. Do not add a strategy prop, toggle, or hardcoded mode.
-
-Ask only the remaining unanswered requirements in one concise group:
-- Where should Markee appear, what opens the modal, and what should the button say?
-- Should it reuse the app's existing wallet, use SDK wallet discovery, or use
-  Markee-hosted card checkout without an app wallet (For Sale on Base only)? Inspect
-  existing connectors first; do not add a second wallet context or install a new
-  connector without agreement.
-- Should the modal match the app theme or use specific colors, font, panel/card/
-  control radii, and light/dark/system mode? Include links, focus rings, borders,
-  and selected states when matching the host palette.
-- What public domain/page will host this integration? Use it as siteUrl for
-  automatic verification. For Vite/client rendering, add the board marker to the
-  static HTML as documented; do not claim localhost is verified.
-- What should happen after a confirmed transaction: notification, refresh,
-  navigation, or callback? Are there additional mobile/accessibility requirements?
-
-Then implement the agreed scope:
-1. Install @markee_team/sdk@latest. No API URL or Markee API key is required.
-   Do not create an API proxy or add RPC/database credentials.
-2. Use placement = { kind: 'board', chainId: 8453, address: extractedAddress }.
-   Use new MarkeeClient().snapshot(placement) to verify the board and read strategy,
-   name, minimum, and other metadata. The modal performs its own snapshot loading;
-   do not recreate that loading or strategy logic in the host app.
-3. For React, use MarkeeModal from @markee_team/sdk/react in a client component
-   with open, onClose, and placement. Otherwise use createMarkee() from
-   @markee_team/sdk, then open({ placement }); close it on teardown.
-4. If a host wallet exists, pass its selected EIP-1193 provider through the wallet
-   adapter. For ConnectKit/wagmi use the active connector. Resolve connect after
-   selection, reject cancellation, and do not silently switch wallet providers.
-   Otherwise omit wallet. Without a connected app account, the modal's Review Payment
-   button opens Markee-hosted checkout on supported For Sale boards, and connects a
-   wallet first on For Rent and other boards. Do not install
-   Privy or collect card details in the host app.
-5. Apply theme options (including radius, cardRadius, and controlRadius) while
-   preserving the built-in modal layout. Handle onEvent
-   if needed; show success only for a confirmed event. Let the SDK manage review,
-   network switching, submission, and verification.
-6. Verify build/types, loading of the supplied board, automatic strategy selection,
-   open/close behavior, theme, and wallet reuse. Do not sign or send transactions
-   during automated verification. Report changed files, checks, and limitations.
-
-Check the installed release's supported features before promising functionality.
-Wallet-funded flows are supported. Hosted card checkout requires Markee's backend
-capability to be enabled; do not promise availability when it is disabled. Incoming
-bridging is not available. Transactions and card funding use real funds.
-```
-
-## Pay by card without an app wallet
-
-Without a connected app wallet, the modal shows **Review Payment** as its only payment
-action and hides wallet balances and wallet-management sections. On For Sale boards
-on Base with MARKEE rewards, it opens Markee-hosted checkout. This flow is available
-when the Markee backend enables hosted checkout. No Privy provider, payment keys or
-API configuration is needed in the integrating app. Omit the `wallet` adapter.
-
-The SDK opens Markee, where the user signs in, receives a Privy embedded wallet,
-funds it through Stripe (Base USDC converted to ETH) or MoonPay (Base ETH), and confirms
-the Markee payment. The contract sends MARKEE directly to that user's paying
-wallet. The host receives `onEvent({ type: 'confirmed', hash })` only after
-server-side receipt verification. Card funding alone is not a successful payment.
-
-The checkout can resume after closing or refreshing. If a wallet submission has an
-unknown result, it asks the user to check the existing transaction instead of
-sending again. On browsers that block popups, it navigates to Markee in the same
-tab. Reopen Review Payment after returning to recover the confirmed result.
-
-Card availability, fees, minimum purchase amounts and identity checks depend on
-the funding provider and user eligibility. Any unused USDC or ETH remains in the
-user's wallet. Conversion uses a capped approval and maximum 1% slippage, with
-wallet confirmation and Markee-sponsored conversion gas. For Rent, incoming
-bridging and automatic rewards forwarding to a different wallet are outside this
-checkout flow. If hosted checkout is unavailable on an eligible board, Review Payment is
-disabled with an availability message; the modal does not fall back to asking for a
-wallet there.
-
-For Rent boards (and boards without hosted checkout) need a wallet, because renting
-streams ETHx from it. Without a connected app wallet, Review Payment connects one first,
-using the `wallet` adapter when provided or else the browser wallets the SDK discovers,
-then continues to the payment review.
-
-### Reuse a Markee login
-
-Hosted checkout opens a temporary browser tab on Markee, where the existing Privy session is
-restored before showing sign-in. The SDK does not copy login tokens into the host
-app. The tab closes after the host verifies the payment. If tabs are blocked,
-checkout falls back to a same-tab redirect. To always redirect, pass
-`checkoutWindow: 'redirect'` (`checkoutWindow="redirect"` in React).
-
-Session reuse requires the same exact Markee origin and Privy app ID. A login on
-`www.markee.xyz` is not a login on a Vercel preview domain. Markee can set
-`MARKEE_CHECKOUT_ORIGIN=https://www.markee.xyz` on its API deployment **after** the
-checkout route is deployed there. Both deployments must use the same checkout KV,
-signing secret, supported configuration and Privy app. Omit this setting to keep
-checkout on the API origin. Integrators do not configure an API or checkout URL.
-Existing pending checkout sessions retain their original destination.
-
-### Pay in Markee availability
-
-The SDK checks the Markee API before offering hosted payment. Markee controls this
-feature with the server-only `FLAG_SDK_PAY_IN_MARKEE` environment variable, which
-defaults to false. Only `true`, together with the required checkout configuration,
-enables it. Integrating apps do not need to provide a flag or API key. Connected
-wallet payments remain available independently.
-
-### Automatic message moderation
-
-When enabled by Markee, create/edit forms warn if a message matches an automatic moderation
-rule. Authors can edit or explicitly continue; publication may still be hidden. A passing
-message edit clears an automatic flag, while manual flags require moderator action.
-
-`await client.checkMessage(message)` exposes the same draft check for custom interfaces. It
-returns `enabled`, `state`, `contentHash`, `engine`, `policyVersion`, and optional `reason` and `reasonCodes`.
-Treat `unavailable` as unknown, never as a pass. Names are not automatically checked.
-The standard modal handles these warnings for React and vanilla JavaScript integrations.
-No API key or moderation configuration is required in the host app.
-
-Snapshots retain `entry.moderated` (`false`, `true`, or `null`) and can additionally include
-`entry.moderation` with the state, reason, and optional `reasonCodes`. Hide unavailable and flagged content and do not
-record views for it. A moderator's false-positive exception on Markee applies only on Markee;
-it does not change SDK visibility. Automatic moderation is enabled by default on Markee.
-Markee operators can explicitly disable it with `FLAG_AUTO_MODERATION=false`; host apps need no configuration.
-
-## Automatic moderation rules
-
-Both React components and `createMarkee`, `createMarkeeSign`, and `MarkeeClient` accept a `moderation` option. Scams & phishing checks always run. Each other rule can be turned on or off individually:
+The sign withholds flagged or unavailable messages. The modal can warn about draft messages when Markee's automatic checks are enabled. To choose optional rules, pass `moderation` to the modal, sign, `createMarkee`, or `MarkeeClient`:
 
 ```ts
 const moderation = {
   version: 1,
   rules: { profanity: true, links: false, addresses: false, ens: true },
 } as const;
-// <MarkeeSign placement={placement} moderation={moderation} />
-// <MarkeeModal placement={placement} moderation={moderation} ... />
-// new MarkeeClient({ moderation }).checkMessage('Your message');
 ```
 
-| Rule | Blocks |
-| --- | --- |
-| Scams & phishing (always on) | Seed-phrase/private-key requests, reward-claim solicitations, promised multiplied returns, payment solicitations, shortened links, and lookalike domains of protected services |
-| `profanity` | The English profanity dictionary |
-| `links` | Any link or domain (ENS names are controlled by `ens`) |
-| `addresses` | Wallet and contract addresses, full or abbreviated (`0x1234…abcd`) |
-| `ens` | ENS names such as `name.eth` |
+Scam and phishing checks always run. The existing `severity: 'relaxed' | 'standard' | 'strict'` presets remain supported; explicit rules override the selected preset. Treat an unavailable moderation result as unknown.
 
-Versioned policy objects require 0.1.0-beta.8 or later. The SDK forwards the object to Markee without maintaining a rule-name allowlist; Markee validates its version and fields. Board owners can save a policy in **Add to your site**. That saved policy takes precedence over an older embed's supplied rules and is applied on the next sign refresh, without changing the host app or publishing another SDK version. When no board policy is saved, supplied rules and presets retain their existing behavior.
+## Headless client and API
 
-### Presets
+`MarkeeClient` exposes `snapshot`, `prepare`, `send`, `submit`, `verify`, `pendingOperation`, `verifyOperation`, and other board actions. Read the exported TypeScript types for request and response details. Financial inputs are decimal wei strings; `parseEth` converts user-entered ETH amounts.
 
-`severity` selects a preset, and remains supported:
+The default endpoint is `https://www.markee.xyz/api/sdk/v1`. Override `apiUrl` only for an explicit staging or local environment. Saved operations stay bound to the API origin that created them.
 
-```ts
-const moderation = { severity: 'standard' } as const;
+For backend behavior and the full API reference, see [SDK implementation](https://github.com/1Hive/markee/blob/main/docs/sdk/implementation.md).
+
+## Coding assistant prompt
+
+```text
+Install @markee_team/sdk@latest and read its installed README and types.
+Inspect this app's framework, wallet connector, and theme before integrating.
+Ask me for my Markee page URL, or direct me to
+https://www.markee.xyz/create-a-markee if I need a leaderboard.
+Use its /markee/<address> address as a Base board placement. Verify the
+board with MarkeeClient.snapshot; never silently use a demo board.
+Use MarkeeModal for React or createMarkee for plain JavaScript. Reuse the
+app's existing wallet when present. Match its colors, font, radii, and
+light/dark behavior through SDK theme options. Ask only for missing
+placement, opening, and post-confirmation behavior.
+Use siteUrl for the public page and add the board marker to server-returned
+HTML when needed. Treat only confirmed events as verified payments.
+Commit the lockfile, run the app's build and typecheck, and report what was
+verified. Do not sign or send a transaction in automated checks.
 ```
-
-- `relaxed`: scams & phishing only; no profanity dictionary.
-- `standard` (default): scams & phishing plus profanity.
-- `strict`: Standard plus links/domains, wallet addresses and ENS names, even without payment instructions.
-
-When you set both, `rules` overrides the preset for the rules you list, and unlisted rules follow `severity`. For example, `{ severity: 'strict', rules: { links: false } }` blocks profanity, addresses and ENS names but allows links. A selection that matches a preset behaves exactly like that preset.
-
-These are dictionary and rule checks, not contextual AI classifications or guarantees of safety. They check message text only. Manual flags, exact-text moderator approvals, and unavailable-state hiding still apply. An integration's settings do not change Markee's own Standard policy or the shared moderation queue.
-
-`POST /api/moderation/check` and `/api/sdk/v1/moderation/check` accept an optional top-level `severity` and/or `rules` with either `{ kind: 'draft', message }` or `{ kind: 'published', chainId: 8453, markeeIds }`. `rules` is the complete comma-separated list of enabled optional rules, for example `"profanity,ens"`; an empty string enables none. When present it takes precedence over `severity`. Omitting both preserves Standard behavior, and invalid values return 400. Verdict caches include the policy version, so each rule selection is cached separately. The SDK forwards its settings for draft checks, snapshots, payment reviews, hosted checkout, and view validation. Servers that predate per-rule support ignore `rules` and apply `severity`. Existing clients need no changes.
