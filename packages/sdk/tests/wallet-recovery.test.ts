@@ -182,7 +182,7 @@ test('a traced on-chain batch revert releases recovery; unsupported batching fal
     if (method === 'wallet_getCapabilities') return { atomic: { status: 'supported' } };
     if (method === 'wallet_sendCalls') { if (unsupported) throw { code: -32601 }; return { id: '0x1234' }; }
     if (method === 'wallet_getCallsStatus') return { id: '0x1234', chainId: '0x2105', status: batchStatus, atomic: true,
-      receipts: [{ transactionHash: hash, status: batchStatus === 500 ? '0x0' : '0x1' }] };
+      receipts: [{ transactionHash: hash, status: '0x1' }] };
     if (method === 'eth_sendTransaction') { directSends++; return hash; }
     throw Error(method);
   } };
@@ -190,6 +190,9 @@ test('a traced on-chain batch revert releases recovery; unsupported batching fal
   const batch = await client.submit(prep());
   assert.equal((await client.verifyOperation(batch))?.status, 'reverted');
   assert.equal(client.pendingOperation(prep().placement, account), undefined);
+  batchStatus = 200;
+  const caughtFailure = await client.submit(prep());
+  assert.equal((await client.verifyOperation(caughtFailure))?.status, 'reverted', 'the API trace outranks a wallet success claim');
   unsupported = true; batchStatus = 100;
   const direct = await client.submit(prep());
   assert.ok('hash' in direct);

@@ -259,23 +259,27 @@ export class MarkeeClient {
       || typeof status.chainId !== 'string' || status.chainId.toLowerCase() !== `0x${operation.preparation.transaction.chainId.toString(16)}`) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
     if (status.status === 100) return null;
     if ((status.status !== 200 && status.status !== 500) || status.atomic !== true || !Array.isArray(status.receipts) || !status.receipts.length || status.receipts.length > 16) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
-    const expectedReceiptStatus = status.status === 200 ? '0x1' : '0x0';
     const receipts = status.receipts as { transactionHash?: unknown; status?: unknown }[];
-    if (!receipts.every(receipt => isHash(receipt.transactionHash) && receipt.status === expectedReceiptStatus)) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    // A failed inner call may be caught by the smart wallet, so a failed batch can
+    // still have a successful outer receipt. The API trace must verify the failure.
+    if (!receipts.every(receipt => isHash(receipt.transactionHash) && (status.status === 200 ? receipt.status === '0x1' : receipt.status === '0x0' || receipt.status === '0x1'))) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
     let awaiting = false;
+    const matches: TransactionResult[] = [];
     for (const receipt of receipts) {
       let result: TransactionResult;
       try { result = await client.request<TransactionResult>('verify', { id: operation.preparation.id, hash: receipt.transactionHash, mode: 'batch' }); }
       catch (error) { if (error instanceof MarkeeError && error.code === 'TRANSACTION_MISMATCH') continue; throw error; }
       if (result.status === 'pending') { awaiting = true; continue; }
-      if (status.status === 500 && result.status === 'reverted') { this.recovery.clear(operation.preparation, found.origin); return result; }
-      if (status.status !== 200 || result.status !== 'confirmed') throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
-      this.recovery.set({ version: 2, phase: 'confirmed', mode: 'batch', preparation: operation.preparation, hash: result.hash, at: Date.now() }, found.origin);
-      this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
-      return result;
+      matches.push(result);
     }
     if (awaiting) return null;
-    throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    if (matches.length !== 1) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    const result = matches[0];
+    if (result.status === 'reverted') { this.recovery.clear(operation.preparation, found.origin); return result; }
+    if (status.status !== 200 || result.status !== 'confirmed') throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    this.recovery.set({ version: 2, phase: 'confirmed', mode: 'batch', preparation: operation.preparation, hash: result.hash, at: Date.now() }, found.origin);
+    this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
+    return result;
   }
   /** Attach a hash found in wallet activity to an ambiguous submission, then verify it on Markee's API. */
   async recoverOperation(operation: WalletRecovery, hash: Hex): Promise<TransactionResult | null> {

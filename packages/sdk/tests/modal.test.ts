@@ -251,6 +251,19 @@ test('a reverted recovery hash shows an error while keeping the unresolved walle
   assert.equal(rendered, true);
 });
 
+test('a confirmed atomic message edit offers its queued name edit for review', async () => {
+  const modal = Object.create(MarkeeModal.prototype) as { poll(): Promise<void>; pending: unknown; queuedNameEdit: unknown; review: unknown };
+  const pending = { version: 2, phase: 'batch-submitted', mode: 'batch', batchId: '0x1234', preparation: { id: 'review-1', action: { kind: 'edit-message', markee: address } } };
+  const prepared: unknown[] = [];
+  Object.assign(modal, { closed: false, account: address, pending,
+    queuedNameEdit: { markee: address, account: address, name: 'Paul', afterReviewId: 'review-1' },
+    client: { verifyOperation: async () => ({ status: 'confirmed', hash: '0x123' }) },
+    reload: async () => {}, prepare: async (action: unknown) => { prepared.push(action); }, render: () => {} });
+  await modal.poll();
+  assert.deepEqual(prepared, [{ kind: 'edit-name', markee: address, name: 'Paul' }]);
+  assert.equal(modal.queuedNameEdit, undefined);
+});
+
 test('the combined editor and deposit manager show distinct editable fields and claims', () => {
   const modal = rentView(address) as { snapshot: Record<string, any>; form: unknown; formHtml(): string; walletHtml(): string; balanceMode: string };
   const entry = { address, owner: address, message: 'Old message', name: 'Old name' };

@@ -61,7 +61,7 @@ export class MarkeeModal {
   private initialSelection = false;
   private renderedView = '';
   private form?: FormState;
-  private queuedNameEdit?: { markee: Address; account: Address; name: string; afterHash?: string };
+  private queuedNameEdit?: { markee: Address; account: Address; name: string; afterHash?: string; afterReviewId?: string };
   private balanceMode: 'wrap' | 'unwrap' = 'wrap';
   private review?: PreparedAction;
   private authorization?: { kind: 'activate' | 'claim' | 'platform-activate'; value: Authorization; account: Address };
@@ -275,7 +275,7 @@ export class MarkeeModal {
       if (result && result.status !== 'pending' && (result.status === 'confirmed' || !('mode' in pending) || pending.mode === 'direct' || pending.phase === 'batch-submitted')) {
         this.pending = undefined; this.result = result; this.error = '';
         await this.reload();
-        if (this.queuedNameEdit?.afterHash === result.hash) {
+        if (this.queuedNameEdit && (this.queuedNameEdit.afterHash === result.hash || this.queuedNameEdit.afterReviewId === pending.preparation.id)) {
           const next = this.queuedNameEdit;
           this.queuedNameEdit = undefined;
           if (result.status === 'confirmed' && this.account?.toLowerCase() === next.account.toLowerCase()) {
@@ -425,7 +425,10 @@ export class MarkeeModal {
           if (this.pending) { this.review = undefined; this.form = undefined; }
           throw error;
         }
-        if ('hash' in submitted && preparation.action.kind === 'edit-message' && this.queuedNameEdit?.markee.toLowerCase() === preparation.action.markee.toLowerCase()) this.queuedNameEdit.afterHash = submitted.hash;
+        if (preparation.action.kind === 'edit-message' && this.queuedNameEdit?.markee.toLowerCase() === preparation.action.markee.toLowerCase()) {
+          this.queuedNameEdit.afterReviewId = preparation.id;
+          if ('hash' in submitted) this.queuedNameEdit.afterHash = submitted.hash;
+        }
         this.pending = submitted; this.review = undefined; this.form = undefined; this.result = undefined;
         void this.poll();
       } else if (cmd === 'recover' && this.pending && 'phase' in this.pending) {

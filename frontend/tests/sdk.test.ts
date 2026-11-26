@@ -107,6 +107,8 @@ test('batch verification rejects a receipt older than the review and retains an 
   await assert.rejects(verifyTransaction(id, hash, 'batch'), { code: 'BATCH_VERIFICATION_UNAVAILABLE' });
   receiptStatus = 'reverted'; traceAvailable = true;
   assert.equal((await verifyTransaction(id, hash, 'batch')).status, 'reverted');
+  receiptStatus = 'success';
+  assert.equal((await verifyTransaction(id, hash, 'batch')).status, 'reverted', 'a caught inner failure remains a failed reviewed call');
   await assert.rejects(verifyTransaction(id, hash), { code: 'TRANSACTION_MISMATCH' });
 });
 test('rental switch deletes the old stream, then creates the new tagged stream and connects its refund pool', () => {

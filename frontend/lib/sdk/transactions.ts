@@ -257,7 +257,10 @@ export async function verifyTransaction(id: string, hash: Hex, mode: 'direct' | 
     try {
       trace = await (client.request as unknown as (args: { method: string; params: unknown[] }) => Promise<CallTrace>)({ method: 'debug_traceTransaction', params: [hash, { tracer: 'callTracer' }] });
     } catch { throw new SDKError('BATCH_VERIFICATION_UNAVAILABLE', 'Unable to verify this wallet batch yet. Check its status later; do not send another payment.', 503); }
-    if (!batchTraceMatches(tx, trace, result.status === 'reverted')) throw new SDKError('TRANSACTION_MISMATCH', 'This wallet batch did not execute the reviewed action.', 409);
+    const executed = batchTraceMatches(tx, trace);
+    if (!executed && !batchTraceMatches(tx, trace, true)) throw new SDKError('TRANSACTION_MISMATCH', 'This wallet batch did not execute the reviewed action.', 409);
+    // A smart wallet can catch a failed inner call, leaving the outer receipt successful.
+    if (!executed) result.status = 'reverted';
   }
   if (result.status === 'reverted') return result;
   if (mode === 'batch') {
