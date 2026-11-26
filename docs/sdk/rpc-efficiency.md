@@ -147,8 +147,8 @@ The runner calls `GET /v1/usage/summary` and `POST /v1/usage/time-series` on
 `https://admin-api.alchemy.com`, follows pagination, and uses the 24 complete hours
 ending at the summary's latest complete hour. It uses the same unfiltered all-app
 forecast validation and CU limit as MCP exports. Missing credentials, invalid or
-incomplete data, API errors and over-limit forecasts fail this separate workflow;
-none are treated as a budget pass. The summary and `alchemy-account-forecast`
+incomplete data, API errors and over-limit forecasts still fail on pushes and
+manual runs. On PRs the forecast step is advisory and emits a warning on failure. The summary and `alchemy-account-forecast`
 artifact (14 days) show the result. Request credentials and raw responses are not
 logged or uploaded. No blockchain RPCs or transactions are issued by this check.
 
