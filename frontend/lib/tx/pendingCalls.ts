@@ -39,15 +39,22 @@ export function readPendingCalls(store: PendingCallsStore, account: Address, cha
     if (record.version === undefined && typeof record.id === 'string' && record.id) {
       return { version: 1, phase: 'submitted', action: null, id: record.id, at: record.at }
     }
-  } catch { /* A malformed record may still represent a submitted transaction. */ }
+  } catch (error) {
+    // A malformed record may still represent a submitted transaction. Do not log its raw contents:
+    // older records contain wallet batch IDs, and future formats may carry more transaction data.
+    console.warn('[wallet-batch] unreadable recovery record; blocking retry', error instanceof SyntaxError ? 'invalid-json' : 'invalid-record')
+    throw new Error(PROPOSAL_UNKNOWN_MESSAGE)
+  }
+  console.warn('[wallet-batch] unsupported recovery record; blocking retry')
   throw new Error(PROPOSAL_UNKNOWN_MESSAGE)
 }
 
 function save(store: PendingCallsStore, account: Address, chainId: number, record: PendingCalls) {
   const key = storageKey(account, chainId)
+  const json = JSON.stringify(record)
   try {
-    store.set(key, JSON.stringify(record))
-    if (store.get(key) !== JSON.stringify(record)) throw new Error('Storage did not retain the transaction')
+    store.set(key, json)
+    if (store.get(key) !== json) throw new Error('Storage did not retain the transaction')
   } catch { throw new Error(PENDING_CALLS_STORAGE_MESSAGE) }
 }
 

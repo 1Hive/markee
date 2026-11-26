@@ -36,6 +36,15 @@ function isDefinitelyNotSubmitted(error: unknown): boolean {
   return false
 }
 
+function walletErrorDiagnostic(error: unknown) {
+  if (!error || typeof error !== 'object') return { name: 'unknown' }
+  const { name, code } = error as { name?: unknown; code?: unknown }
+  return {
+    name: typeof name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(name) ? name : 'unknown',
+    ...(typeof code === 'number' && Number.isSafeInteger(code) ? { code } : {}),
+  }
+}
+
 // Approve-then-act for an ERC20 pull. Reads the allowance fresh, skips the approve when it already
 // covers the amount, sends approve + action as one EIP-5792 atomic batch when the wallet supports it
 // (Safe, smart wallets), and otherwise falls back to two transactions.
@@ -70,6 +79,7 @@ export function useApproveAndCall() {
         const status: PriorCallsStatus = result.status === 'pending' || result.status === 'success' || result.status === 'failure' ? result.status : 'unknown'
         return { status, transactionHash: result.receipts?.at(-1)?.transactionHash }
       },
+      // A receipt lookup error is treated as unknown by guardPendingCalls, keeping the batch blocked.
       async hash => (await publicClient.getTransactionReceipt({ hash })).status,
     )
 
@@ -111,7 +121,11 @@ export function useApproveAndCall() {
             return { status: 'failure' }
           }
           return { status: 'pending' }
-        } catch { return { status: 'pending' } }
+        } catch (error) {
+          // Never log the raw wallet/RPC error; it may contain provider data or transaction details.
+          console.warn('[wallet-batch] status unavailable; retaining pending batch', walletErrorDiagnostic(error))
+          return { status: 'pending' }
+        }
       },
       onApproving: opts.onApproving,
       onApproved: opts.onApproved,
