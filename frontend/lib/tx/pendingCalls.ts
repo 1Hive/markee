@@ -144,6 +144,18 @@ export async function guardPendingCalls(
   clearPendingCalls(store, account, chainId)
 }
 
+// Whether a recovery record can be written and read back. Without that no batch could have been
+// recorded here, and none may be sent: the direct and two-step paths need no record.
+export function pendingCallsStorageWritable(store: PendingCallsStore): boolean {
+  const key = 'markee:pending-calls:probe'
+  try {
+    store.set(key, '1')
+    const kept = store.get(key) === '1'
+    store.remove(key)
+    return kept
+  } catch { return false }
+}
+
 export const browserPendingCallsStore: PendingCallsStore = {
   get: key => window.localStorage.getItem(key),
   set: (key, value) => window.localStorage.setItem(key, value),

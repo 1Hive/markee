@@ -31,6 +31,8 @@ function handle(req: NextRequest) {
   return handleKeeperRoute(req, {
     name: 'streaming-settle',
     maxDuration,
+    // Runs once a day: wait out a 10-minute keeper run that overlaps 03:05 rather than skip a day.
+    lockWaitMs: 90_000,
     run: async ({ publicClient, walletClient }) => {
       const report = await runSettler({
         publicClient,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Address } from 'viem'
 import {
-  beginPendingCalls, guardPendingCalls,
+  beginPendingCalls, guardPendingCalls, pendingCallsStorageWritable,
   readPendingCalls, sendRecoverableCalls, PROPOSAL_EXECUTED_MESSAGE, PROPOSAL_PENDING_MESSAGE,
   PROPOSAL_UNKNOWN_MESSAGE, PENDING_CALLS_STORAGE_MESSAGE, type PendingCallsStore,
 } from '../lib/tx/pendingCalls'
@@ -113,4 +113,15 @@ test('malformed recovery records fail closed and do not get erased', () => {
   store.set(key, '{bad json')
   assert.throws(() => readPendingCalls(store, SAFE, 8453), { message: PROPOSAL_UNKNOWN_MESSAGE })
   assert.equal(store.get(key), '{bad json')
+})
+
+test('storage that cannot keep a record is reported as unusable for a batch', () => {
+  assert.equal(pendingCallsStorageWritable(memoryStore()), true)
+  const blocked: PendingCallsStore = { get: () => { throw new Error('SecurityError') }, set: () => { throw new Error('SecurityError') }, remove: () => {} }
+  assert.equal(pendingCallsStorageWritable(blocked), false)
+  const forgetful: PendingCallsStore = { get: () => null, set: () => {}, remove: () => {} }
+  assert.equal(pendingCallsStorageWritable(forgetful), false)
+  const store = memoryStore()
+  pendingCallsStorageWritable(store)
+  assert.equal(store.data.size, 0, 'the probe leaves nothing behind')
 })

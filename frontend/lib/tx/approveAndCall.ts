@@ -61,8 +61,9 @@ export function supportsAtomicBatch(capabilities: unknown): boolean {
 }
 
 // Codes a wallet returns when it refuses wallet_sendCalls outright (unsupported method, EIP-5792
-// capability errors), so nothing was submitted and the two-step flow is safe to use instead.
-const BATCH_UNSUPPORTED_CODES = new Set([4200, -32601, 5700, 5710, 5740, 5760])
+// capability errors, invalid params), so nothing was submitted and the two-step flow is safe to use
+// instead. Matches the SDK's BATCH_UNSUPPORTED_CODES.
+const BATCH_UNSUPPORTED_CODES = new Set([4200, -32601, -32602, 5700, 5710, 5740, 5760])
 
 export function isBatchUnsupportedError(error: unknown): boolean {
   for (let e = error, depth = 0; e && typeof e === 'object' && depth < 8; e = (e as { cause?: unknown }).cause, depth++) {

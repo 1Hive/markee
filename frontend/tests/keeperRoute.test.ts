@@ -164,3 +164,26 @@ test('a failed run releases the lock and keeps RPC detail out of the response', 
   assert.equal(logged.length, 1, 'full detail goes to the logs')
   assert.equal(store.has(LOCK_KEY), false, 'lock released after a failure')
 })
+
+test('a route with lockWaitMs waits for a held lock, then runs once it is released', async t => {
+  env(t, { CRON_SECRET: SECRET, KEEPER_PRIVATE_KEY: DUMMY_KEY })
+  const { store } = fakeKv(t)
+  store.set(LOCK_KEY, 'keeper')
+  const { calls, opts } = route()
+  setTimeout(() => store.delete(LOCK_KEY), 20)
+  const res = await handleKeeperRoute(req(auth), { ...opts, lockWaitMs: 500 })
+  assert.equal(res.status, 200)
+  assert.equal(calls.length, 1)
+  assert.equal(store.has(LOCK_KEY), false)
+})
+
+test('a route with lockWaitMs reports a lock it never got as a failure, not a skip', async t => {
+  env(t, { CRON_SECRET: SECRET, KEEPER_PRIVATE_KEY: DUMMY_KEY })
+  const { store } = fakeKv(t)
+  store.set(LOCK_KEY, 'keeper')
+  const { calls, opts } = route()
+  const res = await handleKeeperRoute(req(auth), { ...opts, lockWaitMs: 30 })
+  assert.equal(res.status, 503)
+  assert.equal(calls.length, 0)
+  assert.equal(store.get(LOCK_KEY), 'keeper', 'the other run keeps its lock')
+})

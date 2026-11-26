@@ -12,7 +12,7 @@ import {
   type ApproveAndCallParams, type ApproveAndCallResult, type CallsOutcome, type ContractCall,
 } from '@/lib/tx/approveAndCall'
 import {
-  browserPendingCallsStore, clearPendingCalls, confirmPendingCalls, guardPendingCalls, sendRecoverableCalls,
+  browserPendingCallsStore, clearPendingCalls, confirmPendingCalls, guardPendingCalls, pendingCallsStorageWritable, sendRecoverableCalls, PENDING_CALLS_STORAGE_MESSAGE,
   type PriorCallsStatus,
 } from '@/lib/tx/pendingCalls'
 
@@ -28,10 +28,15 @@ function encodeCall(call: ContractCall) {
   }
 }
 
+// EIP-1193/EIP-5792 errors that mean the wallet refused or could not process the request, so nothing
+// was signed: user rejection (4001, 5750), unauthorized (4100), disconnected (4900/4901), plus the
+// unsupported-batch codes. Matches the SDK's NOT_SENT_CODES. Any other error stays ambiguous.
+const NOT_SUBMITTED_CODES = new Set([4001, 5750, 4100, 4900, 4901])
+
 function isDefinitelyNotSubmitted(error: unknown): boolean {
   if (isBatchUnsupportedError(error)) return true
   for (let e = error, depth = 0; e && typeof e === 'object' && depth < 8; e = (e as { cause?: unknown }).cause, depth++) {
-    if ((e as { code?: unknown }).code === 4001) return true
+    if (NOT_SUBMITTED_CODES.has((e as { code?: unknown }).code as number)) return true
   }
   return false
 }
@@ -72,6 +77,10 @@ export function useApproveAndCall() {
       account.toLowerCase(), chainId, params.token.toLowerCase(), params.spender.toLowerCase(),
       params.amount.toString(), encoded.to.toLowerCase(), encoded.data, encoded.value.toString(),
     ])))
+    // Storage that can't take a record holds no batch this browser could send, so only the batch path
+    // needs it: the direct and two-step paths (Privy embedded wallets, existing allowances) stay open.
+    // A record that can still be read is always honoured.
+    const canRecordBatch = pendingCallsStorageWritable(browserPendingCallsStore)
     await guardPendingCalls(
       browserPendingCallsStore, account, chainId, action,
       async id => {
@@ -81,14 +90,16 @@ export function useApproveAndCall() {
       },
       // A receipt lookup error is treated as unknown by guardPendingCalls, keeping the batch blocked.
       async hash => (await publicClient.getTransactionReceipt({ hash })).status,
-    )
+    ).catch((error: unknown) => {
+      if (canRecordBatch || !(error instanceof Error) || error.message !== PENDING_CALLS_STORAGE_MESSAGE) throw error
+    })
 
     const result = await approveAndCall(params, {
       readAllowance: (owner, token, spender) =>
         publicClient.readContract({ address: token, abi: erc20Abi, functionName: 'allowance', args: [owner, spender] }),
       supportsAtomicBatch: async (account, chainId) => {
         // Privy embedded wallets must keep the gas-sponsored path, so only a known external wallet batches.
-        if (!latest.current.externalWallet) return false
+        if (!latest.current.externalWallet || !canRecordBatch) return false
         return supportsAtomicBatch(await getCapabilities(config, { account, chainId }))
       },
       write: writeAsync,
@@ -106,7 +117,9 @@ export function useApproveAndCall() {
           const status = await waitForCallsStatus(config, { id, timeout: BATCH_WAIT_MS })
           const transactionHash = status.receipts?.at(-1)?.transactionHash
           if (status.status === 'success' && transactionHash) {
-            const receipt = await publicClient.getTransactionReceipt({ hash: transactionHash }).catch(() => null)
+            // The wallet can report success before our RPC has indexed the receipt; wait for it rather
+            // than reporting an executed batch as still proposed.
+            const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash, timeout: BATCH_WAIT_MS }).catch(() => null)
             if (receipt?.status === 'success') {
               confirmPendingCalls(browserPendingCallsStore, account, chainId, id)
               return { status: 'success', transactionHash }

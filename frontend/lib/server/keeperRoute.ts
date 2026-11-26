@@ -25,9 +25,28 @@ function authorized(req: NextRequest): boolean {
   return bearer === secret || req.headers.get('x-keeper-secret') === secret
 }
 
+const LOCK_POLL_MS = 5_000
+
+async function acquireLock(ttlSeconds: number, waitMs: number): Promise<boolean> {
+  const deadline = Date.now() + waitMs
+  const poll = Math.min(LOCK_POLL_MS, waitMs)
+  for (;;) {
+    if (await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: ttlSeconds }) === 'OK') return true
+    if (!waitMs || Date.now() + poll > deadline) return false
+    await new Promise(resolve => setTimeout(resolve, poll))
+  }
+}
+
 export async function handleKeeperRoute(
   req: NextRequest,
-  opts: { name: string; maxDuration: number; run(clients: KeeperClients): Promise<object> },
+  opts: {
+    name: string
+    maxDuration: number
+    // A route that runs rarely (the daily settle) waits this long for the shared lock, and reports a
+    // lock it never got as a failure instead of a skip, since its next run is a day away.
+    lockWaitMs?: number
+    run(clients: KeeperClients): Promise<object>
+  },
 ) {
   if (!authorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -56,8 +75,11 @@ export async function handleKeeperRoute(
     walletClient = createWalletClient({ account: signer, chain: base, transport: http(rpc, { timeout: RPC_TIMEOUT_MS }) })
   }
 
-  const canProceed = dryRun || await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: opts.maxDuration + 30 }) === 'OK'
-  if (!canProceed) return NextResponse.json({ ok: true, skipped: 'previous run still in flight' })
+  const canProceed = dryRun || await acquireLock(opts.maxDuration + 30, opts.lockWaitMs ?? 0)
+  if (!canProceed) {
+    if (opts.lockWaitMs) return NextResponse.json({ error: 'keeper lock held by another run; not run' }, { status: 503 })
+    return NextResponse.json({ ok: true, skipped: 'previous run still in flight' })
+  }
 
   try {
     const report = await opts.run({ publicClient, walletClient, dryRun })
