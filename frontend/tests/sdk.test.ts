@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { decodeAbiParameters, decodeFunctionData, parseAbi } from 'viem';
 import { parseAction, placement, assertTextLength } from '../lib/sdk/validation';
-import { paymentRoutingForReview, signEnvelope, verifyEnvelope } from '../lib/sdk/transactions';
+import { batchTraceMatches, paymentRoutingForReview, signEnvelope, verifyEnvelope, verifyTransaction } from '../lib/sdk/transactions';
 import { lifiStatus } from '../lib/sdk/bridge';
 import { buildMarkeeOpenStreamOperations, getMarkeeStreamAmounts, getMarkeeAutoFunding } from '../lib/sdk/gardens/streaming';
 import { consumeMarkeeChallenge, saveMarkeeChallenge, clearMarkeeChallengesForTests, reserveMarkeeActivation, finalizeMarkeeActivation, MarkeeChallengeRateLimitError } from '../lib/sdk/gardens/challenge-store';
@@ -67,7 +67,49 @@ test('signed preparations bind recipient, amount, sender and calldata', () => {
   const [payload, signature] = signed.split('.');
   const altered = JSON.parse(Buffer.from(payload, 'base64url').toString()); altered.transaction.to = c;
   assert.throws(() => verifyEnvelope(`${Buffer.from(JSON.stringify(altered)).toString('base64url')}.${signature}`), /changed/);
-  assert.throws(() => verifyEnvelope(signEnvelope({ ...original, issuedAt: Date.now() - 8 * 86400_000 })), /expired/);
+  assert.deepEqual(verifyEnvelope(signEnvelope({ ...original, issuedAt: Date.now() - 8 * 86400_000 })).transaction, original.transaction);
+  assert.throws(() => verifyEnvelope(signEnvelope({ ...original, issuedAt: Date.now() + 3600_000 })), /Invalid transaction preparation/);
+});
+test('batch verification requires a successful exact call from the reviewed wallet', () => {
+  const tx = { from: a, to: b, chainId: 8453, data: '0x1234' as const, value: '0x1' as const, gas: '0x1000' as const };
+  const call = { type: 'CALL', from: a, to: b, input: '0x1234', value: '0x1' };
+  const wrapped = { type: 'CALL', from: c, to: a, input: '0xaaaa', calls: [call] };
+  assert.equal(batchTraceMatches(tx, wrapped), true);
+  for (const bad of [
+    { ...call, from: c }, { ...call, to: c }, { ...call, input: '0x5678' },
+    { ...call, value: '0x2' }, { ...call, error: 'execution reverted' }, { ...call, type: 'DELEGATECALL' },
+  ]) assert.equal(batchTraceMatches(tx, { ...wrapped, calls: [bad] }), false);
+  assert.equal(batchTraceMatches(tx, { ...wrapped, error: 'execution reverted' }), false);
+  assert.equal(batchTraceMatches(tx, { ...wrapped, error: 'execution reverted', calls: [{ ...call, error: 'execution reverted' }] }, true), true);
+  assert.equal(batchTraceMatches(tx, null), false);
+});
+test('batch verification rejects a receipt older than the review and retains an untraceable result', async t => {
+  const client = getEnvPublicClient(8453);
+  const issuedAt = Date.now();
+  const tx = { from: a, to: b, chainId: 8453, data: '0x1234' as const, value: '0x1' as const, gas: '0x1000' as const };
+  const id = signEnvelope({ placement: { kind: 'board' as const, chainId: 8453, address: b },
+    action: { kind: 'fund' as const, markee: b, amount: '1' }, transaction: tx,
+    token: null, board: b, issuedAt, expiresAt: issuedAt + 100_000 });
+  const hash = `0x${'a'.repeat(64)}` as const;
+  t.mock.method(client, 'getTransaction', async () => ({ from: c, to: a, input: '0xabcd', value: 0n }));
+  let receiptStatus = 'success';
+  t.mock.method(client, 'getTransactionReceipt', async () => ({ status: receiptStatus, blockNumber: 100n, logs: [] }));
+  t.mock.method(client, 'getBlockNumber', async () => 102n);
+  let timestamp = BigInt(Math.floor(issuedAt / 1000) - 1);
+  t.mock.method(client, 'getBlock', async () => ({ timestamp }));
+  let traceAvailable = false;
+  t.mock.method(client, 'request', async () => {
+    if (!traceAvailable) throw Error('trace unavailable');
+    return { type: 'CALL', from: c, to: a, error: 'execution reverted', calls: [{ type: 'CALL', from: a, to: b, input: '0x1234', value: '0x1', error: 'execution reverted' }] };
+  });
+  await assert.rejects(verifyTransaction(id, hash, 'batch'), { code: 'TRANSACTION_MISMATCH' });
+  timestamp += 1n;
+  await assert.rejects(verifyTransaction(id, hash, 'batch'), { code: 'BATCH_VERIFICATION_UNAVAILABLE' });
+  receiptStatus = 'reverted'; traceAvailable = true;
+  assert.equal((await verifyTransaction(id, hash, 'batch')).status, 'reverted');
+  receiptStatus = 'success';
+  assert.equal((await verifyTransaction(id, hash, 'batch')).status, 'reverted', 'a caught inner failure remains a failed reviewed call');
+  await assert.rejects(verifyTransaction(id, hash), { code: 'TRANSACTION_MISMATCH' });
 });
 test('rental switch deletes the old stream, then creates the new tagged stream and connects its refund pool', () => {
   const ops = buildMarkeeOpenStreamOperations({ approvalAmount: 100n, backer: a, board: b, buffer: 100n, cfaAgreement: c,

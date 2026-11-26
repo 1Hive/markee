@@ -6,9 +6,17 @@ Embed a Markee leaderboard in your app with wallet-funded For Sale and For Rent 
 
 The package also includes a standalone **Markee sign button**. It shows the board's current winner, follows Markee's moderation decisions, and opens the payment modal when clicked.
 
-### Beta.17 integration diagnostics
+### Beta.18 wallet batches and recovery
 
-SDK snapshot and preparation requests identify themselves as `markee-sdk@0.1.0-beta.17` to Markee's API. This is a self-reported diagnostic marker, not authentication or proof that a website has been verified. The API retains bounded, board-level observations of the SDK version and requesting origin host; it does not record a wallet, IP, or page path for this purpose. Older SDKs and custom clients without a marker remain indistinguishable. Existing `/api/sdk/v1` request bodies, responses, transaction recovery, and wallet behavior are unchanged.
+The modal uses an atomic EIP-5792 wallet batch when the connected wallet reports `atomic.status: 'supported'` (or the legacy `atomicBatch.supported: true`). This includes compatible Safe and smart wallets; wallets without confirmed atomic support keep the existing direct transaction path. A wallet batch is marked confirmed only after Markee's API verifies the exact reviewed call in its on-chain execution trace. If trace verification is unavailable, the payment remains pending for recovery. The SDK does not automatically resubmit a transaction.
+
+Before either wallet prompt, the SDK saves a versioned recovery intent. An accepted batch ID or direct transaction hash replaces it before status polling. A reload retains that record without a time limit. An explicit wallet rejection clears an unsubmitted intent; an ambiguous error blocks another payment until the user checks wallet activity. The modal can verify a transaction hash found there. Existing `markee:sdk:v1:pending` records remain readable, including records bound to the former staging origin.
+
+`MarkeeClient.send(preparation)` keeps its direct transaction and hash return contract. `submit(preparation)` selects the atomic batch when supported and returns a pending operation; `pendingOperation(placement, account)` and `verifyOperation(operation)` recover it. A `confirmed` event still means the API verified the payment. A batch that has only a wallet ID emits no hash-based `submitted` event.
+
+### Integration diagnostics (since beta.17)
+
+SDK snapshot and preparation requests identify themselves as `markee-sdk@<installed version>` to Markee's API. This is a self-reported diagnostic marker, not authentication or proof that a website has been verified. The API retains bounded, board-level observations of the SDK version and requesting origin host; it does not record a wallet, IP, or page path for this purpose. Older SDKs and custom clients without a marker remain indistinguishable.
 
 ### Beta.16 migration note
 
@@ -194,7 +202,7 @@ Styles are scoped to the modal's Shadow DOM and do not change the host app or it
 - `prepare(placement, action)`: validates membership/ownership, simulates and estimates the exact transaction, and returns a five-minute review. All financial inputs are decimal **wei strings**; use `parseEth` for user input.
 - `send(preparation)`: rechecks account, requests a chain switch when necessary, and sends through the host wallet. It never signs with a backend key.
 - `verify(pending)`: binds the submitted hash to the prepared sender, recipient, calldata and value, waits for two block confirmations, and reports actual token transfers. A reverted transaction or deferred settlement is not a reward success.
-- Pending transactions are stored per API URL, wallet and placement. Closing/reopening resumes verification. Unknown transactions remain pending and block duplicate submissions. A replacement hash is not automatically inferred; inspect it in the wallet/explorer and pass the matching replacement to `verify`.
+- Pending transactions are stored per API URL, wallet and placement. Closing/reopening resumes verification. Unknown transactions remain pending and block duplicate submissions. A replacement hash is not automatically inferred; inspect it in the wallet/explorer and pass the matching replacement to `reconcile` for an existing direct transaction, or `recoverOperation` for an ambiguous wallet request.
 - Admin signatures have a five-minute challenge window, one-time nonces, and a durable server-side operation record. Retrying the same signature recovers the saved operation instead of spending twice. In-flight signatures are stored locally for recovery and removed after a terminal result. A record interrupted before a hash was saved requires operator reconciliation; it is never automatically executed again.
 
 ## Payment semantics
@@ -237,7 +245,7 @@ The API checks the Base registrar mapping for this identity. An **active** board
 ## Integration boundaries
 
 - Current board versions: `1.3.0` and `1.4.0` For Sale and `streaming-1.0.0` and `streaming-1.1.0` For Rent, on Base and configured Sepolia deployments. Additional factories must be enabled on Markee's server. Legacy strategy versions are rejected explicitly.
-- Transaction sending currently expects an EIP-1193 wallet returning an on-chain transaction hash with the connected wallet as the transaction sender. UserOperation-only and Safe transaction-service hashes need a future adapter; they are not treated as successful direct transactions. Community authorization independently supports ERC-1271 Safe signatures.
+- Direct transaction sending expects an EIP-1193 wallet returning an on-chain transaction hash with the connected wallet as the transaction sender. The modal also supports EIP-5792 atomic batches when the wallet reports that capability and the API can verify their on-chain execution. A Safe transaction-service ID is retained as a pending batch, not treated as a confirmed transaction. Community authorization independently supports ERC-1271 Safe signatures.
 - The native ETHx downgrade uses the deployed contract's native transfer path. Contract accounts whose receive function needs more than its transfer stipend may not support it; simulation catches the failure before prompting.
 - The modal renders escaped text, uses isolated CSS, and supports keyboard focus, Escape, mobile sizing and reduced motion. A host CSP must permit the SDK's inline styles and connections to its configured Markee API. No external font or image is needed by the modal.
 - API failures are explicit. Without moderation data, message text is withheld. No mock balances or fabricated rewards are returned by production handlers.

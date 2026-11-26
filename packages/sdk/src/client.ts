@@ -1,6 +1,7 @@
 import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
 import { SDK_VERSION } from './version.js';
 import { errorMessage } from './errors.js';
+import { WalletRecoveryStore, RECOVERY_BLOCKED, RECOVERY_STORAGE, recoveryStorage, sameWalletPlacement, type WalletRecovery } from './wallet-recovery.js';
 import type { MessageCheck, Action, ModerationOptions, ModerationSeverity, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 const MODERATION_RULES = ['profanity', 'links', 'addresses', 'ens'] as const;
@@ -28,6 +29,17 @@ export function moderationParams(moderation?: ModerationOptions): { severity?: M
 export const DEFAULT_MARKEE_API_URL = PRODUCTION_API_URL;
 
 const PLATFORM_ADMIN_RETRY_MS = 10 * 60_000;
+const WALLET_REJECTION_CODES = new Set([4001, 5750]);
+const BATCH_UNSUPPORTED_CODES = new Set([4200, -32601, -32602, 5700, 5710, 5740, 5760]);
+function walletHasCode(error: unknown, codes: ReadonlySet<number>): boolean {
+  for (let e = error, depth = 0; e && typeof e === 'object' && depth < 8; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'number' && codes.has(code)) return true;
+  }
+  return false;
+}
+function isWalletRejection(error: unknown) { return walletHasCode(error, WALLET_REJECTION_CODES); }
+function isBatchUnsupported(error: unknown) { return walletHasCode(error, BATCH_UNSUPPORTED_CODES); }
 
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }
@@ -51,6 +63,7 @@ export async function discoverWallets(): Promise<DiscoveredWallet[]> {
 const isAddress = (value: unknown): value is Address => typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value);
 const isHash = (value: unknown): value is Hex => typeof value === 'string' && /^0x[\da-f]{64}$/i.test(value);
 export interface PendingTransaction { preparation: PreparedAction; hash: Hex }
+export type PendingWalletOperation = PendingTransaction | WalletRecovery;
 export interface PendingAuthorization { kind: 'activate' | 'claim' | 'platform-activate' | 'platform-activate-direct'; nonce: string; signature: Hex; account: Address; community?: Address; chainId: number; placement?: Placement }
 
 export class MarkeeClient {
@@ -58,9 +71,11 @@ export class MarkeeClient {
   private readonly fetcher: typeof fetch;
   private injected: EIP1193Provider | null = null;
   private sending = false;
+  private discoveringWallet = false;
   private pendingOrigins = new Map<string, string>();
   private adminOrigin?: string;
   private inMemoryPending: PendingTransaction[] = [];
+  private readonly recovery: WalletRecoveryStore;
   private adminMemory: PendingAuthorization | null = null;
   private communityReceipts: Record<string, AdminResult> = {};
   private adminAcceptanceMemory = new Map<string, { hash: Hex; at: number }>();
@@ -68,6 +83,7 @@ export class MarkeeClient {
     const url = new URL(options.apiUrl ?? DEFAULT_MARKEE_API_URL);
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new MarkeeError('Use an HTTPS Markee API URL (HTTP is allowed on localhost).');
     this.apiUrl = url.href.replace(/\/$/, '');
+    this.recovery = new WalletRecoveryStore(this.apiUrl);
     this.fetcher = options.fetch || globalThis.fetch.bind(globalThis);
   }
   async request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -146,30 +162,149 @@ export class MarkeeClient {
     return provider;
   }
   async send(preparation: PreparedAction): Promise<Hex> {
-    if (this.sending) throw new MarkeeError('A wallet request is already in progress.');
+    if (this.sending || this.discoveringWallet) throw new MarkeeError('A wallet request is already in progress.');
     if (preparation.expiresAt <= Date.now()) throw new MarkeeError('This review expired. Prepare the action again.', 'REVIEW_EXPIRED');
-    const existing = this.pending(preparation.placement, preparation.transaction.from);
+    this.assertReviewNotConfirmed(preparation);
+    const existing = this.pendingOperation(preparation.placement, preparation.transaction.from);
     if (existing) throw new MarkeeError('A transaction is still pending for this wallet and placement. Check it before submitting again.', 'PENDING_TRANSACTION');
     this.sending = true;
     try {
       const provider = await this.ensureWallet(preparation.transaction.from, preparation.transaction.chainId);
       if (preparation.expiresAt <= Date.now()) throw new MarkeeError('This review expired. Prepare the action again.', 'REVIEW_EXPIRED');
+      this.recovery.set({ version: 2, phase: 'submitting', mode: 'direct', preparation, at: Date.now() });
       const { chainId: _, ...transaction } = preparation.transaction;
       const hash = await provider.request({ method: 'eth_sendTransaction', params: [transaction] });
       if (!isHash(hash)) throw new MarkeeError('The wallet returned an unexpected transaction identifier. Check your wallet before retrying.');
+      this.recovery.set({ version: 2, phase: 'direct-submitted', mode: 'direct', preparation, hash, at: Date.now() });
       this.persist([...this.records(), { preparation, hash }]);
       this.options.onEvent?.({ type: 'submitted', hash });
       return hash;
     } catch (error) {
+      if (isWalletRejection(error)) this.recovery.clear(preparation);
       this.options.onEvent?.({ type: 'error', message: errorMessage(error) });
       throw error;
     } finally { this.sending = false; }
   }
+  /** EIP-5792 capable wallets may return a batch ID before an on-chain hash exists. */
+  async submit(preparation: PreparedAction): Promise<PendingWalletOperation> {
+    if (this.sending || this.discoveringWallet) throw new MarkeeError('A wallet request is already in progress.');
+    if (preparation.expiresAt <= Date.now()) throw new MarkeeError('This review expired. Prepare the action again.', 'REVIEW_EXPIRED');
+    this.assertReviewNotConfirmed(preparation);
+    if (this.pendingOperation(preparation.placement, preparation.transaction.from)) throw new MarkeeError(RECOVERY_BLOCKED, 'PENDING_TRANSACTION');
+    const chainId = `0x${preparation.transaction.chainId.toString(16)}`;
+    let atomic = false;
+    let provider: EIP1193Provider;
+    this.discoveringWallet = true;
+    try {
+      provider = await this.ensureWallet(preparation.transaction.from, preparation.transaction.chainId);
+      try {
+        const response = await provider.request({ method: 'wallet_getCapabilities', params: [preparation.transaction.from, [chainId]] });
+        const capabilities = response && typeof response === 'object' ? response as Record<string, unknown> : {};
+        const onChain = capabilities[chainId] && typeof capabilities[chainId] === 'object' ? capabilities[chainId] as Record<string, unknown> : capabilities;
+        const status = onChain.atomic as { status?: unknown } | undefined;
+        const legacy = onChain.atomicBatch as { supported?: unknown } | undefined;
+        atomic = status?.status === 'supported' || legacy?.supported === true;
+      } catch { /* Wallets without capability discovery keep the existing direct path. */ }
+    } finally { this.discoveringWallet = false; }
+    if (!atomic) return { preparation, hash: await this.send(preparation) };
+    if (this.sending || this.pendingOperation(preparation.placement, preparation.transaction.from)) throw new MarkeeError(RECOVERY_BLOCKED, 'PENDING_TRANSACTION');
+    this.sending = true;
+    try {
+      if (preparation.expiresAt <= Date.now()) throw new MarkeeError('This review expired. Prepare the action again.', 'REVIEW_EXPIRED');
+      this.recovery.set({ version: 2, phase: 'submitting', mode: 'batch', preparation, at: Date.now() });
+      const tx = preparation.transaction;
+      const response = await provider.request({ method: 'wallet_sendCalls', params: [{ version: '2.0.0', chainId, from: tx.from,
+        atomicRequired: true, calls: [{ to: tx.to, data: tx.data, value: tx.value }] }] });
+      const batchId = response && typeof response === 'object' ? (response as { id?: unknown }).id : undefined;
+      if (typeof batchId !== 'string' || batchId.length > 258 || !/^0x[\da-f]+$/i.test(batchId)) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_ID_UNKNOWN');
+      const record: WalletRecovery = { version: 2, phase: 'batch-submitted', mode: 'batch', preparation, batchId, at: Date.now() };
+      this.recovery.set(record);
+      return record;
+    } catch (error) {
+      if (isWalletRejection(error) || isBatchUnsupported(error)) this.recovery.clear(preparation);
+      if (isBatchUnsupported(error)) { this.sending = false; return { preparation, hash: await this.send(preparation) }; }
+      this.options.onEvent?.({ type: 'error', message: errorMessage(error) });
+      throw error;
+    } finally { this.sending = false; }
+  }
+  pendingOperation(placement: Placement, account: Address): PendingWalletOperation | undefined {
+    const legacy = this.pending(placement, account);
+    if (legacy) return legacy;
+    const record = this.recovery.forWallet(placement, account)?.record;
+    return record?.phase === 'confirmed' ? undefined : record;
+  }
+  private assertReviewNotConfirmed(preparation: PreparedAction) {
+    const record = this.recovery.forWallet(preparation.placement, preparation.transaction.from)?.record;
+    if (record?.phase === 'confirmed' && record.preparation.id === preparation.id) throw new MarkeeError('This reviewed action already confirmed. Prepare a new action to pay again.', 'ALREADY_CONFIRMED');
+  }
+  async verifyOperation(operation: PendingWalletOperation): Promise<TransactionResult | null> {
+    if ('phase' in operation && operation.phase === 'receipt-submitted') {
+      const found = this.recovery.all().find(({ record }) => record.phase === 'receipt-submitted' && record.hash === operation.hash);
+      if (!found) throw new MarkeeError('The recovery record is no longer available.', 'NO_RECOVERY');
+      const result = await this.recoveryClient(found.origin).request<TransactionResult>('verify', {
+        id: operation.preparation.id, hash: operation.hash, ...(operation.mode === 'batch' ? { mode: 'batch' } : {}),
+      });
+      if (result.status === 'confirmed' || (operation.mode === 'direct' && result.status === 'reverted')) {
+        if (result.status === 'confirmed') this.recovery.set({ version: 2, phase: 'confirmed', mode: operation.mode, preparation: operation.preparation, hash: result.hash, at: Date.now() }, found.origin);
+        else this.recovery.clear(operation.preparation, found.origin);
+        if (result.status === 'confirmed') this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
+      }
+      return result;
+    }
+    if ('hash' in operation) return this.verify(operation);
+    if (operation.phase === 'submitting') return null;
+    const found = this.recovery.all().find(({ record }) => record.phase === 'batch-submitted' && record.batchId === operation.batchId);
+    if (!found) throw new MarkeeError('This wallet batch is no longer pending.', 'NO_RECOVERY');
+    const client = this.recoveryClient(found?.origin);
+    const provider = await this.provider();
+    if (!provider || (await this.account())?.toLowerCase() !== operation.preparation.transaction.from.toLowerCase()) throw new MarkeeError('Reconnect the wallet that submitted this batch to check its status.', 'WALLET_CHANGED');
+    const response = await provider.request({ method: 'wallet_getCallsStatus', params: [operation.batchId] });
+    const status = response && typeof response === 'object' ? response as { id?: unknown; chainId?: unknown; status?: unknown; atomic?: unknown; receipts?: unknown } : {};
+    if (typeof status.id !== 'string' || status.id.toLowerCase() !== operation.batchId.toLowerCase()
+      || typeof status.chainId !== 'string' || status.chainId.toLowerCase() !== `0x${operation.preparation.transaction.chainId.toString(16)}`) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    if (status.status === 100) return null;
+    if ((status.status !== 200 && status.status !== 500) || status.atomic !== true || !Array.isArray(status.receipts) || !status.receipts.length || status.receipts.length > 16) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    const receipts = status.receipts as { transactionHash?: unknown; status?: unknown }[];
+    // A failed inner call may be caught by the smart wallet, so a failed batch can
+    // still have a successful outer receipt. The API trace must verify the failure.
+    if (!receipts.every(receipt => isHash(receipt.transactionHash) && (status.status === 200 ? receipt.status === '0x1' : receipt.status === '0x0' || receipt.status === '0x1'))) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    let awaiting = false;
+    const matches: TransactionResult[] = [];
+    for (const receipt of receipts) {
+      let result: TransactionResult;
+      try { result = await client.request<TransactionResult>('verify', { id: operation.preparation.id, hash: receipt.transactionHash, mode: 'batch' }); }
+      catch (error) { if (error instanceof MarkeeError && error.code === 'TRANSACTION_MISMATCH') continue; throw error; }
+      if (result.status === 'pending') { awaiting = true; continue; }
+      matches.push(result);
+    }
+    if (awaiting) return null;
+    if (matches.length !== 1) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    const result = matches[0];
+    if (result.status === 'reverted') { this.recovery.clear(operation.preparation, found.origin); return result; }
+    if (status.status !== 200 || result.status !== 'confirmed') throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
+    this.recovery.set({ version: 2, phase: 'confirmed', mode: 'batch', preparation: operation.preparation, hash: result.hash, at: Date.now() }, found.origin);
+    this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
+    return result;
+  }
+  /** Attach a hash found in wallet activity to an ambiguous submission, then verify it on Markee's API. */
+  async recoverOperation(operation: WalletRecovery, hash: Hex): Promise<TransactionResult | null> {
+    if (!isHash(hash)) throw new MarkeeError('Enter an on-chain transaction hash.', 'INVALID_HASH');
+    const found = this.recovery.all().find(({ record }) => record.preparation.id === operation.preparation.id);
+    if (!found || found.record.phase !== 'submitting' && found.record.phase !== 'receipt-submitted') throw new MarkeeError('This request already has a wallet identifier. Check that transaction instead.', 'NO_RECOVERY');
+    const record: WalletRecovery = { version: 2, phase: 'receipt-submitted', mode: operation.mode, preparation: operation.preparation, hash, at: Date.now() };
+    this.recovery.set(record, found.origin);
+    return this.verifyOperation(record);
+  }
   async verify(pending: PendingTransaction): Promise<TransactionResult> {
     this.records();
-    const result = await this.recoveryClient(this.pendingOrigins.get(pending.hash)).request<TransactionResult>('verify', { id: pending.preparation.id, hash: pending.hash });
+    const recovered = this.recovery.all().find(({ record }) => record.phase === 'direct-submitted' && record.hash === pending.hash);
+    const result = await this.recoveryClient(recovered?.origin ?? this.pendingOrigins.get(pending.hash)).request<TransactionResult>('verify', { id: pending.preparation.id, hash: pending.hash });
     if (result.status !== 'pending') {
       this.persist(this.records().filter(r => r.hash !== pending.hash));
+      if (recovered) {
+        if (result.status === 'confirmed') this.recovery.set({ version: 2, phase: 'confirmed', mode: 'direct', preparation: pending.preparation, hash: result.hash, at: Date.now() }, recovered.origin);
+        else this.recovery.clear(pending.preparation, recovered.origin);
+      }
       if (result.status === 'confirmed') this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
     }
     return result;
@@ -179,8 +314,15 @@ export class MarkeeClient {
   async reconcile(pending: PendingTransaction, replacementHash: Hex): Promise<TransactionResult> {
     if (!isHash(replacementHash)) throw new MarkeeError('Enter a valid replacement transaction hash.');
     this.records();
-    const result = await this.recoveryClient(this.pendingOrigins.get(pending.hash)).request<TransactionResult>('verify', { id: pending.preparation.id, hash: replacementHash });
-    if (result.status !== 'pending') this.persist(this.records().filter(r => r.hash !== pending.hash));
+    const recovered = this.recovery.all().find(({ record }) => record.phase === 'direct-submitted' && record.hash === pending.hash);
+    const result = await this.recoveryClient(recovered?.origin ?? this.pendingOrigins.get(pending.hash)).request<TransactionResult>('verify', { id: pending.preparation.id, hash: replacementHash });
+    if (result.status !== 'pending') {
+      this.persist(this.records().filter(r => r.hash !== pending.hash));
+      if (recovered) {
+        if (result.status === 'confirmed') this.recovery.set({ version: 2, phase: 'confirmed', mode: 'direct', preparation: pending.preparation, hash: replacementHash, at: Date.now() }, recovered.origin);
+        else this.recovery.clear(pending.preparation, recovered.origin);
+      }
+    }
     return result;
   }
   private storageKey(apiUrl = this.apiUrl) { return `markee:sdk:v1:pending:${apiUrl}`; }
@@ -188,17 +330,23 @@ export class MarkeeClient {
     return apiUrl && apiUrl !== this.apiUrl ? new MarkeeClient({ ...this.options, apiUrl }) : this;
   }
   private records(): PendingTransaction[] {
-    if (typeof localStorage === 'undefined') return this.inMemoryPending;
+    const store = recoveryStorage();
+    if (!store) return this.inMemoryPending;
     const records: PendingTransaction[] = [];
     for (const origin of storageOrigins(this.apiUrl)) {
+      let raw: string | null;
+      try { raw = store.getItem(this.storageKey(origin)); }
+      catch { throw new MarkeeError(RECOVERY_STORAGE, 'STORAGE_UNAVAILABLE'); }
+      if (!raw) continue;
       try {
-        const saved = JSON.parse(localStorage.getItem(this.storageKey(origin)) || '[]');
-        if (!Array.isArray(saved)) continue;
+        const saved: unknown = JSON.parse(raw);
+        if (!Array.isArray(saved)) throw new Error('Invalid recovery records');
         for (const record of saved) {
-          if (!isHash(record?.hash) || typeof record.preparation?.id !== 'string' || !isAddress(record.preparation?.transaction?.from) || !record.preparation?.placement || records.some(r => r.hash === record.hash)) continue;
+          if (!isHash(record?.hash) || typeof record.preparation?.id !== 'string' || !isAddress(record.preparation?.transaction?.from) || !record.preparation?.placement) throw new Error('Invalid recovery record');
+          if (records.some(r => r.hash === record.hash)) continue;
           records.push(record); this.pendingOrigins.set(record.hash, origin);
         }
-      } catch { /* A corrupt/unavailable store must not hide other recoverable records. */ }
+      } catch { throw new MarkeeError(RECOVERY_BLOCKED, 'RECOVERY_UNREADABLE'); }
     }
     return records.length ? records : this.inMemoryPending;
   }
@@ -206,12 +354,14 @@ export class MarkeeClient {
     this.inMemoryPending = records;
     for (const origin of storageOrigins(this.apiUrl)) {
       try {
-        if (typeof localStorage !== 'undefined') localStorage.setItem(this.storageKey(origin), JSON.stringify(records.filter(r => (this.pendingOrigins.get(r.hash) || this.apiUrl) === origin)));
+        recoveryStorage()?.setItem(this.storageKey(origin), JSON.stringify(records.filter(r => (this.pendingOrigins.get(r.hash) || this.apiUrl) === origin)));
       } catch { /* Keep the in-memory records; never automatically retry a payment. */ }
     }
   }
   pending(placement: Placement, account: Address): PendingTransaction | undefined {
-    return this.records().find(r => JSON.stringify(r.preparation.placement).toLowerCase() === JSON.stringify(placement).toLowerCase() && r.preparation.transaction.from.toLowerCase() === account.toLowerCase());
+    const recovered = this.recovery.forWallet(placement, account)?.record;
+    if (recovered?.phase === 'direct-submitted') return { preparation: recovered.preparation, hash: recovered.hash };
+    return this.records().find(r => sameWalletPlacement(r.preparation, placement, account));
   }
   async quote(placement: Extract<Placement, { kind: 'gardens-community' }>): Promise<ClaimQuote> {
     return this.request(`community/quote?${new URLSearchParams({ chainId: String(placement.chainId), community: placement.community })}`);

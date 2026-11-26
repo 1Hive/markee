@@ -229,12 +229,39 @@ test('a second edit is offered for explicit review only after the first transact
     Object.assign(modal, { closed: false, account: address,
       pending: { hash: '0x123', preparation: { action: { kind: 'edit-message', markee: address } } },
       queuedNameEdit: { markee: address, account: address, name: 'Paul', afterHash: '0x123' },
-      client: { verify: async () => ({ status, hash: '0x123' }) },
+      client: { verifyOperation: async () => ({ status, hash: '0x123' }) },
       reload: async () => {}, prepare: async (action: unknown) => { prepared.push(action); }, render: () => {} });
     await modal.poll();
     assert.equal(modal.pending, undefined);
     assert.deepEqual(prepared, status === 'confirmed' ? [{ kind: 'edit-name', markee: address, name: 'Paul' }] : []);
   }
+});
+
+test('a reverted recovery hash shows an error while keeping the unresolved wallet batch', async () => {
+  const modal = Object.create(MarkeeModal.prototype) as { poll(): Promise<void>; pending: unknown; error: string; timer: unknown };
+  const pending = { version: 2, phase: 'receipt-submitted', mode: 'batch', hash: '0x123', preparation: { action: { kind: 'fund' } } };
+  let rendered = false;
+  Object.assign(modal, { closed: false, pending, error: '',
+    client: { verifyOperation: async () => ({ status: 'reverted', hash: '0x123' }) },
+    render: () => { rendered = true; } });
+  await modal.poll();
+  assert.equal(modal.pending, pending);
+  assert.match(modal.error, /reverted.*still unresolved/);
+  assert.equal(modal.timer, undefined);
+  assert.equal(rendered, true);
+});
+
+test('a confirmed atomic message edit offers its queued name edit for review', async () => {
+  const modal = Object.create(MarkeeModal.prototype) as { poll(): Promise<void>; pending: unknown; queuedNameEdit: unknown; review: unknown };
+  const pending = { version: 2, phase: 'batch-submitted', mode: 'batch', batchId: '0x1234', preparation: { id: 'review-1', action: { kind: 'edit-message', markee: address } } };
+  const prepared: unknown[] = [];
+  Object.assign(modal, { closed: false, account: address, pending,
+    queuedNameEdit: { markee: address, account: address, name: 'Paul', afterReviewId: 'review-1' },
+    client: { verifyOperation: async () => ({ status: 'confirmed', hash: '0x123' }) },
+    reload: async () => {}, prepare: async (action: unknown) => { prepared.push(action); }, render: () => {} });
+  await modal.poll();
+  assert.deepEqual(prepared, [{ kind: 'edit-name', markee: address, name: 'Paul' }]);
+  assert.equal(modal.queuedNameEdit, undefined);
 });
 
 test('the combined editor and deposit manager show distinct editable fields and claims', () => {
