@@ -2,7 +2,7 @@ export * from './types.js';
 export { SDK_VERSION } from './version.js';
 export { resolvePlacementInput } from './placement-input.js';
 export { MarkeeClient, MarkeeError, discoverWallets, DEFAULT_MARKEE_API_URL } from './client.js';
-export type { PendingTransaction, DiscoveredWallet } from './client.js';
+export type { PendingTransaction, PendingWalletOperation, DiscoveredWallet } from './client.js';
 export { createMarkee, MarkeeModal } from './modal.js';
 export type { ModalOptions } from './modal.js';
 export { parseEth, formatEth } from './amount.js';

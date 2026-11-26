@@ -229,7 +229,7 @@ test('a second edit is offered for explicit review only after the first transact
     Object.assign(modal, { closed: false, account: address,
       pending: { hash: '0x123', preparation: { action: { kind: 'edit-message', markee: address } } },
       queuedNameEdit: { markee: address, account: address, name: 'Paul', afterHash: '0x123' },
-      client: { verify: async () => ({ status, hash: '0x123' }) },
+      client: { verifyOperation: async () => ({ status, hash: '0x123' }) },
       reload: async () => {}, prepare: async (action: unknown) => { prepared.push(action); }, render: () => {} });
     await modal.poll();
     assert.equal(modal.pending, undefined);

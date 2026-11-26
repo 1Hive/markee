@@ -40,7 +40,9 @@ export function verifyEnvelope(id: string): Envelope {
   const supplied = Buffer.from(signature || '', 'base64url');
   if (extra || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) throw new SDKError('INVALID_PREPARATION', 'Transaction preparation was changed.');
   const value = JSON.parse(Buffer.from(payload, 'base64url').toString()) as Envelope;
-  if (Date.now() - value.issuedAt > 7 * 86400_000) throw new SDKError('PREPARATION_EXPIRED', 'This verification record expired. Check the transaction in the explorer.', 410);
+  // The review expiry gates submission in the SDK. A submitted wallet batch can execute much
+  // later, so its signed envelope must remain usable for read-only receipt verification.
+  if (!Number.isFinite(value.issuedAt) || value.issuedAt <= 0 || value.issuedAt > Date.now() + 300_000) throw new SDKError('INVALID_PREPARATION', 'Invalid transaction preparation.');
   return value;
 }
 
@@ -217,7 +219,21 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(moderation ? { moderation } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
 }
 
-export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {
+type CallTrace = { type?: string; from?: string; to?: string; input?: string; value?: string; error?: string; calls?: CallTrace[] };
+export function batchTraceMatches(tx: PreparedAction['transaction'], trace: CallTrace | null | undefined, allowReverted = false): boolean {
+  let remaining = 4096;
+  const matches = (call: CallTrace): boolean => {
+    if (--remaining < 0 || call.error && !allowReverted) return false;
+    if (call.type === 'CALL' && call.from?.toLowerCase() === tx.from.toLowerCase()
+      && call.to?.toLowerCase() === tx.to.toLowerCase() && call.input?.toLowerCase() === tx.data.toLowerCase()) {
+      try { if (BigInt(call.value ?? '0x0') === BigInt(tx.value)) return true; } catch { /* Invalid trace value. */ }
+    }
+    return Array.isArray(call.calls) && call.calls.some(matches);
+  };
+  return !!trace && matches(trace);
+}
+
+export async function verifyTransaction(id: string, hash: Hex, mode: 'direct' | 'batch' = 'direct'): Promise<TransactionResult> {
   const prepared = verifyEnvelope(id);
   const tx = prepared.transaction;
   const client = getEnvPublicClient(tx.chainId);
@@ -226,13 +242,30 @@ export async function verifyTransaction(id: string, hash: Hex): Promise<Transact
   let actual;
   try { actual = await client.getTransaction({ hash }); }
   catch (error) { if ((error as Error).name === 'TransactionNotFoundError') return pending; throw error; }
-  if (actual.from.toLowerCase() !== tx.from.toLowerCase() || actual.to?.toLowerCase() !== tx.to.toLowerCase() || actual.input.toLowerCase() !== tx.data.toLowerCase() || actual.value !== BigInt(tx.value)) throw new SDKError('TRANSACTION_MISMATCH', 'This transaction does not match the reviewed action.', 409);
+  if (mode === 'direct' && (actual.from.toLowerCase() !== tx.from.toLowerCase() || actual.to?.toLowerCase() !== tx.to.toLowerCase() || actual.input.toLowerCase() !== tx.data.toLowerCase() || actual.value !== BigInt(tx.value))) throw new SDKError('TRANSACTION_MISMATCH', 'This transaction does not match the reviewed action.', 409);
   let receipt;
   try { receipt = await client.getTransactionReceipt({ hash }); }
   catch (error) { if ((error as Error).name === 'TransactionReceiptNotFoundError') return pending; throw error; }
   if ((await client.getBlockNumber({ cacheTime: 0 })) - receipt.blockNumber < 1n) return pending;
+  if (mode === 'batch') {
+    const block = await client.getBlock({ blockNumber: receipt.blockNumber });
+    if (block.timestamp < BigInt(Math.floor(prepared.issuedAt / 1000))) throw new SDKError('TRANSACTION_MISMATCH', 'This wallet batch predates the reviewed action.', 409);
+  }
   const result: TransactionResult = { status: receipt.status === 'success' ? 'confirmed' : 'reverted', hash, explorerUrl };
+  if (mode === 'batch') {
+    let trace: CallTrace;
+    try {
+      trace = await (client.request as unknown as (args: { method: string; params: unknown[] }) => Promise<CallTrace>)({ method: 'debug_traceTransaction', params: [hash, { tracer: 'callTracer' }] });
+    } catch { throw new SDKError('BATCH_VERIFICATION_UNAVAILABLE', 'Unable to verify this wallet batch yet. Check its status later; do not send another payment.', 503); }
+    if (!batchTraceMatches(tx, trace, result.status === 'reverted')) throw new SDKError('TRANSACTION_MISMATCH', 'This wallet batch did not execute the reviewed action.', 409);
+  }
   if (result.status === 'reverted') return result;
+  if (mode === 'batch') {
+    // A bundler transaction can include unrelated user operations. Its aggregate logs cannot
+    // safely attribute token rewards or a created message to this one reviewed call.
+    await invalidateVerifiedDisplay(tx.chainId, hash);
+    return result;
+  }
   let tokens = 0n;
   let settled = false;
   for (const log of receipt.logs) {
