@@ -165,3 +165,15 @@ The local cache regression observed 64 upstream storage reads cold and zero
 warm. This is a synthetic local measurement, not a production savings claim.
 Compare uploaded counts from real CI runs at the same pinned fork block before
 and after rollout. No production transactions are required for these checks.
+
+### PR budget impact
+
+PRs targeting main compare the mocked moderation scan CU on the base SHA and
+the PR merge commit. The check adds the largest positive periodic scenario
+delta at the deployed five-minute scan cadence to the latest daily Alchemy
+account forecast. The result fails when the PR adds modeled CU and the
+combined forecast exceeds the configured limit. An already-over-limit
+baseline alone produces a warning. Missing or stale data is marked unavailable.
+This estimate covers the periodic moderation fixture. It does not estimate
+traffic to unrelated endpoints or credit undeployed savings. The PR workflow
+reads the daily report artifact without an Alchemy credential.

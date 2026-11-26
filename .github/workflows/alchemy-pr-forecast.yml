@@ -1,0 +1,58 @@
+name: Alchemy PR forecast
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: alchemy-pr-forecast-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  forecast:
+    name: Estimate PR RPC budget impact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          path: baseline
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            baseline/frontend/package-lock.json
+            candidate/frontend/package-lock.json
+      - name: Read latest deployed budget report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow alchemy-usage.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name alchemy-account-forecast --dir deployed || echo "::warning::No deployed forecast artifact"
+          fi
+      - name: Measure base fixture
+        working-directory: baseline/frontend
+        run: npm ci && npm run test:rpc:usage -- --fixtures-only
+      - name: Measure PR merge fixture
+        working-directory: candidate/frontend
+        run: npm ci && npm run test:rpc:usage -- --fixtures-only
+      - name: Test forecast calculation
+        run: node --test candidate/frontend/tests/integration/rpc-pr-forecast.test.mjs
+      - name: Flag regression that exceeds the limit
+        run: |
+          node candidate/frontend/tests/integration/rpc-pr-forecast.mjs \
+            deployed/forecast.json \
+            baseline/frontend/test-results/rpc-usage/moderation.json \
+            candidate/frontend/test-results/rpc-usage/moderation.json
