@@ -64,8 +64,9 @@ for 60 seconds per Base Markee. Overlapping batches fetch only missing IDs.
 Manual flags, overrides, and board policies are resolved on each request. Cached
 observations cannot write into the moderation queue or invalidate SDK snapshots.
 The website batches nearby requests for 50 ms and still verifies the returned
-message hash against the displayed text, so a new revision can show the loading
-state until a fresh observation is available. Scan and write paths keep their
+message hash against the displayed text and verifies the name hash before showing
+a live author name. A new revision stays hidden or blurred until a fresh
+observation is available. Scan and write paths keep their
 existing chain reads.
 
 ### Integration budget

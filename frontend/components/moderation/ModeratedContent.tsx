@@ -37,7 +37,7 @@ interface ModeratedContentProps {
   placeholderLines?: 1 | 2
 }
 
-// Revealed flagged Markees, keyed by markee and message, shared so revealing a message also reveals its
+// Revealed flagged Markees, keyed by Markee, message, and checked name revision, shared so revealing a message also reveals its
 // author label wherever both are shown.
 let revealedKeys = new Set<string>()
 const revealListeners = new Set<() => void>()
@@ -52,14 +52,15 @@ function useRevealed(key: string) {
 }
 
 /** The moderation verdict both a message and its author label follow: flagged by a moderator or automatically. */
-function useMarkeeVerdict(chainId: number | string, markeeId: string, message?: string) {
+function useMarkeeVerdict(chainId: number | string, markeeId: string, message?: string, name?: string) {
   const { isFlagged } = useModeration()
-  const automatic = usePublishedModeration(chainId, markeeId, message)
+  const automatic = usePublishedModeration(chainId, markeeId, message, name)
   const manuallyFlagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'manual-flagged'
   // An automatic flag is separate from the moderator's flag (the shield only toggles the latter), so it gets
   // its own label and reason; a moderator clears it with a false-positive approval in the queue.
   const autoFlagged = !manuallyFlagged && automatic.data?.siteState === 'soft-flagged'
-  return { automatic, manuallyFlagged, autoFlagged, flagged: manuallyFlagged || autoFlagged }
+  const revealKey = JSON.stringify([markeeId.toLowerCase(), message, automatic.data?.nameHash])
+  return { automatic, autoFlagged, flagged: manuallyFlagged || autoFlagged, revealKey }
 }
 
 /** Message-shaped loading bars, shown instead of the message until its moderation check is done. */
@@ -85,8 +86,7 @@ export function ModeratedContent({
   placeholderLines = 2,
 }: ModeratedContentProps) {
   const { canModerate } = useModeration()
-  const { automatic, autoFlagged, flagged } = useMarkeeVerdict(chainId, markeeId, message)
-  const revealKey = `${markeeId.toLowerCase()}:${message ?? ''}`
+  const { automatic, autoFlagged, flagged, revealKey } = useMarkeeVerdict(chainId, markeeId, message)
   const revealed = useRevealed(revealKey)
   if (automatic.unavailable) return (
     <div role="status" aria-label="Loading message" className={className}>
@@ -166,22 +166,23 @@ export function ModeratedContent({
  * Without `message` (a past name in a board's history) only a moderator's flag applies.
  *
  * Usage:
- *   <ModeratedAuthor chainId={8453} markeeId={markee.address} message={markee.message}>{markee.name}</ModeratedAuthor>
+ *   <ModeratedAuthor chainId={8453} markeeId={markee.address} message={markee.message} name={markee.name}>{markee.name}</ModeratedAuthor>
  */
-export function ModeratedAuthor({ chainId, markeeId, message, boardAdmin, blurAmount = MODERATION_DEFAULTS.blurAmount, children }: {
+export function ModeratedAuthor({ chainId, markeeId, message, name, boardAdmin, blurAmount = MODERATION_DEFAULTS.blurAmount, children }: {
   chainId: number | string
   message?: string
+  name?: string
   markeeId: string
   boardAdmin?: string | null
   blurAmount?: string
   children: ReactNode
 }) {
   const { canModerate } = useModeration()
-  const { automatic, flagged } = useMarkeeVerdict(chainId, markeeId, message)
-  const revealed = useRevealed(`${markeeId.toLowerCase()}:${message ?? ''}`)
+  const { automatic, flagged, revealKey } = useMarkeeVerdict(chainId, markeeId, message, name)
+  const revealed = useRevealed(revealKey)
   // Until a verdict is in, the label stays blurred like its message's placeholder.
   const pending = message !== undefined && automatic.unavailable
-  if (revealed || canModerate(boardAdmin) || (!flagged && !pending)) return <>{children}</>
+  if (canModerate(boardAdmin) || (!pending && (revealed || !flagged))) return <>{children}</>
   return (
     <span>
       <span className="select-none" style={{ filter: `blur(${blurAmount})` }} aria-hidden="true">{children}</span>
