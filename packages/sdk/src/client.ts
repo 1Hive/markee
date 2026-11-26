@@ -30,6 +30,10 @@ export const DEFAULT_MARKEE_API_URL = PRODUCTION_API_URL;
 
 const PLATFORM_ADMIN_RETRY_MS = 10 * 60_000;
 const WALLET_REJECTION_CODES = new Set([4001, 5750]);
+// EIP-1193 provider errors that mean the wallet refused or could not process the request, so no
+// transaction was signed: unauthorized (4100), unsupported method (4200), disconnected (4900/4901),
+// method not found and invalid params. Any other error stays ambiguous and keeps the record.
+const NOT_SENT_CODES = new Set([...WALLET_REJECTION_CODES, 4100, 4200, 4900, 4901, -32601, -32602]);
 const BATCH_UNSUPPORTED_CODES = new Set([4200, -32601, -32602, 5700, 5710, 5740, 5760]);
 function walletHasCode(error: unknown, codes: ReadonlySet<number>): boolean {
   for (let e = error, depth = 0; e && typeof e === 'object' && depth < 8; e = (e as { cause?: unknown }).cause, depth++) {
@@ -38,8 +42,8 @@ function walletHasCode(error: unknown, codes: ReadonlySet<number>): boolean {
   }
   return false;
 }
-function isWalletRejection(error: unknown) { return walletHasCode(error, WALLET_REJECTION_CODES); }
 function isBatchUnsupported(error: unknown) { return walletHasCode(error, BATCH_UNSUPPORTED_CODES); }
+function isDefinitelyNotSent(error: unknown) { return walletHasCode(error, NOT_SENT_CODES) || isBatchUnsupported(error); }
 
 export class MarkeeError extends Error {
   constructor(message: string, public code = 'MARKEE_ERROR', public status?: number) { super(message); this.name = 'MarkeeError'; }
@@ -180,7 +184,7 @@ export class MarkeeClient {
       this.options.onEvent?.({ type: 'submitted', hash });
       return hash;
     } catch (error) {
-      if (isWalletRejection(error)) this.recovery.clear(preparation);
+      if (isDefinitelyNotSent(error)) this.recovery.clear(preparation);
       this.options.onEvent?.({ type: 'error', message: errorMessage(error) });
       throw error;
     } finally { this.sending = false; }
@@ -221,7 +225,7 @@ export class MarkeeClient {
       this.recovery.set(record);
       return record;
     } catch (error) {
-      if (isWalletRejection(error) || isBatchUnsupported(error)) this.recovery.clear(preparation);
+      if (isDefinitelyNotSent(error)) this.recovery.clear(preparation);
       if (isBatchUnsupported(error)) { this.sending = false; return { preparation, hash: await this.send(preparation) }; }
       this.options.onEvent?.({ type: 'error', message: errorMessage(error) });
       throw error;
@@ -263,6 +267,12 @@ export class MarkeeClient {
     if (typeof status.id !== 'string' || status.id.toLowerCase() !== operation.batchId.toLowerCase()
       || typeof status.chainId !== 'string' || status.chainId.toLowerCase() !== `0x${operation.preparation.transaction.chainId.toString(16)}`) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
     if (status.status === 100) return null;
+    // EIP-5792 4xx: the batch was not included on-chain and the wallet will not retry it, so nothing
+    // was paid (e.g. a Safe proposal its signers rejected). Release the placement and say so.
+    if (typeof status.status === 'number' && status.status >= 400 && status.status < 500) {
+      this.recovery.clear(operation.preparation, found.origin);
+      throw new MarkeeError('The wallet batch failed before reaching the chain. Nothing was paid; you can try again.', 'BATCH_FAILED');
+    }
     if ((status.status !== 200 && status.status !== 500) || status.atomic !== true || !Array.isArray(status.receipts) || !status.receipts.length || status.receipts.length > 16) throw new MarkeeError(RECOVERY_BLOCKED, 'BATCH_UNVERIFIED');
     const receipts = status.receipts as { transactionHash?: unknown; status?: unknown }[];
     // A failed inner call may be caught by the smart wallet, so a failed batch can

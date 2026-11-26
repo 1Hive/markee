@@ -245,3 +245,58 @@ test('wallet discovery allows only one submission prompt at a time', async t => 
   assert.ok('batchId' in await first);
   assert.equal(batches, 1);
 });
+
+test('provider errors that mean nothing was signed clear the intent; ambiguous ones keep it', async t => {
+  browser(t);
+  let error: unknown = { code: 4900, message: 'Disconnected' };
+  let sends = 0;
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (method === 'eth_sendTransaction') { sends++; throw error; }
+    throw Error(method);
+  } };
+  const client = new MarkeeClient({ wallet: { getProvider: async () => provider } });
+  for (const code of [4900, 4901, 4100, 4200, -32601, -32602]) {
+    error = { code, message: 'refused' };
+    await assert.rejects(client.send(prep()), { code });
+    assert.equal(client.pendingOperation(prep().placement, account), undefined, `code ${code} should release the placement`);
+  }
+  error = { code: -32603, message: 'Internal error' };
+  await assert.rejects(client.send(prep()), { code: -32603 });
+  assert.ok(client.pendingOperation(prep().placement, account), 'an internal error may follow a broadcast, so it stays blocked');
+  assert.equal(sends, 7);
+});
+
+test('a wallet batch the wallet reports as not included on-chain (4xx) releases the placement', async t => {
+  browser(t);
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (method === 'wallet_getCapabilities') return { '0x2105': { atomic: { status: 'supported' } } };
+    if (method === 'wallet_sendCalls') return { id: '0xabcd' };
+    if (method === 'wallet_getCallsStatus') return { id: '0xabcd', chainId: '0x2105', status: 400, atomic: true };
+    throw Error(method);
+  } };
+  const client = new MarkeeClient({ wallet: { getProvider: async () => provider } });
+  const submitted = await client.submit(prep());
+  assert.ok('batchId' in submitted);
+  await assert.rejects(client.verifyOperation(submitted), { code: 'BATCH_FAILED' });
+  assert.equal(client.pendingOperation(prep().placement, account), undefined);
+});
+
+test('a partially executed or unknown batch status still blocks', async t => {
+  browser(t);
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (method === 'wallet_getCapabilities') return { '0x2105': { atomic: { status: 'supported' } } };
+    if (method === 'wallet_sendCalls') return { id: '0xabcd' };
+    if (method === 'wallet_getCallsStatus') return { id: '0xabcd', chainId: '0x2105', status: 600, atomic: true };
+    throw Error(method);
+  } };
+  const client = new MarkeeClient({ wallet: { getProvider: async () => provider } });
+  const submitted = await client.submit(prep());
+  await assert.rejects(client.verifyOperation(submitted), { code: 'BATCH_UNVERIFIED' });
+  assert.ok(client.pendingOperation(prep().placement, account));
+});

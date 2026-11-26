@@ -294,7 +294,11 @@ export class MarkeeModal {
         }
         this.render(); return;
       }
-    } catch (error) { if (!this.closed) this.fail(error); }
+    } catch (error) {
+      // A batch that never reached the chain is released by the client; leave the waiting view.
+      if (error instanceof MarkeeError && error.code === 'BATCH_FAILED') this.pending = undefined;
+      if (!this.closed) this.fail(error);
+    }
     if (!this.closed && this.pending && (!('phase' in this.pending) || this.pending.phase !== 'submitting')) this.timer = setTimeout(() => void this.poll(), 5000);
   }
   private async applyAdmin(op: AdminOperation) {
