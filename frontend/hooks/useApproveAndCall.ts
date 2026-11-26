@@ -3,16 +3,16 @@
 import { useCallback, useRef } from 'react'
 import { useConfig, usePublicClient, useSendCalls } from 'wagmi'
 import { getCallsStatus, getCapabilities, waitForCallsStatus } from 'wagmi/actions'
-import { encodeFunctionData, erc20Abi, type Abi } from 'viem'
+import { encodeFunctionData, erc20Abi, keccak256, stringToHex, type Abi } from 'viem'
 import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
 import { waitForStep, type StepContext } from '@/lib/tx/stepReceipt'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import {
-  approveAndCall, supportsAtomicBatch,
+  approveAndCall, isBatchUnsupportedError, supportsAtomicBatch,
   type ApproveAndCallParams, type ApproveAndCallResult, type CallsOutcome, type ContractCall,
 } from '@/lib/tx/approveAndCall'
 import {
-  browserPendingCallsStore, clearPendingCalls, priorCallsBlock, readPendingCalls, writePendingCalls,
+  browserPendingCallsStore, clearPendingCalls, confirmPendingCalls, guardPendingCalls, sendRecoverableCalls,
   type PriorCallsStatus,
 } from '@/lib/tx/pendingCalls'
 
@@ -26,6 +26,14 @@ function encodeCall(call: ContractCall) {
     data: encodeFunctionData({ abi: call.abi as Abi, functionName: call.functionName, args: call.args as unknown[] | undefined }),
     value: call.value ?? 0n,
   }
+}
+
+function isDefinitelyNotSubmitted(error: unknown): boolean {
+  if (isBatchUnsupportedError(error)) return true
+  for (let e = error, depth = 0; e && typeof e === 'object' && depth < 8; e = (e as { cause?: unknown }).cause, depth++) {
+    if ((e as { code?: unknown }).code === 4001) return true
+  }
+  return false
 }
 
 // Approve-then-act for an ERC20 pull. Reads the allowance fresh, skips the approve when it already
@@ -49,17 +57,21 @@ export function useApproveAndCall() {
   ): Promise<ApproveAndCallResult> => {
     if (!publicClient) throw new Error('Network client is not ready. Please try again.')
 
-    const { account, amount, call: { chainId } } = params
-    // An action that pulls nothing can't pay twice, so a stored batch never blocks it.
-    const prior = amount > 0n ? readPendingCalls(browserPendingCallsStore, account, chainId, Date.now()) : null
-    if (prior) {
-      const status: PriorCallsStatus = await getCallsStatus(config, { id: prior.id })
-        .then(r => (r.status === 'pending' || r.status === 'success' || r.status === 'failure' ? r.status : 'unknown'))
-        .catch(() => 'unknown')
-      const block = priorCallsBlock(status, Date.now() - prior.at)
-      if (block) throw new Error(block)
-      clearPendingCalls(browserPendingCallsStore, account, chainId)
-    }
+    const { account, call: { chainId } } = params
+    const encoded = encodeCall(params.call)
+    const action = keccak256(stringToHex(JSON.stringify([
+      account.toLowerCase(), chainId, params.token.toLowerCase(), params.spender.toLowerCase(),
+      params.amount.toString(), encoded.to.toLowerCase(), encoded.data, encoded.value.toString(),
+    ])))
+    await guardPendingCalls(
+      browserPendingCallsStore, account, chainId, action,
+      async id => {
+        const result = await getCallsStatus(config, { id })
+        const status: PriorCallsStatus = result.status === 'pending' || result.status === 'success' || result.status === 'failure' ? result.status : 'unknown'
+        return { status, transactionHash: result.receipts?.at(-1)?.transactionHash }
+      },
+      async hash => (await publicClient.getTransactionReceipt({ hash })).status,
+    )
 
     const result = await approveAndCall(params, {
       readAllowance: (owner, token, spender) =>
@@ -72,28 +84,39 @@ export function useApproveAndCall() {
       write: writeAsync,
       waitForReceipt: hash => waitForStep(publicClient, hash, opts.step),
       sendCalls: async (account, chainId, calls) => {
-        const { id } = await sendCallsAsync({
-          account, chainId: chainId as typeof CANONICAL_CHAIN.id, calls: calls.map(encodeCall), forceAtomic: true,
-        })
-        return id
+        return sendRecoverableCalls(browserPendingCallsStore, account, chainId, action, async () => {
+          const { id } = await sendCallsAsync({
+            account, chainId: chainId as typeof CANONICAL_CHAIN.id, calls: calls.map(encodeCall), forceAtomic: true,
+          })
+          return id
+        }, isDefinitelyNotSubmitted)
       },
       waitForCalls: async (id): Promise<CallsOutcome> => {
         try {
           const status = await waitForCallsStatus(config, { id, timeout: BATCH_WAIT_MS })
           const transactionHash = status.receipts?.at(-1)?.transactionHash
-          if (status.status === 'success' && transactionHash) return { status: 'success', transactionHash }
-          if (status.status === 'failure') return { status: 'failure' }
+          if (status.status === 'success' && transactionHash) {
+            const receipt = await publicClient.getTransactionReceipt({ hash: transactionHash }).catch(() => null)
+            if (receipt?.status === 'success') {
+              confirmPendingCalls(browserPendingCallsStore, account, chainId, id)
+              return { status: 'success', transactionHash }
+            }
+            if (receipt?.status === 'reverted') {
+              clearPendingCalls(browserPendingCallsStore, account, chainId)
+              return { status: 'failure' }
+            }
+          }
+          if (status.status === 'failure') {
+            clearPendingCalls(browserPendingCallsStore, account, chainId)
+            return { status: 'failure' }
+          }
           return { status: 'pending' }
-        } catch (e) {
-          if ((e as { name?: string })?.name === 'WaitForCallsStatusTimeoutError') return { status: 'pending' }
-          throw e
-        }
+        } catch { return { status: 'pending' } }
       },
       onApproving: opts.onApproving,
       onApproved: opts.onApproved,
       isActive: opts.isActive,
     })
-    if (result.kind === 'proposed') writePendingCalls(browserPendingCallsStore, account, chainId, result.id, Date.now())
     return result
   }, [config, publicClient, sendCallsAsync, writeAsync])
 
