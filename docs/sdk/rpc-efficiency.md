@@ -136,10 +136,12 @@ budget review. The account forecast is not a scheduled monitoring task.
 Add a GitHub Actions **secret** named `ALCHEMY_ADMIN_ACCESS_KEY`, created for the
 Markee Alchemy team with **Usage read** permission. This is an Admin API access
 key, not an app RPC key. Do not put it in plain repository variables or Vercel.
-The separate `Alchemy account budget` workflow runs on pushes to `main`, or via
-Run workflow on `main` after the workflow is merged. It never runs on PR code.
-Keep this separate workflow out of required PR checks: current deployed account
-spend is not a forecast of an unmerged feature's incremental RPC cost.
+The separate `Alchemy account budget` workflow runs on pushes to `main`, via
+Run workflow on `main`, and on same-repository PRs targeting `main`. PR runs
+check out the base revision for the forecast. Fork PRs skip the live job because
+they lack the usage credential. Keep the forecast out of required PR checks.
+It reflects deployed account spend, and the mocked RPC tests cover regressions
+introduced by the PR.
 
 The runner calls `GET /v1/usage/summary` and `POST /v1/usage/time-series` on
 `https://admin-api.alchemy.com`, follows pagination, and uses the 24 complete hours
