@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { projectRegression } from './rpc-pr-forecast.mjs'
+import { compareRpcFixtures, projectRegression } from './rpc-pr-forecast.mjs'
 
 const now = Date.parse('2026-11-26T00:00:00Z')
 const config = { monthlyLimitCU: 10000, maxInputAgeHours: 24 }
@@ -31,4 +31,15 @@ test('rejects stale evidence and mismatched fixture sizes', () => {
     fixture(10), fixture(11), config, now), /stale/)
   assert.throws(() => projectRegression(live, fixture(10), { ...fixture(11), members: 999 },
     config, now), /not comparable/)
+})
+
+test('gates the live forecast on RPC changes, including method changes with equal estimates', () => {
+  const base = fixture(10)
+  base.results[0].methods = { eth_call: 1 }
+  const candidate = structuredClone(base)
+  candidate.results.reverse()
+  assert.equal(compareRpcFixtures(base, candidate).changed, false)
+  candidate.results[2].methods = { eth_getLogs: 1 }
+  assert.equal(compareRpcFixtures(base, candidate).changed, true)
+  assert.equal(compareRpcFixtures(fixture(10), fixture(9)).changed, true)
 })

@@ -1,10 +1,34 @@
 import assert from 'node:assert/strict'
 import { readFile, appendFile, writeFile } from 'node:fs/promises'
+import { isDeepStrictEqual } from 'node:util'
 import { pathToFileURL } from 'node:url'
 
 const HOUR = 3_600_000
 const SCANS_PER_HOUR = 12
 const periodic = ['warm', 'edit', 'hourly-reconcile']
+
+export function compareRpcFixtures(base, candidate) {
+  const index = report => {
+    assert.ok(report.schemaVersion === 2 && report.status === 'fixtures-only' &&
+      report.mode === 'deterministic-fixture' && report.members === base.members, 'RPC fixture reports are not comparable')
+    const rows = new Map()
+    for (const { scenario, estimatedCU, methods } of report.results) {
+      assert.ok(!rows.has(scenario) && Number.isSafeInteger(estimatedCU) && estimatedCU >= 0, 'Invalid fixture cost: ' + scenario)
+      rows.set(scenario, { estimatedCU, methods })
+    }
+    return rows
+  }
+  const before = index(base)
+  const after = index(candidate)
+  assert.ok(before.size === after.size && [...before.keys()].every(scenario => after.has(scenario)) &&
+    periodic.every(scenario => before.has(scenario)), 'RPC fixture scenarios are not comparable')
+  return {
+    changed: !isDeepStrictEqual(before, after),
+    deltas: Object.fromEntries(periodic.map(scenario => [
+      scenario, after.get(scenario).estimatedCU - before.get(scenario).estimatedCU,
+    ])),
+  }
+}
 
 export function projectRegression(baseline, base, candidate, config, now = Date.now()) {
   assert.ok(['passed', 'over-limit'].includes(baseline.status) && baseline.account === 'Markee' &&
@@ -16,16 +40,7 @@ export function projectRegression(baseline, base, candidate, config, now = Date.
   const limit = config.monthlyLimitCU
   const projected = baseline.projectedMonthEndCU
   assert.ok(Number.isSafeInteger(projected) && projected >= 0 && baseline.monthlyLimitCU === limit, 'Invalid baseline CU or limit')
-  for (const report of [base, candidate]) {
-    assert.ok(report.schemaVersion === 2 && report.status === 'fixtures-only' &&
-      report.mode === 'deterministic-fixture' && report.members === base.members, 'RPC fixture reports are not comparable')
-  }
-  const costs = (report, scenario) => {
-    const rows = report.results.filter(row => row.scenario === scenario)
-    assert.ok(rows.length === 1 && Number.isSafeInteger(rows[0].estimatedCU) && rows[0].estimatedCU >= 0, 'Missing fixture cost: ' + scenario)
-    return rows[0].estimatedCU
-  }
-  const deltas = Object.fromEntries(periodic.map(scenario => [scenario, costs(candidate, scenario) - costs(base, scenario)]))
+  const { deltas } = compareRpcFixtures(base, candidate)
   const extraPerScan = Math.max(0, ...Object.values(deltas))
   const addedCU = Math.ceil(extraPerScan * SCANS_PER_HOUR * (end - now) / HOUR)
   const projectedWithPR = projected + addedCU
@@ -36,6 +51,12 @@ export function projectRegression(baseline, base, candidate, config, now = Date.
 async function main() {
   const [usage, base, candidate] = process.argv.slice(2)
   const json = async file => JSON.parse(await readFile(file, 'utf8'))
+  if (usage === '--compare') {
+    const { changed } = compareRpcFixtures(await json(base), await json(candidate))
+    console.log(changed ? 'Mocked RPC usage changed.' : 'Mocked RPC usage is unchanged. Skipping the live forecast.')
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, 'changed=' + changed + '\n')
+    return
+  }
   const config = JSON.parse(await readFile(new URL('./rpc-monthly-budget.json', import.meta.url), 'utf8'))
   let report, live
   try {

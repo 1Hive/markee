@@ -17,6 +17,8 @@ jobs:
     name: Estimate PR RPC budget impact
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      rpc-changed: ${{ steps.rpc-diff.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,14 +36,6 @@ jobs:
           cache-dependency-path: |
             baseline/frontend/package-lock.json
             candidate/frontend/package-lock.json
-      - name: Read latest deployed budget report
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow alchemy-usage.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -n "$run_id" ]; then
-            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name alchemy-account-forecast --dir deployed || echo "::warning::No deployed forecast artifact"
-          fi
       - name: Measure base fixture
         working-directory: baseline/frontend
         run: npm ci && npm run test:rpc:usage -- --fixtures-only
@@ -50,7 +44,23 @@ jobs:
         run: npm ci && npm run test:rpc:usage -- --fixtures-only
       - name: Test forecast calculation
         run: node --test candidate/frontend/tests/integration/rpc-pr-forecast.test.mjs
+      - name: Compare mocked RPC usage
+        id: rpc-diff
+        run: |
+          node candidate/frontend/tests/integration/rpc-pr-forecast.mjs --compare \
+            baseline/frontend/test-results/rpc-usage/moderation.json \
+            candidate/frontend/test-results/rpc-usage/moderation.json
+      - name: Read latest deployed budget report
+        if: steps.rpc-diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow alchemy-usage.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name alchemy-account-forecast --dir deployed || echo "::warning::No deployed forecast artifact"
+          fi
       - name: Flag regression that exceeds the limit
+        if: steps.rpc-diff.outputs.changed == 'true'
         env:
           RPC_PR_REPORT: ${{ runner.temp }}/rpc-pr-forecast.md
         run: |
@@ -60,7 +70,7 @@ jobs:
             candidate/frontend/test-results/rpc-usage/moderation.json
 
       - name: Upload PR forecast comment
-        if: always() && !cancelled()
+        if: always() && !cancelled() && steps.rpc-diff.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: rpc-pr-forecast-comment
@@ -78,6 +88,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Download forecast comment
+        if: needs.forecast.outputs.rpc-changed == 'true'
         id: report
         continue-on-error: true
         uses: actions/download-artifact@v4
@@ -88,6 +99,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          RPC_CHANGED: ${{ needs.forecast.outputs.rpc-changed }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           marker='<!-- markee-rpc-pr-forecast -->'
@@ -101,6 +113,8 @@ jobs:
             printf '%s\n' "$marker"
             if [ -f report/rpc-pr-forecast.md ]; then
               cat report/rpc-pr-forecast.md
+            elif [ "$RPC_CHANGED" = false ]; then
+              printf '## Alchemy PR forecast\n\nSkipped. The mocked fixtures showed identical RPC usage.\n'
             else
               printf '## Alchemy PR forecast\n\nForecast unavailable for this run.\n'
             fi
@@ -112,6 +126,6 @@ jobs:
           comment_id=${comment_id%%$'\n'*}
           if [ -n "$comment_id" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -F body=@comment.md --silent
-          else
+          elif [ "$RPC_CHANGED" != false ]; then
             gh api --method POST "$endpoint" -F body=@comment.md --silent
           fi
