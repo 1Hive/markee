@@ -3,8 +3,9 @@
 // echoing it, hold the shared nonce lock for live runs (and release it after failures), and keep RPC
 // error detail out of responses.
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, { type TestContext } from 'node:test'
 import { NextRequest } from 'next/server'
+import type { KeeperClients } from '../lib/server/keeperRoute'
 
 const SECRET = 'cron-test-secret'
 // A fixed dummy key: never funded, only used so privateKeyToAccount succeeds.
@@ -16,25 +17,28 @@ process.env.ALCHEMY_BASE_URL = 'https://rpc.test/v2/should-not-leak'
 process.env.KV_REST_API_URL = 'https://kv.test'
 process.env.KV_REST_API_TOKEN = 'test'
 
-// Imported after the env above: STREAMING_ENABLED is read once at module load.
+// Loaded with require() after the env above, never with a top-level import: STREAMING_ENABLED is read
+// once at module load, and imports are hoisted above these assignments. node --test runs each file in
+// its own process, so no other test file can load the module first; keep any import of keeperRoute (or
+// anything that imports it) in this file below this point.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { handleKeeperRoute } = require('../lib/server/keeperRoute') as typeof import('../lib/server/keeperRoute')
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { logger } = require('../lib/server/logger') as typeof import('../lib/server/logger')
 
-function env(t: any, vars: Record<string, string | undefined>) {
+function env(t: TestContext, vars: Record<string, string | undefined>) {
   const saved = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]))
   for (const [k, v] of Object.entries(vars)) v === undefined ? delete process.env[k] : process.env[k] = v
   t.after(() => { for (const [k, v] of Object.entries(saved)) v === undefined ? delete process.env[k] : process.env[k] = v })
 }
 
 // In-memory Upstash REST, recording every command so tests can assert on the lock.
-function fakeKv(t: any) {
+function fakeKv(t: TestContext) {
   const store = new Map<string, string>()
   const commands: string[][] = []
   t.mock.method(globalThis, 'fetch', async (input: unknown, init?: RequestInit) => {
     const url = String(input)
-    if (new URL(url).origin !== 'https://kv.test') throw new Error(`Unexpected fetch ${url}`)
+    if (new URL(url).origin !== 'https://kv.test') throw new Error(`Unexpected fetch ${url}: only the fake KV is reachable, so a stray request fails instead of hitting the network`)
     const run = ([cmd, ...args]: string[]): unknown => {
       commands.push([cmd.toUpperCase(), ...args])
       switch (cmd.toUpperCase()) {
@@ -57,9 +61,9 @@ const req = (headers: Record<string, string> = {}, query = '') =>
   new NextRequest(`http://localhost/api/cron/streaming-settle${query}`, { headers })
 const auth = { authorization: `Bearer ${SECRET}` }
 
-function route(run: (c: any) => Promise<object> = async () => ({ done: 1 })) {
-  const calls: any[] = []
-  return { calls, opts: { name: 'test-keeper', maxDuration: 300, run: async (c: any) => { calls.push(c); return run(c) } } }
+function route(run: (c: KeeperClients) => Promise<object> = async () => ({ done: 1 })) {
+  const calls: KeeperClients[] = []
+  return { calls, opts: { name: 'test-keeper', maxDuration: 300, run: async (c: KeeperClients) => { calls.push(c); return run(c) } } }
 }
 
 test('rejects callers without the cron secret before reading the signer or KV', async t => {
@@ -133,7 +137,7 @@ test('a live run holds the shared lock, skips while it is held, and releases it'
   assert.equal(res.status, 200)
   assert.ok(lockDuringRun, 'lock is held while the run executes')
   assert.ok(calls[0].walletClient, 'a live run gets a wallet client')
-  assert.equal(calls[0].walletClient.account.address.length, 42)
+  assert.equal(calls[0].walletClient?.account?.address.length, 42)
   const set = commands.find(c => c[0] === 'SET')!
   assert.equal(set[1], LOCK_KEY)
   assert.ok(set.map(s => String(s).toLowerCase()).includes('nx'), 'the lock is taken with NX')
