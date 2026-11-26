@@ -29,11 +29,11 @@ const LOCK_POLL_MS = 5_000
 
 async function acquireLock(ttlSeconds: number, waitMs: number): Promise<boolean> {
   const deadline = Date.now() + waitMs
-  const poll = Math.min(LOCK_POLL_MS, waitMs)
   for (;;) {
     if (await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: ttlSeconds }) === 'OK') return true
-    if (!waitMs || Date.now() + poll > deadline) return false
-    await new Promise(resolve => setTimeout(resolve, poll))
+    const left = deadline - Date.now()
+    if (left <= 0) return false
+    await new Promise(resolve => setTimeout(resolve, Math.min(LOCK_POLL_MS, left)))
   }
 }
 
