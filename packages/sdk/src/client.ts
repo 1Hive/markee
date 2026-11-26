@@ -1,7 +1,7 @@
 import { PRODUCTION_API_URL, storageOrigins } from './storage-origins.js';
 import { SDK_VERSION } from './version.js';
 import { errorMessage } from './errors.js';
-import { WalletRecoveryStore, RECOVERY_BLOCKED, sameWalletPlacement, type WalletRecovery } from './wallet-recovery.js';
+import { WalletRecoveryStore, RECOVERY_BLOCKED, RECOVERY_STORAGE, recoveryStorage, sameWalletPlacement, type WalletRecovery } from './wallet-recovery.js';
 import type { MessageCheck, Action, ModerationOptions, ModerationSeverity, Address, AdminOperation, AdminResult, Authorization, BridgeStatus, ClaimQuote, EIP1193Provider, Hex, Placement, PreparedAction, SDKOptions, Snapshot, SiteVerification, TransactionResult } from './types.js';
 
 const MODERATION_RULES = ['profanity', 'links', 'addresses', 'ens'] as const;
@@ -321,17 +321,23 @@ export class MarkeeClient {
     return apiUrl && apiUrl !== this.apiUrl ? new MarkeeClient({ ...this.options, apiUrl }) : this;
   }
   private records(): PendingTransaction[] {
-    if (typeof localStorage === 'undefined') return this.inMemoryPending;
+    const store = recoveryStorage();
+    if (!store) return this.inMemoryPending;
     const records: PendingTransaction[] = [];
     for (const origin of storageOrigins(this.apiUrl)) {
+      let raw: string | null;
+      try { raw = store.getItem(this.storageKey(origin)); }
+      catch { throw new MarkeeError(RECOVERY_STORAGE, 'STORAGE_UNAVAILABLE'); }
+      if (!raw) continue;
       try {
-        const saved = JSON.parse(localStorage.getItem(this.storageKey(origin)) || '[]');
-        if (!Array.isArray(saved)) continue;
+        const saved: unknown = JSON.parse(raw);
+        if (!Array.isArray(saved)) throw new Error('Invalid recovery records');
         for (const record of saved) {
-          if (!isHash(record?.hash) || typeof record.preparation?.id !== 'string' || !isAddress(record.preparation?.transaction?.from) || !record.preparation?.placement || records.some(r => r.hash === record.hash)) continue;
+          if (!isHash(record?.hash) || typeof record.preparation?.id !== 'string' || !isAddress(record.preparation?.transaction?.from) || !record.preparation?.placement) throw new Error('Invalid recovery record');
+          if (records.some(r => r.hash === record.hash)) continue;
           records.push(record); this.pendingOrigins.set(record.hash, origin);
         }
-      } catch { /* A corrupt/unavailable store must not hide other recoverable records. */ }
+      } catch { throw new MarkeeError(RECOVERY_BLOCKED, 'RECOVERY_UNREADABLE'); }
     }
     return records.length ? records : this.inMemoryPending;
   }
@@ -339,7 +345,7 @@ export class MarkeeClient {
     this.inMemoryPending = records;
     for (const origin of storageOrigins(this.apiUrl)) {
       try {
-        if (typeof localStorage !== 'undefined') localStorage.setItem(this.storageKey(origin), JSON.stringify(records.filter(r => (this.pendingOrigins.get(r.hash) || this.apiUrl) === origin)));
+        recoveryStorage()?.setItem(this.storageKey(origin), JSON.stringify(records.filter(r => (this.pendingOrigins.get(r.hash) || this.apiUrl) === origin)));
       } catch { /* Keep the in-memory records; never automatically retry a payment. */ }
     }
   }

@@ -163,6 +163,14 @@ test('unknown batch status and malformed recovery data block retries', async t =
   assert.throws(() => new MarkeeClient().pendingOperation(prep().placement, account), /already have been accepted/);
 });
 
+test('an unreadable legacy v1 payment record blocks new wallet requests', async t => {
+  const values = browser(t);
+  values.set(`markee:sdk:v1:pending:${apiUrl}`, '{bad');
+  const client = new MarkeeClient();
+  assert.throws(() => client.pendingOperation(prep().placement, account), /already have been accepted/);
+  await assert.rejects(client.submit(prep()), /already have been accepted/);
+});
+
 test('a traced on-chain batch revert releases recovery; unsupported batching falls back once', async t => {
   browser(t);
   let batchStatus = 500;

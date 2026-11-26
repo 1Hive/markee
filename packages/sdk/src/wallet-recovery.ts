@@ -4,6 +4,13 @@ import { storageOrigins } from './storage-origins.js';
 export const RECOVERY_BLOCKED = 'A wallet request may already have been accepted. Check your wallet activity before trying again; Markee will not resend it automatically.';
 export const RECOVERY_STORAGE = 'Transaction recovery storage is unavailable. Enable site storage before submitting a payment.';
 
+export function recoveryStorage(): Storage | undefined {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage;
+    return typeof window === 'undefined' ? undefined : window.localStorage;
+  } catch { throw new Error(RECOVERY_STORAGE); }
+}
+
 export type WalletRecovery =
   | { version: 2; phase: 'submitting'; mode: 'direct' | 'batch'; preparation: PreparedAction; at: number }
   | { version: 2; phase: 'direct-submitted'; mode: 'direct'; preparation: PreparedAction; hash: `0x${string}`; at: number }
@@ -35,11 +42,12 @@ export class WalletRecoveryStore {
   constructor(private readonly apiUrl: string) {}
   private key(origin: string) { return `markee:sdk:v2:wallet-recovery:${origin}`; }
   all(): { record: WalletRecovery; origin: string }[] {
-    if (typeof window === 'undefined') return this.memory.map(record => ({ record, origin: this.apiUrl }));
+    const store = recoveryStorage();
+    if (!store) return this.memory.map(record => ({ record, origin: this.apiUrl }));
     const found: { record: WalletRecovery; origin: string }[] = [];
     for (const origin of storageOrigins(this.apiUrl)) {
       let raw: string | null;
-      try { raw = window.localStorage.getItem(this.key(origin)); }
+      try { raw = store.getItem(this.key(origin)); }
       catch { throw new Error(RECOVERY_STORAGE); }
       if (!raw) continue;
       try {
@@ -71,11 +79,12 @@ export class WalletRecoveryStore {
     this.write(origin, records);
   }
   private write(origin: string, records: WalletRecovery[]) {
-    if (typeof window === 'undefined') { this.memory = records; return; }
+    const store = recoveryStorage();
+    if (!store) { this.memory = records; return; }
     const json = JSON.stringify(records);
     try {
-      window.localStorage.setItem(this.key(origin), json);
-      if (window.localStorage.getItem(this.key(origin)) !== json) throw new Error('not retained');
+      store.setItem(this.key(origin), json);
+      if (store.getItem(this.key(origin)) !== json) throw new Error('not retained');
     } catch { throw new Error(RECOVERY_STORAGE); }
   }
 }

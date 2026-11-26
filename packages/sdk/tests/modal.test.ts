@@ -237,6 +237,20 @@ test('a second edit is offered for explicit review only after the first transact
   }
 });
 
+test('a reverted recovery hash shows an error while keeping the unresolved wallet batch', async () => {
+  const modal = Object.create(MarkeeModal.prototype) as { poll(): Promise<void>; pending: unknown; error: string; timer: unknown };
+  const pending = { version: 2, phase: 'receipt-submitted', mode: 'batch', hash: '0x123', preparation: { action: { kind: 'fund' } } };
+  let rendered = false;
+  Object.assign(modal, { closed: false, pending, error: '',
+    client: { verifyOperation: async () => ({ status: 'reverted', hash: '0x123' }) },
+    render: () => { rendered = true; } });
+  await modal.poll();
+  assert.equal(modal.pending, pending);
+  assert.match(modal.error, /reverted.*still unresolved/);
+  assert.equal(modal.timer, undefined);
+  assert.equal(rendered, true);
+});
+
 test('the combined editor and deposit manager show distinct editable fields and claims', () => {
   const modal = rentView(address) as { snapshot: Record<string, any>; form: unknown; formHtml(): string; walletHtml(): string; balanceMode: string };
   const entry = { address, owner: address, message: 'Old message', name: 'Old name' };

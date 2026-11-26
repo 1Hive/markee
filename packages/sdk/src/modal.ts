@@ -267,6 +267,11 @@ export class MarkeeModal {
       const pending = this.pending;
       const result = await this.client.verifyOperation(pending);
       if (this.closed || this.pending !== pending) return;
+      if (result?.status === 'reverted' && 'phase' in pending && pending.mode === 'batch' && pending.phase === 'receipt-submitted') {
+        this.error = 'This transaction reverted. The wallet batch is still unresolved; check its activity or verify another hash before trying again.';
+        this.render();
+        return;
+      }
       if (result && result.status !== 'pending' && (result.status === 'confirmed' || !('mode' in pending) || pending.mode === 'direct' || pending.phase === 'batch-submitted')) {
         this.pending = undefined; this.result = result; this.error = '';
         await this.reload();
