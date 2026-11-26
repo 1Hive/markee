@@ -8,10 +8,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAccount, usePublicClient, useReadContract } from 'wagmi'
-import { useSponsoredWriteContract } from '@/hooks/useSponsoredWriteContract'
+import { useApproveAndCall } from '@/hooks/useApproveAndCall'
 import { useTrackedReceipt } from '@/hooks/useTrackedReceipt'
-import { recordSubmitted, waitForStep } from '@/lib/tx/stepReceipt'
-import { erc20Abi, type Address, type Hex } from 'viem'
+import { recordSubmitted } from '@/lib/tx/stepReceipt'
+import { BATCH_PROPOSED_NOTICE } from '@/lib/tx/approveAndCall'
+import { type Address, type Hex } from 'viem'
 import { CANONICAL_CHAIN } from '@/lib/contracts/addresses'
 import { StreamingLeaderboardABI } from '@/lib/contracts/abis'
 import {
@@ -34,9 +35,10 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
   const [approving, setApproving] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
 
-  const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
+  const { approveAndCall, isPending, reset } = useApproveAndCall()
   const { isLoading: isConfirming, isSuccess, isError: txReverted, error: receiptError } =
     useTrackedReceipt({ marksListings: true, hash: txHash, chainId: CANONICAL_CHAIN.id })
 
@@ -55,21 +57,17 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
     address: board, abi: StreamingLeaderboardABI, functionName: 'poolOf', args: markeeAddress ? [markeeAddress] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled: enabled && !!markeeAddress, refetchInterval: retryUntilLoaded },
   })
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: ETHX, abi: erc20Abi, functionName: 'allowance', args: address ? [address, board] : undefined, chainId: CANONICAL_CHAIN.id,
-    query: { enabled, refetchInterval: retryUntilLoaded },
-  })
   const { data: deposit } = useReadContract({
     address: board, abi: StreamingLeaderboardABI, functionName: 'backerDeposit', args: address ? [address] : undefined, chainId: CANONICAL_CHAIN.id,
     query: { enabled, refetchInterval: retryUntilLoaded },
   })
 
   const poolReady = !!refundPool && refundPool !== ZERO_ADDRESS
-  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && allowance !== undefined && deposit !== undefined && !!publicClient
+  const readsReady = !!cfaAgreement && !!gdaAgreement && poolReady && deposit !== undefined && !!publicClient
 
   useEffect(() => {
     if (!isOpen) {
-      setError(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
+      setError(null); setNotice(null); setApproving(false); setSubmitting(false); setTxHash(undefined); reset()
     }
   }, [isOpen, reset])
 
@@ -83,6 +81,7 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
 
   async function moveStream(calc: MoveStreamCalc, opts: { belowMin: boolean; minMonthlyEth: string }) {
     setError(null)
+    setNotice(null)
     if (!address) return
     if (!readsReady || !markeeAddress) return
     if (calc.ratePerSec <= 0n) { setError('Enter a monthly rate.'); return }
@@ -94,22 +93,6 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
 
       const held = deposit ?? 0n
       const depositTopUp = calc.buffer > held ? calc.buffer - held : 0n
-
-      if (depositTopUp > 0n && (allowance ?? 0n) < depositTopUp) {
-        setApproving(true)
-        const approveHash = await writeContractAsync({
-          address: ETHX,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [board, depositTopUp],
-          chainId: CANONICAL_CHAIN.id,
-        })
-        const approveReceipt = await waitForStep(publicClient!, approveHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
-        if (approveReceipt.status !== 'success') throw new Error('The approval transaction reverted.')
-        await refetchAllowance()
-        if (!openRef.current) return
-        setApproving(false)
-      }
 
       const ops = buildMoveStreamOps({
         ethx: ETHX,
@@ -131,17 +114,30 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
       // calc.value (not calc.prefund) is the fresh-wrap amount now that callers can compute
       // calc.prefund as "existing ETHx balance + this wrap", not just what's freshly wrapped -- same
       // convention useCreateStreamFlow/useOpenStreamFlow already use.
-      const batchHash = await writeContractAsync({
-        address: HOST,
-        abi: SUPERFLUID_HOST_ABI,
-        functionName: 'batchCall',
-        args: [ops],
-        value: depositTopUp + calc.value,
-        chainId: CANONICAL_CHAIN.id,
-      })
-      recordSubmitted(batchHash, { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id })
+      const step = { account: address, board, label: 'Your stream', chainId: CANONICAL_CHAIN.id }
+      const result = await approveAndCall(
+        {
+          account: address, token: ETHX, spender: board, amount: depositTopUp,
+          call: {
+            address: HOST,
+            abi: SUPERFLUID_HOST_ABI,
+            functionName: 'batchCall',
+            args: [ops],
+            value: depositTopUp + calc.value,
+            chainId: CANONICAL_CHAIN.id,
+          },
+        },
+        { step, onApproving: () => setApproving(true), onApproved: () => setApproving(false), isActive: () => openRef.current },
+      )
+      if (result.kind === 'aborted') return
+      if (result.kind === 'submitted') recordSubmitted(result.hash, step)
       if (!openRef.current) return
-      setTxHash(batchHash)
+      if (result.kind === 'proposed') {
+        setSubmitting(false)
+        setNotice(BATCH_PROPOSED_NOTICE)
+        return
+      }
+      setTxHash(result.hash)
     } catch (e: unknown) {
       if (!openRef.current) return
       setApproving(false)
@@ -151,5 +147,5 @@ export function useMoveStreamFlow(board: Address, markeeAddress: Address | undef
     }
   }
 
-  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, txHash, readsReady, deposit, moveStream }
+  return { approving, submitting, isPending, isConfirming, isSuccess, error, setError, notice, txHash, readsReady, deposit, moveStream }
 }

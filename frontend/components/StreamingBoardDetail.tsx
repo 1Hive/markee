@@ -1,6 +1,7 @@
 'use client'
 
 import { useMessageModeration } from '@/hooks/useMessageModeration'
+import { authorName } from '@/lib/moderation/author-name'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
@@ -190,6 +191,11 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
       .catch(() => {})
   }, [topAddress, topMessage])
 
+  // A GitHub refresh in Served on credits repo traffic to the top message.
+  const handleGitHubRefreshed = useCallback((views?: number) => {
+    if (views !== undefined && topAddress) setViewsMap(m => new Map(m).set(topAddress.toLowerCase(), views))
+  }, [topAddress])
+
   const topMarkee = enforcedTopMarkee ?? null
   const topViews = topMarkee ? (viewsMap.get(topMarkee.address.toLowerCase()) ?? 0) : 0
   // "Total views" in the metrics bar is every message on this board, not just the current top one.
@@ -251,7 +257,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
             <FeaturedCard
               markeeAddress={topMarkee.address}
               message={topMarkee.message || 'No message set'}
-              displayName={topMarkee.name || undefined}
+              displayName={authorName(topMarkee.name, topMarkee.owner) || undefined}
               ownerAddress={topMarkee.owner}
               views={topViews}
               viewsLoading={viewsLoading}
@@ -272,6 +278,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
               totalNode={totalStreamedNode}
               messagesLabel="Messages"
               onAddToSite={() => setEmbedOpen(true)}
+              onGitHubRefreshed={handleGitHubRefreshed}
             />
           </section>
 
@@ -419,6 +426,7 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
         onClose={() => setMessageEditTarget(null)}
         markeeAddress={messageEditTarget?.address as Address | undefined}
         currentMessage={messageEditTarget?.message ?? ''}
+        currentName={messageEditTarget?.name ?? ''}
         onSuccess={() => { setMessageEditTarget(null); refetchAll() }}
       />
     </div>
@@ -428,16 +436,18 @@ export function StreamingBoardDetail({ board }: { board: Address }) {
 // ── Message edit (streaming markees have no on-chain message-edit path through the leaderboard
 // contract -- MarkeeABI.setMessage is called directly on the markee's own address, gated to its
 // owner by the contract itself) ──────────────────────────────────────────────────────────────────
-function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, currentMessage, onSuccess }: {
+function StreamMessageEditModal({ board, isOpen, onClose, markeeAddress, currentMessage, currentName = '', onSuccess }: {
   board: Address
   isOpen: boolean
   onClose: () => void
   markeeAddress?: Address
   currentMessage: string
+  /** The display name the Markee keeps; the draft check judges the new message with it. */
+  currentName?: string
   onSuccess?: () => void
 }) {
   const [message, setMessage] = useState('')
-  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false })
+  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false, name: currentName })
   const [error, setError] = useState<string | null>(null)
   const { writeContractAsync, isPending, reset } = useSponsoredWriteContract()
   const [txHash, setTxHash] = useState<Hex | undefined>(undefined)
@@ -563,7 +573,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
   onEditMessage: () => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
-  const displayName = markee.name || fmtAddr(markee.owner)
+  const displayName = authorName(markee.name, markee.owner) || fmtAddr(markee.owner)
 
   // Only the current #1 has a live, self-verified "since when" timestamp (see useTopSince) -- other
   // rows show "—" rather than a fabricated historical total, since Superfluid streams flow into the

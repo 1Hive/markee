@@ -256,15 +256,17 @@ export function PaymentReviewCard({
   )
 }
 
-export function PaymentReviewFooter({ onBack, onConfirm, busy, error }: {
+export function PaymentReviewFooter({ onBack, onConfirm, busy, error, notice }: {
   onBack: () => void
   onConfirm: () => void
   busy: boolean
   error?: string | null
+  notice?: string | null
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {error && <p style={{ fontSize: 12, color: RED, margin: 0 }}>{error}</p>}
+      {notice && <p style={{ fontSize: 12, color: TEXT2, margin: 0 }}>{notice}</p>}
       <div style={{ display: 'flex', gap: 10 }}>
         <button
           type="button"

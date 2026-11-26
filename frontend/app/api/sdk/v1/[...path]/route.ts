@@ -111,11 +111,11 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
         }
         return cors(NextResponse.json(await checkoutRequest(path.slice(9), body)), request);
       }
-      if (path === 'sites/verify') return cors(NextResponse.json(await verifySite(placement(body.placement), body.siteUrl, request.headers.get('origin'))), request);
+      if (path === 'sites/verify') return cors(NextResponse.json(await verifySite(placement(body.placement), body.siteUrl, request.headers.get('origin'), { userAgent: request.headers.get('user-agent'), country: request.headers.get('x-vercel-ip-country') })), request);
       if (path === 'prepare') { const p = placement(body.placement); return cors(NextResponse.json(await prepare(p, address(body.account), parseAction(body.action), await severity(p, body.policy, body.severity, body.rules))), request); }
       if (path === 'verify') {
         if (typeof body.id !== 'string') throw new SDKError('INVALID_PREPARATION', 'A preparation ID is required.');
-        return cors(NextResponse.json(await verifyTransaction(body.id, hash(body.hash))), request);
+        return cors(NextResponse.json(await verifyTransaction(body.id, hash(body.hash), body.mode === 'batch' ? 'batch' : 'direct')), request);
       }
       if (path === 'views') {
         const markee = address(body.address);

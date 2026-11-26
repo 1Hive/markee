@@ -62,7 +62,7 @@ interface ModerationContextValue {
   isLoading: boolean
 }
 
-const ModerationContext = createContext<ModerationContextValue>({
+export const ModerationContext = createContext<ModerationContextValue>({
   autoModerationEnabled: null,
   flaggedSet: new Set(),
   isAdmin: false,

@@ -26,7 +26,7 @@ export default function Checkout({ id }: { id: string }) {
   const { fundWallet } = useFundWallet();
   const { sendTransaction } = useSendTransaction();
   const [session, setSession] = useState<Session | null>(null);
-  const messageModeration = useMessageModeration(session?.action.kind === 'create' ? session.action.message : '', true, { severity: session?.severity })
+  const messageModeration = useMessageModeration(session?.action.kind === 'create' ? session.action.message : '', true, { severity: session?.severity, name: session?.action.kind === 'create' ? session.action.name : '' })
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('Loading checkout…');
   const [busy, setBusy] = useState(false);

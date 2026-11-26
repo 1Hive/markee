@@ -1,6 +1,7 @@
 'use client'
 
 import { useMessageModeration } from '@/hooks/useMessageModeration'
+import { authorName } from '@/lib/moderation/author-name'
 
 import { useState, useEffect } from 'react'
 import { useAccount, useBalance, useReadContract, useSwitchChain } from 'wagmi'
@@ -144,8 +145,8 @@ export function BuyMessageModal({
   const ethPrice = useEthPrice()
   const [activeTab, setActiveTab] = useState<ModalTab>('create')
   const [message, setMessage] = useState('')
-  const messageModeration = useMessageModeration(message, isOpen)
   const [name, setName] = useState('')
+  const messageModeration = useMessageModeration(message, isOpen, { name })
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasUserEdited, setHasUserEdited] = useState(false)
@@ -206,6 +207,7 @@ export function BuyMessageModal({
     ? rawTakeFirstAmount >= minimumAmount ? rawTakeFirstAmount : minimumAmount
     : null
 
+  const userAuthor = userMarkee ? authorName(userMarkee.name, userMarkee.owner) : ''
   const addFundsTakeFirstAmount = topFundsAdded && userMarkee ? winAmountWei(topFundsAdded, userMarkee.totalFundsAdded) : null
 
   const userIsTop = !!userMarkee && topFundsAdded !== undefined && userMarkee.totalFundsAdded >= topFundsAdded
@@ -655,8 +657,8 @@ export function BuyMessageModal({
                       {userMarkee?.message || <MessageLoading />}
                     </div>
                   </ModeratedContent>
-                  {userMarkee?.name && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userMarkee.name}</ModeratedAuthor></div>
+                  {userMarkee && userAuthor && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userAuthor}</ModeratedAuthor></div>
                   )}
                 </div>
               )}

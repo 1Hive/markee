@@ -20,11 +20,13 @@ export async function POST(req: NextRequest) {
       try { const p = placement(body.placement); const resolved = await resolvePlacement(p); severity = await boardModerationPolicy(resolved.board, body.policy, body.severity, body.rules) }
       catch { return NextResponse.json({ error: 'Moderation setting unavailable' }, { status: 503, headers }) }
     }
+    // `name` is optional: the author's display name is judged with the same rules when given.
     const isDraft = body?.kind === 'draft' && typeof body.message === 'string' && Buffer.byteLength(body.message) <= 4096
+      && (body.name === undefined || (typeof body.name === 'string' && Buffer.byteLength(body.name) <= 4096))
     const isPublished = body?.kind === 'published' && body.chainId === 8453 && Array.isArray(body.markeeIds)
       && body.markeeIds.length > 0 && body.markeeIds.length <= 50
       && body.markeeIds.every(id => typeof id === 'string' && ADDRESS_PATTERN.test(id))
-    if (isDraft) return NextResponse.json(checkDraft(body.message as string, severity), { headers })
+    if (isDraft) return NextResponse.json(checkDraft(body.message as string, severity, (body.name as string | undefined) ?? ''), { headers })
     if (isPublished) {
       const items = await checkPublished([...new Set((body.markeeIds as string[]).map(id => id.toLowerCase()))], board => boardModerationPolicy(board, body.policy, body.severity, body.rules))
       return NextResponse.json({ enabled: autoEnabled(), items }, { headers })

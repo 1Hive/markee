@@ -81,6 +81,36 @@ jobs:
       - name: ETH price without KV
         run: npm run test:eth-price
 
+      - name: SDK API routes, site verification and checkout
+        run: npm run test:sdk
+
+      - name: Transaction tracking and approve-and-call batching
+        run: npm run test:tx-tracking
+
+      - name: Billboard text and GitHub README sync
+        run: npm run test:billboard
+
+      - name: Public routes
+        run: npm run test:public-routes
+
+      - name: Review regressions
+        run: npm run test:review-regressions
+
+      - name: Streaming deposits
+        run: npm run test:streaming-deposit
+
+      - name: Board registry, migration and KV migration
+        run: |
+          npm run test:board-registry
+          npm run test:board-migration-redirects
+          npm run test:board-kv
+
+      - name: Amounts, numbers and beneficiaries
+        run: |
+          npm run test:eth-amount
+          npm run test:numbers
+          npm run test:beneficiary
+
       - name: Check e2e target
         id: e2e
         run: echo "url=${{ secrets.STAGING_URL }}" >> "$GITHUB_OUTPUT"
@@ -94,6 +124,40 @@ jobs:
         run: npm run test:e2e
         env:
           BASE_URL: ${{ secrets.STAGING_URL }}
+
+  # The published SDK package. Source tests only: they don't replace the published-artifact
+  # compatibility matrix AGENTS.md asks for (alpha.22 baseline vs. the changed API).
+  sdk:
+    name: SDK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: packages/sdk/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Published declarations compile under strict NodeNext
+        run: npm run test:declarations
 
   # Real transactions through the app's own modals against a local Anvil fork of Base, with a mock
   # wallet and local Redis in place of Vercel KV (see frontend/tests/e2e/fork/README.md). Also runs

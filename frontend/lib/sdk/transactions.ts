@@ -40,7 +40,9 @@ export function verifyEnvelope(id: string): Envelope {
   const supplied = Buffer.from(signature || '', 'base64url');
   if (extra || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) throw new SDKError('INVALID_PREPARATION', 'Transaction preparation was changed.');
   const value = JSON.parse(Buffer.from(payload, 'base64url').toString()) as Envelope;
-  if (Date.now() - value.issuedAt > 7 * 86400_000) throw new SDKError('PREPARATION_EXPIRED', 'This verification record expired. Check the transaction in the explorer.', 410);
+  // The review expiry gates submission in the SDK. A submitted wallet batch can execute much
+  // later, so its signed envelope must remain usable for read-only receipt verification.
+  if (!Number.isFinite(value.issuedAt) || value.issuedAt <= 0 || value.issuedAt > Date.now() + 300_000) throw new SDKError('INVALID_PREPARATION', 'Invalid transaction preparation.');
   return value;
 }
 
@@ -66,6 +68,16 @@ async function routeExit(c: BoardContext, account: Address, action: Action): Pro
   return canExit(legacyAction, legacyStream) ? { c: legacy, action: legacyAction, stream: legacyStream } : { c, action, stream };
 }
 
+// The review's moderation warning judges the text the action publishes: a new Markee's message and name,
+// an edited message with the name it keeps, or a new name alone.
+export function draftModeration(action: Action, severity: ModerationSeverity, currentName: string) {
+  if (!autoEnabled()) return undefined;
+  if (action.kind === 'create') return checkDraft(action.message, severity, action.name);
+  if (action.kind === 'edit-message') return checkDraft(action.message, severity, currentName);
+  if (action.kind === 'edit-name') return checkDraft('', severity, action.name);
+  return undefined;
+}
+
 export async function prepare(p: Placement, account: Address, requested: Action, severity: ModerationSeverity = 'standard'): Promise<PreparedAction> {
   const resolved = await resolvePlacement(p);
   if (!resolved.board) throw new SDKError('INACTIVE_COMMUNITY', 'Activate the community Markee first.', 409);
@@ -80,6 +92,8 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   const lines: string[] = [];
   let title: string = action.kind;
   let reward = 'This action does not issue MARKEE.';
+  // The Markee's current display name, read for an edit-message review.
+  let currentName = '';
   if ('markee' in action) {
     if (!await c.r<boolean>('isMarkeeOnLeaderboard', [action.markee])) throw new SDKError('UNKNOWN_MARKEE', 'This message does not belong to the board.');
     const strategy = await read<Address>(c.client, action.markee, messageABI, 'pricingStrategy');
@@ -100,7 +114,13 @@ export async function prepare(p: Placement, account: Address, requested: Action,
     data = encodeFunctionData({ abi: boardABI, functionName: 'addFunds', args: [action.markee] });
     title = 'Fund this Markee'; lines.push('Funding keeps the current message owner.'); reward = saleReward;
   } else if (action.kind === 'edit-message' || action.kind === 'edit-name') {
-    const owner = await read<Address>(c.client, action.markee, messageABI, 'owner');
+    const [owner, name] = await Promise.all([
+      read<Address>(c.client, action.markee, messageABI, 'owner'),
+      // The kept display name is judged with the edited message. The review warning is informational
+      // (published checks enforce), so a failed read only omits the name from it.
+      action.kind === 'edit-message' && autoEnabled() ? read<string>(c.client, action.markee, messageABI, 'name').catch(() => '') : '',
+    ]);
+    currentName = name;
     if (owner.toLowerCase() !== account.toLowerCase()) throw new SDKError('NOT_OWNER', 'Only this message’s owner can edit it.', 403);
     const text = action.kind === 'edit-message' ? action.message : action.name;
     assertTextLength(text, action.kind === 'edit-message' ? c.maxMessageBytes : c.maxNameBytes);
@@ -195,10 +215,25 @@ export async function prepare(p: Placement, account: Address, requested: Action,
   if (action.kind === 'stream' || action.kind === 'fund' || action.kind === 'create' && value > 0n) {
     paymentRouting = await paymentRoutingForReview(c);
   }
-  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(autoEnabled() && (action.kind === 'create' || action.kind === 'edit-message') ? { moderation: checkDraft(action.message, severity) } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
+  const moderation = draftModeration(action, severity, currentName);
+  return { id, expiresAt, placement: p, action: requested, transaction, review: { ...(moderation ? { moderation } : {}), title, lines, estimatedGasCost: cost.toString(), reward, ...(estimatedTokens !== undefined ? { estimatedTokens } : {}), ...(paymentRouting ? { paymentRouting } : {}), ...(streamDetails ? { streamDetails } : {}) } };
 }
 
-export async function verifyTransaction(id: string, hash: Hex): Promise<TransactionResult> {
+type CallTrace = { type?: string; from?: string; to?: string; input?: string; value?: string; error?: string; calls?: CallTrace[] };
+export function batchTraceMatches(tx: PreparedAction['transaction'], trace: CallTrace | null | undefined, allowReverted = false): boolean {
+  let remaining = 4096;
+  const matches = (call: CallTrace): boolean => {
+    if (--remaining < 0 || (call.error && !allowReverted)) return false;
+    if (call.type === 'CALL' && call.from?.toLowerCase() === tx.from.toLowerCase()
+      && call.to?.toLowerCase() === tx.to.toLowerCase() && call.input?.toLowerCase() === tx.data.toLowerCase()) {
+      try { if (BigInt(call.value ?? '0x0') === BigInt(tx.value)) return true; } catch { /* Invalid trace value. */ }
+    }
+    return Array.isArray(call.calls) && call.calls.some(matches);
+  };
+  return !!trace && matches(trace);
+}
+
+export async function verifyTransaction(id: string, hash: Hex, mode: 'direct' | 'batch' = 'direct'): Promise<TransactionResult> {
   const prepared = verifyEnvelope(id);
   const tx = prepared.transaction;
   const client = getEnvPublicClient(tx.chainId);
@@ -207,13 +242,34 @@ export async function verifyTransaction(id: string, hash: Hex): Promise<Transact
   let actual;
   try { actual = await client.getTransaction({ hash }); }
   catch (error) { if ((error as Error).name === 'TransactionNotFoundError') return pending; throw error; }
-  if (actual.from.toLowerCase() !== tx.from.toLowerCase() || actual.to?.toLowerCase() !== tx.to.toLowerCase() || actual.input.toLowerCase() !== tx.data.toLowerCase() || actual.value !== BigInt(tx.value)) throw new SDKError('TRANSACTION_MISMATCH', 'This transaction does not match the reviewed action.', 409);
+  // A batch's outer transaction is sent by a wallet or bundler; its trace checks the reviewed call below.
+  if (mode === 'direct' && (actual.from.toLowerCase() !== tx.from.toLowerCase() || actual.to?.toLowerCase() !== tx.to.toLowerCase() || actual.input.toLowerCase() !== tx.data.toLowerCase() || actual.value !== BigInt(tx.value))) throw new SDKError('TRANSACTION_MISMATCH', 'This transaction does not match the reviewed action.', 409);
   let receipt;
   try { receipt = await client.getTransactionReceipt({ hash }); }
   catch (error) { if ((error as Error).name === 'TransactionReceiptNotFoundError') return pending; throw error; }
   if ((await client.getBlockNumber({ cacheTime: 0 })) - receipt.blockNumber < 1n) return pending;
+  if (mode === 'batch') {
+    const block = await client.getBlock({ blockNumber: receipt.blockNumber });
+    if (block.timestamp < BigInt(Math.floor(prepared.issuedAt / 1000))) throw new SDKError('TRANSACTION_MISMATCH', 'This wallet batch predates the reviewed action.', 409);
+  }
   const result: TransactionResult = { status: receipt.status === 'success' ? 'confirmed' : 'reverted', hash, explorerUrl };
+  if (mode === 'batch') {
+    let trace: CallTrace;
+    try {
+      trace = await (client.request as unknown as (args: { method: string; params: unknown[] }) => Promise<CallTrace>)({ method: 'debug_traceTransaction', params: [hash, { tracer: 'callTracer' }] });
+    } catch { throw new SDKError('BATCH_VERIFICATION_UNAVAILABLE', 'Unable to verify this wallet batch yet. Check its status later; do not send another payment.', 503); }
+    const executed = batchTraceMatches(tx, trace);
+    if (!executed && !batchTraceMatches(tx, trace, true)) throw new SDKError('TRANSACTION_MISMATCH', 'This wallet batch did not execute the reviewed action.', 409);
+    // A smart wallet can catch a failed inner call, leaving the outer receipt successful.
+    if (!executed) result.status = 'reverted';
+  }
   if (result.status === 'reverted') return result;
+  if (mode === 'batch') {
+    // A bundler transaction can include unrelated user operations. Its aggregate logs cannot
+    // safely attribute token rewards or a created message to this one reviewed call.
+    await invalidateVerifiedDisplay(tx.chainId, hash);
+    return result;
+  }
   let tokens = 0n;
   let settled = false;
   for (const log of receipt.logs) {

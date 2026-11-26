@@ -6,6 +6,7 @@ import { Eye, EyeOff, ShieldAlert, X } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { MODERATION_API } from '@/lib/moderation/config'
 import { useModerationQueue } from '@/hooks/useModerationQueue'
+import { ensTarget, impersonatesWallet, ruleText } from '@/lib/moderation/author-name'
 import { MONO, PINK, BG2, TEXT2, TEXT, MUTED, BORDER, SANS, AMBER, DANGER, CARD_BG } from '@/lib/design-tokens'
 import { type QueueAction, type ModerationItem, type QueueBoard, type VisibleMessage } from '@/lib/moderation/queue'
 import { AttnGroup, Pager, PanelHead, SegToggle, WalletPending, fmtAddr, isUserRejection } from '@/components/account/primitives'
@@ -17,6 +18,24 @@ const ghost: React.CSSProperties = { background: 'transparent', borderRadius: 8,
 
 // Opens the message's board page, where it shows on the Markee sign. It stretches over its row
 // (.row-link), so the whole row opens the page while the row's buttons keep their own clicks.
+// Moderators see the raw display name. One that looks like another wallet's address or ENS name is
+// withheld everywhere else (the owner's address shows instead), so the queue says so. A row with no
+// known owner (from the soft-flag index) can't tell the owner's own address from another, so an
+// address there is only marked as possibly withheld.
+function QueueName({ name, author }: { name: string; author: string }) {
+  if (!name) return null
+  const withheld = author ? impersonatesWallet(name, author) : ensTarget(ruleText(name))
+  const maybe = !withheld && !author && impersonatesWallet(name)
+  const note = { color: MUTED, fontWeight: 400, fontSize: 12 }
+  return (
+    <span style={{ color: TEXT2 }}>
+      {' - '}{name}
+      {withheld && <span style={note} title="This name looks like a wallet address or ENS name, so signs show the owner's address instead."> (withheld from display)</span>}
+      {maybe && <span style={note} title="Signs show this name only if the address in it is the owner's own; otherwise they show the owner's address."> (withheld unless it is the owner&apos;s address)</span>}
+    </span>
+  )
+}
+
 function SignLink({ board, style, children }: { board: string; style: React.CSSProperties; children: React.ReactNode }) {
   return <a href={`/markee/${board}`} className="row-link-target" style={{ ...style, display: 'block', textDecoration: 'none' }}>{children}</a>
 }
@@ -65,7 +84,7 @@ export function ModerationItemRow({ item, board, onReview, selected, onSelect }:
       <div style={{ minWidth: 0 }}>
         <SignLink board={item.board} style={{ fontSize: 14.5, fontWeight: 600, color: item.message ? TEXT : MUTED, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {item.message || 'Empty message'}
-          {item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
+          <QueueName name={item.name} author={item.author} />
         </SignLink>
         {edited && item.previousMessage !== null && item.previousMessage !== item.message && (
           <div style={{ marginTop: 3, color: MUTED, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -120,7 +139,7 @@ function FlaggedRow({ item, board, onReview }: { item: ModerationItem; board: Qu
           {/* The blur sits on this span, not the link: a filter on the link would confine its row-wide
               click area (.row-link-target::after) to the link itself. */}
           <span style={{ filter: peek ? 'none' : 'blur(4px)', transition: 'filter 160ms' }}>
-            {item.message || 'Empty message'}{item.name ? ` - ${item.name}` : ''}
+            {item.message || 'Empty message'}<QueueName name={item.name} author={item.author} />
           </span>
         </SignLink>
         <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
@@ -166,7 +185,7 @@ function VisibleRow({ item, onReview }: { item: VisibleMessage; onReview: (actio
     <div className="row-link" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 16, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ minWidth: 0 }}>
         <SignLink board={item.board} style={{ fontSize: 14, fontWeight: 600, color: item.message ? TEXT : MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {item.message || 'Empty message'}{item.name && <span style={{ color: TEXT2 }}> - {item.name}</span>}
+          {item.message || 'Empty message'}<QueueName name={item.name} author={item.author} />
         </SignLink>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, fontSize: 12, color: MUTED, flexWrap: 'wrap' }}>
           {item.rank === 1

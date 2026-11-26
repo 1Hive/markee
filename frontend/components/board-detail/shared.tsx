@@ -4,6 +4,7 @@
 // streaming detail render the same hero card, metrics bar, embed/verify panel and skeleton from here.
 
 import { useState, useEffect, useRef } from 'react'
+import { authorName } from '@/lib/moderation/author-name'
 import { useAccount, useSignMessage } from 'wagmi'
 import { createPortal } from 'react-dom'
 import { formatEther } from 'viem'
@@ -299,14 +300,52 @@ function SiteViews({ info, itemKey, views, loaded }: { info?: BoardIntegrations;
   )
 }
 
-export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
+type GitHubRefresh = { status: 'idle' | 'loading' | 'success' | 'error'; note?: string }
+
+// Rewrites the board's linked GitHub files with the current top message and pulls fresh repo
+// traffic. The message result leads the note: it's what the person clicked to fix.
+async function refreshGitHubEmbeds(board: string): Promise<{ ok: boolean; note: string; syncedViews?: number }> {
+  const call = (input: string, init?: RequestInit) => fetch(input, init)
+    .then(async r => ({ ok: r.ok, data: await r.json().catch(() => ({})) as Record<string, unknown> }))
+    .catch(() => null)
+  const [sync, traffic] = await Promise.all([
+    call('/api/github/update-markee-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leaderboardAddress: board }) }),
+    call(`/api/github/traffic?address=${board.toLowerCase()}`),
+  ])
+  const syncedViews = traffic?.ok && typeof traffic.data.syncedViews === 'number' ? traffic.data.syncedViews : undefined
+  const viewsNote = traffic?.ok ? '' : ' · views not refreshed'
+  if (!sync) return { ok: false, note: 'Network error', syncedViews }
+  const results = (sync.data.results ?? []) as Array<{ success: boolean; unchanged?: boolean; error?: string }>
+  if (sync.ok && sync.data.success) {
+    const fail = results.filter(r => !r.success).length
+    const changed = results.filter(r => r.success && !r.unchanged).length
+    const msg = fail > 0 ? `Updated ${results.length - fail}, ${fail} failed` : changed > 0 ? 'Message synced' : 'Already up to date'
+    return { ok: fail === 0, note: msg + viewsNote, syncedViews }
+  }
+  const raw = (sync.data.error as string | undefined) ?? results.find(r => !r.success)?.error ?? 'Sync failed'
+  return {
+    ok: false,
+    note: raw.toLowerCase().includes('delimiter') ? 'Delimiters missing. Add the snippet from the Embed panel to your file first' : raw,
+    syncedViews,
+  }
+}
+
+export function ServedOnCell({ entry, loading, boardAddress, onAddToSite, onGitHubRefreshed }: {
   entry: EcoEntry | null
   /** Still resolving useServedOn -- distinguishes "not verified yet" from "genuinely nothing linked". */
   loading?: boolean
   boardAddress?: string
   onAddToSite?: () => void
+  /** After a GitHub refresh, with the top message's new view total when the traffic sync credited one. */
+  onGitHubRefreshed?: (syncedViews?: number) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [ghRefresh, setGhRefresh] = useState<GitHubRefresh>({ status: 'idle' })
+  useEffect(() => {
+    if (ghRefresh.status !== 'success') return
+    const t = setTimeout(() => setGhRefresh({ status: 'idle' }), 8000)
+    return () => clearTimeout(t)
+  }, [ghRefresh.status])
   const ref = useRef<HTMLDivElement>(null)
   // Rendered through a portal (see below) so the dropdown isn't clipped by the hero section's
   // overflow:hidden (needed there for the scanline/background effect) -- position computed from the
@@ -343,7 +382,7 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
   const files = (entry?.linkedFiles ?? []).filter(f => f.verified)
   // Views and the featured pick come from one place, so this agrees with the Marketplace and the
   // dashboard (lib/integrations/featured.ts).
-  const { data: integrationData } = useBoardIntegrations(boardAddress ? [boardAddress] : [])
+  const { data: integrationData, reload: reloadIntegrations } = useBoardIntegrations(boardAddress ? [boardAddress] : [])
   const info = boardAddress ? integrationData?.[boardAddress.toLowerCase()] : undefined
   // One row per domain: views are counted per domain, so several pages would repeat one count.
   const urls = onePerDomain(entry?.verifiedUrls?.length ? entry.verifiedUrls : entry?.verifiedUrl ? [entry.verifiedUrl] : [], info?.featured)
@@ -382,7 +421,19 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
   const hoverIn = (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.background = BG; (e.currentTarget as HTMLElement).style.color = PINK }
   const hoverOut = (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = TEXT2 }
 
+  const refreshing = ghRefresh.status === 'loading'
+  const runGitHubRefresh = async () => {
+    if (!boardAddress || refreshing) return
+    setGhRefresh({ status: 'loading' })
+    const { ok, note, syncedViews } = await refreshGitHubEmbeds(boardAddress)
+    setGhRefresh({ status: ok ? 'success' : 'error', note })
+    reloadIntegrations()
+    onGitHubRefreshed?.(syncedViews)
+  }
+  const refreshColor = ghRefresh.status === 'success' ? GREEN : ghRefresh.status === 'error' ? 'rgba(255,100,120,0.9)' : MUTED
+
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
     <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
       <button
         onClick={() => setOpen(v => !v)}
@@ -424,6 +475,18 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
         </span>
       )}
 
+      {files.length > 0 && boardAddress && (
+        <button
+          onClick={runGitHubRefresh}
+          disabled={refreshing}
+          aria-label="Sync message and views with GitHub"
+          title={ghRefresh.note ?? 'Sync message and views with GitHub'}
+          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, background: 'transparent', border: `1px solid ${BORDER}`, borderRadius: 6, color: refreshColor, cursor: refreshing ? 'wait' : 'pointer' }}
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : undefined} />
+        </button>
+      )}
+
       {open && menuPos && createPortal(
         <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, background: BG2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 8, minWidth: 260, zIndex: 200, boxShadow: '0 16px 44px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {onAddToSite && (
@@ -462,6 +525,12 @@ export function ServedOnCell({ entry, loading, boardAddress, onAddToSite }: {
         document.body,
       )}
     </div>
+    {ghRefresh.note && ghRefresh.status !== 'loading' && (
+      <span role="status" title={ghRefresh.note} style={{ fontFamily: MONO, fontSize: 11, color: refreshColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {ghRefresh.note}
+      </span>
+    )}
+    </div>
   )
 }
 
@@ -472,11 +541,12 @@ export function MetricValue({ text, color = TEXT, title }: { text: string; color
   )
 }
 
-export function MetricsBar({ address, entry, entryLoading, onAddToSite, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
+export function MetricsBar({ address, entry, entryLoading, onAddToSite, onGitHubRefreshed, totalViews, viewsLoading, markeeCount, messagesLoading, totalLabel, totalNode, messagesLabel = 'Messages bought' }: {
   address: string
   entry: EcoEntry | null
   entryLoading?: boolean
   onAddToSite?: () => void
+  onGitHubRefreshed?: (syncedViews?: number) => void
   // Sum of views across every message on this board, not just the current top one.
   totalViews: number
   viewsLoading?: boolean
@@ -495,7 +565,7 @@ export function MetricsBar({ address, entry, entryLoading, onAddToSite, totalVie
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 24, padding: '26px 0 6px', borderTop: `1px solid ${BORDER}` }}>
-      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} boardAddress={address} onAddToSite={onAddToSite} />)}
+      {cell('Served on', <ServedOnCell entry={entry} loading={entryLoading} boardAddress={address} onAddToSite={onAddToSite} onGitHubRefreshed={onGitHubRefreshed} />)}
       {cell(totalLabel, totalNode)}
       {cell('Total views', viewsLoading ? <ViewsSpinner size={16} color={BLUE} /> : <MetricValue text={formatViews(totalViews)} color={BLUE} />)}
       {cell(messagesLabel, messagesLoading ? <ViewsSpinner size={16} color={TEXT} /> : <MetricValue text={markeeCount.toLocaleString()} />)}
@@ -1468,7 +1538,7 @@ export function TxHistoryPanel({ leaderboardAddress, markeeAddress, expanded, fe
                   </div>
                 ) : (
                   <p className="text-sm text-[#EDEEFF]">
-                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin}>{event.name || '(cleared)'}</ModeratedAuthor></span>
+                    <span className="font-semibold">Updated Name</span> to <span className="font-medium"><ModeratedAuthor chainId={CANONICAL_CHAIN_ID} markeeId={markeeAddress} boardAdmin={boardAdmin}>{!event.name ? '(cleared)' : authorName(event.name, event.actor) || '(withheld: looks like a wallet address or ENS name)'}</ModeratedAuthor></span>
                   </p>
                 )}
                 {event.actor && (

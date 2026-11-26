@@ -101,7 +101,7 @@ export function StreamActivateModal({
   const [depositManagerOpen, setDepositManagerOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  const { phase, error, setError, isPending, isConfirming, isSuccess, activate } = useCreateStreamFlow(board, isOpen)
+  const { phase, error, setError, notice, isPending, isConfirming, isSuccess, activate } = useCreateStreamFlow(board, isOpen)
 
   const { data: balanceData, refetch: refetchBalance } = useBalance({ address: activeAddress as Address | undefined, chainId: CANONICAL_CHAIN.id })
   const { fundWallet } = useFundWallet({ onUserExited: () => refetchBalance() })
@@ -263,6 +263,7 @@ export function StreamActivateModal({
         onConfirm={handleActivate}
         busy={isPending || isConfirming}
         error={error}
+        notice={notice}
       />
     ) : (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
@@ -392,6 +393,7 @@ export function StreamActivateModal({
           {needsFunds && <FundingNeededNotice neededWei={calc.fundingNeeded} ethPrice={ethPrice} onOpenDepositManager={() => setDepositManagerOpen(true)} />}
           {streamPaymentPending && <PendingPaymentNotice pending={pendingStreams} />}
           {error && <div style={{ fontFamily: MONO, fontSize: 12, color: '#FF9DA0', lineHeight: 1.5 }}>{error}</div>}
+          {notice && <div style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>{notice}</div>}
         </div>
       )}
     </ModalShell>

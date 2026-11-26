@@ -25,6 +25,8 @@ interface EditMessageModalProps {
   strategyAddress: `0x${string}`
   markeeAddress: `0x${string}`
   currentMessage: string
+  /** The Markee's display name, which an edit keeps; the draft check judges the new message with it. */
+  currentName?: string
   onSuccess?: () => void
 }
 
@@ -34,13 +36,14 @@ export function EditMessageModal({
   strategyAddress,
   markeeAddress,
   currentMessage,
+  currentName = '',
   onSuccess,
 }: EditMessageModalProps) {
   const { hasActiveWalletConnection } = useActiveWallet()
   const { chain } = useAccount()
   const { switchChain } = useSwitchChain()
   const [message, setMessage] = useState('')
-  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false })
+  const messageModeration = useMessageModeration(message, isOpen, { checkWhileTyping: false, name: currentName })
   const [error, setError] = useState<string | null>(null)
 
   const { writeContract, data: hash, isPending, isError, error: writeError, reset } = useSponsoredWriteContract()

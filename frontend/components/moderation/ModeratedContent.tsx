@@ -14,7 +14,7 @@
  */
 
 import { usePublishedModeration } from '@/hooks/usePublishedModeration'
-import { useState, type ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import { useModeration } from '@/components/moderation/ModerationProvider'
 import { MODERATION_DEFAULTS } from '@/lib/moderation/config'
 
@@ -35,6 +35,31 @@ interface ModeratedContentProps {
   className?: string
   /** Placeholder bars shown while the moderation check runs: 1 for single-line rows, 2 (default) for cards */
   placeholderLines?: 1 | 2
+}
+
+// Revealed flagged Markees, keyed by markee and message, shared so revealing a message also reveals its
+// author label wherever both are shown.
+let revealedKeys = new Set<string>()
+const revealListeners = new Set<() => void>()
+const subscribeRevealed = (listener: () => void) => { revealListeners.add(listener); return () => { revealListeners.delete(listener) } }
+function setRevealed(key: string, shown: boolean) {
+  revealedKeys = new Set(revealedKeys)
+  if (shown) revealedKeys.add(key); else revealedKeys.delete(key)
+  revealListeners.forEach(listener => listener())
+}
+function useRevealed(key: string) {
+  return useSyncExternalStore(subscribeRevealed, () => revealedKeys.has(key), () => false)
+}
+
+/** The moderation verdict both a message and its author label follow: flagged by a moderator or automatically. */
+function useMarkeeVerdict(chainId: number | string, markeeId: string, message?: string) {
+  const { isFlagged } = useModeration()
+  const automatic = usePublishedModeration(chainId, markeeId, message)
+  const manuallyFlagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'manual-flagged'
+  // An automatic flag is separate from the moderator's flag (the shield only toggles the latter), so it gets
+  // its own label and reason; a moderator clears it with a false-positive approval in the queue.
+  const autoFlagged = !manuallyFlagged && automatic.data?.siteState === 'soft-flagged'
+  return { automatic, manuallyFlagged, autoFlagged, flagged: manuallyFlagged || autoFlagged }
 }
 
 /** Message-shaped loading bars, shown instead of the message until its moderation check is done. */
@@ -59,15 +84,10 @@ export function ModeratedContent({
   className = '',
   placeholderLines = 2,
 }: ModeratedContentProps) {
-  const { isFlagged, canModerate } = useModeration()
-  const [revealed, setRevealed] = useState<string | null>(null)
-
-  const automatic = usePublishedModeration(chainId, markeeId, message)
-  const manuallyFlagged = isFlagged(chainId, markeeId) || automatic.data?.siteState === 'manual-flagged'
-  // An automatic flag is separate from the moderator's flag (the shield only toggles the latter), so it gets
-  // its own label and reason; a moderator clears it with a false-positive approval in the queue.
-  const autoFlagged = !manuallyFlagged && automatic.data?.siteState === 'soft-flagged'
-  const flagged = manuallyFlagged || autoFlagged
+  const { canModerate } = useModeration()
+  const { automatic, autoFlagged, flagged } = useMarkeeVerdict(chainId, markeeId, message)
+  const revealKey = `${markeeId.toLowerCase()}:${message ?? ''}`
+  const revealed = useRevealed(revealKey)
   if (automatic.unavailable) return (
     <div role="status" aria-label="Loading message" className={className}>
       <MessageSkeleton lines={placeholderLines} />
@@ -94,12 +114,12 @@ export function ModeratedContent({
   }
 
   // Flagged content for regular users
-  if (revealed === `${markeeId}:${message ?? ''}`) {
+  if (revealed) {
     return (
       <div className={`relative ${className}`}>
         {children}
         <button
-          onClick={() => setRevealed(null)}
+          onClick={() => setRevealed(revealKey, false)}
           className="absolute top-1 right-1 text-[10px] text-[#8A8FBF] hover:text-[#B8B6D9] transition-colors"
         >
           Hide
@@ -126,7 +146,7 @@ export function ModeratedContent({
         </span>
         {allowReveal && (
           <button
-            onClick={() => setRevealed(`${markeeId}:${message ?? ''}`)}
+            onClick={() => setRevealed(revealKey, true)}
             className="text-xs text-[#7C9CFF] hover:text-[#F897FE] underline transition-colors"
           >
             {MODERATION_DEFAULTS.revealText}
@@ -138,15 +158,34 @@ export function ModeratedContent({
 }
 
 /**
- * Compatibility wrapper for author labels. Moderation applies to message text only;
- * author names and wallet labels remain visible regardless of the message verdict.
+ * ModeratedAuthor
+ *
+ * Wraps a message's author label (display name, or wallet when there is no name). The display name is
+ * judged with the message by the same rules, and a flagged Markee blurs both, as SDK signs hide both.
+ * The board's moderators and global admins still see it; revealing the message reveals its author too.
+ * Without `message` (a past name in a board's history) only a moderator's flag applies.
+ *
+ * Usage:
+ *   <ModeratedAuthor chainId={8453} markeeId={markee.address} message={markee.message}>{markee.name}</ModeratedAuthor>
  */
-export function ModeratedAuthor({ children }: {
+export function ModeratedAuthor({ chainId, markeeId, message, boardAdmin, blurAmount = MODERATION_DEFAULTS.blurAmount, children }: {
   chainId: number | string
   message?: string
   markeeId: string
   boardAdmin?: string | null
+  blurAmount?: string
   children: ReactNode
 }) {
-  return children
+  const { canModerate } = useModeration()
+  const { automatic, flagged } = useMarkeeVerdict(chainId, markeeId, message)
+  const revealed = useRevealed(`${markeeId.toLowerCase()}:${message ?? ''}`)
+  // Until a verdict is in, the label stays blurred like its message's placeholder.
+  const pending = message !== undefined && automatic.unavailable
+  if (revealed || canModerate(boardAdmin) || (!flagged && !pending)) return <>{children}</>
+  return (
+    <span>
+      <span className="select-none" style={{ filter: `blur(${blurAmount})` }} aria-hidden="true">{children}</span>
+      <span className="sr-only">{MODERATION_DEFAULTS.hiddenAuthorText}</span>
+    </span>
+  )
 }

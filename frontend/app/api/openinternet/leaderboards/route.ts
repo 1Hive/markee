@@ -18,6 +18,7 @@ import { listVisibleBoards, originalBoard } from '@/lib/contracts/migration'
 import { LeaderboardFactoryABI, LeaderboardV11ABI, MarkeeABI } from '@/lib/contracts/abis'
 import { resolveBoardOrigins } from '@/lib/leaderboards/resolveCreators'
 import { getLinkedFilesBatch, type LinkedFile } from '@/lib/github/linkedFiles'
+import { authorName } from '@/lib/moderation/author-name'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -36,41 +37,6 @@ const NO_CACHE = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
-}
-
-// ─── Hardcoded partner meta ───────────────────────────────────────────────────
-// These 4 leaderboards were migrated from v0.1 TopDawg contracts to v1.1.
-// They live in the legacy OI factory but have no KV meta, so we hardcode
-// verified status here rather than requiring a one-time KV write.
-
-const PARTNER_META: Record<string, {
-  logoUrl: string | null
-  siteUrl: string
-  verifiedUrl: string
-  verifiedUrls: string[]
-  status: 'verified'
-}> = {
-  '0x0590b56430426a38d0fa065b839c10d542e75ccd': { // Markee Cooperative (v1.3)
-    logoUrl: '/markee-logo.png',
-    siteUrl: 'https://markee.xyz',
-    verifiedUrl: 'https://markee.xyz',
-    verifiedUrls: ['https://markee.xyz'],
-    status: 'verified',
-  },
-  '0x2768bc6e90266248bd8bcf5401c36d8049cdf671': { // Gardens (v1.3)
-    logoUrl: '/partners/gardens.png',
-    siteUrl: 'https://app.gardens.fund',
-    verifiedUrl: 'https://app.gardens.fund',
-    verifiedUrls: ['https://app.gardens.fund'],
-    status: 'verified',
-  },
-  '0xdf4769a9593cb8e40d0409def2645651412a8a97': { // Clawchemy (v1.3)
-    logoUrl: '/partners/clawchemy.png',
-    siteUrl: 'https://clawchemy.xyz',
-    verifiedUrl: 'https://clawchemy.xyz',
-    verifiedUrls: ['https://clawchemy.xyz'],
-    status: 'verified',
-  },
 }
 
 // ─── Client ───────────────────────────────────────────────────────────────────
@@ -178,14 +144,13 @@ async function loadListing(request: Request) {
       let topMarkeeOwner: string | null = null
       if (topMarkeeAddresses[i]) {
         topMessage      = (markeeResults[markeeCallIndex]?.result as string) || null
-        topMessageOwner = (markeeResults[markeeCallIndex + 1]?.result as string) || null
         topMarkeeOwner  = (markeeResults[markeeCallIndex + 2]?.result as string) || null
+        // A name that looks like another wallet's address or ENS name is withheld (see authorName).
+        topMessageOwner = authorName(markeeResults[markeeCallIndex + 1]?.result as string, topMarkeeOwner) || null
         markeeCallIndex += 3
       }
 
-      const kvMeta = kvMetas[i]
-      const partnerMeta = PARTNER_META[originalBoard(addr, predecessorOf).toLowerCase()]
-      const meta = partnerMeta ?? kvMeta
+      const meta = kvMetas[i]
       const linkedFiles: LinkedFile[] = linkedFilesPerAddr[i] ?? []
       return {
         address: addr,

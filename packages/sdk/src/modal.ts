@@ -1,6 +1,6 @@
 import { openHostedCheckout } from './checkout.js';
 import { errorMessage } from './errors.js';
-import { discoverWallets, MarkeeClient, MarkeeError, type DiscoveredWallet, type PendingTransaction } from './client.js';
+import { discoverWallets, MarkeeClient, MarkeeError, type DiscoveredWallet, type PendingWalletOperation } from './client.js';
 import { escapeHtml as e, formatEth, parseEth, shortAddress } from './amount.js';
 import { styles } from './styles.js';
 import { createThemeController } from './theme.js';
@@ -61,7 +61,7 @@ export class MarkeeModal {
   private initialSelection = false;
   private renderedView = '';
   private form?: FormState;
-  private queuedNameEdit?: { markee: Address; account: Address; name: string; afterHash?: string };
+  private queuedNameEdit?: { markee: Address; account: Address; name: string; afterHash?: string; afterReviewId?: string };
   private balanceMode: 'wrap' | 'unwrap' = 'wrap';
   private review?: PreparedAction;
   private authorization?: { kind: 'activate' | 'claim' | 'platform-activate'; value: Authorization; account: Address };
@@ -70,7 +70,7 @@ export class MarkeeModal {
   private adminResult?: AdminResult;
   private adminProcessing = false;
   private result?: TransactionResult;
-  private pending?: PendingTransaction;
+  private pending?: PendingWalletOperation;
   private wallets?: DiscoveredWallet[];
   private messageCheck?: MessageCheck;
   private checkedMessage = '';
@@ -181,13 +181,13 @@ export class MarkeeModal {
         if (entry && !this.form && !this.reviewAfterConnect && !this.drafts.get('create')?.message) this.form = { kind: data.strategy === 'rent' ? 'stream' : 'fund', entry };
       }
       if (this.options.placement.kind === 'gardens-community') this.adminResult = this.client.communityReceipt(this.options.placement) || undefined;
-      this.pending = account ? this.client.pending(this.options.placement, account) : undefined;
+      this.pending = account ? this.client.pendingOperation(this.options.placement, account) : undefined;
       const auth = this.client.pendingAuthorization();
       this.adminProcessing = !!auth && auth.account.toLowerCase() === account?.toLowerCase() && auth.chainId === this.options.placement.chainId && (
         this.options.placement.kind === 'gardens-community' && auth.community?.toLowerCase() === this.options.placement.community.toLowerCase()
         || this.options.placement.kind === 'platform-community' && samePlatformPlacement(auth.placement, this.options.placement));
       this.render();
-      if (this.pending) void this.poll();
+      if (this.pending && (!('phase' in this.pending) || this.pending.phase !== 'submitting')) void this.poll();
     } catch (error) { if (!this.closed && epoch === this.epoch) this.fail(error); }
   }
   private fail(error: unknown) { this.error = errorMessage(error); this.render(); }
@@ -265,12 +265,17 @@ export class MarkeeModal {
     if (!this.pending || this.closed) return;
     try {
       const pending = this.pending;
-      const result = await this.client.verify(pending);
-      if (this.closed || this.pending?.hash !== pending.hash) return;
-      if (result.status !== 'pending') {
+      const result = await this.client.verifyOperation(pending);
+      if (this.closed || this.pending !== pending) return;
+      if (result?.status === 'reverted' && 'phase' in pending && pending.mode === 'batch' && pending.phase === 'receipt-submitted') {
+        this.error = 'This transaction reverted. The wallet batch is still unresolved; check its activity or verify another hash before trying again.';
+        this.render();
+        return;
+      }
+      if (result && result.status !== 'pending' && (result.status === 'confirmed' || !('mode' in pending) || pending.mode === 'direct' || pending.phase === 'batch-submitted')) {
         this.pending = undefined; this.result = result; this.error = '';
         await this.reload();
-        if (this.queuedNameEdit?.afterHash === pending.hash) {
+        if (this.queuedNameEdit && (this.queuedNameEdit.afterHash === result.hash || this.queuedNameEdit.afterReviewId === pending.preparation.id)) {
           const next = this.queuedNameEdit;
           this.queuedNameEdit = undefined;
           if (result.status === 'confirmed' && this.account?.toLowerCase() === next.account.toLowerCase()) {
@@ -289,8 +294,12 @@ export class MarkeeModal {
         }
         this.render(); return;
       }
-    } catch (error) { if (!this.closed) this.fail(error); }
-    if (!this.closed && this.pending) this.timer = setTimeout(() => void this.poll(), 5000);
+    } catch (error) {
+      // A batch that never reached the chain is released by the client; leave the waiting view.
+      if (error instanceof MarkeeError && error.code === 'BATCH_FAILED') this.pending = undefined;
+      if (!this.closed) this.fail(error);
+    }
+    if (!this.closed && this.pending && (!('phase' in this.pending) || this.pending.phase !== 'submitting')) this.timer = setTimeout(() => void this.poll(), 5000);
   }
   private async applyAdmin(op: AdminOperation) {
     this.authorization = undefined;
@@ -407,18 +416,32 @@ export class MarkeeModal {
       else if (cmd === 'more') await this.reload(this.snapshot?.nextOffset ?? undefined);
       else if (cmd === 'send' && this.review) {
         const preparation = this.review;
-        let hash;
-        try { hash = await this.client.send(preparation); }
+        let submitted;
+        try { submitted = await this.client.submit(preparation); }
         catch (error) {
-          if (!(error instanceof MarkeeError) || error.code !== 'REVIEW_EXPIRED') throw error;
-          this.busyMessage = 'Refreshing payment details…';
-          this.render();
-          await this.prepare(preparation.action);
-          return; // A refreshed review always requires another confirmation.
+          if (error instanceof MarkeeError && error.code === 'REVIEW_EXPIRED') {
+            this.busyMessage = 'Refreshing payment details…';
+            this.render();
+            await this.prepare(preparation.action);
+            return; // A refreshed review always requires another confirmation.
+          }
+          this.pending = this.client.pendingOperation(preparation.placement, preparation.transaction.from);
+          if (this.pending) { this.review = undefined; this.form = undefined; }
+          throw error;
         }
-        if (preparation.action.kind === 'edit-message' && this.queuedNameEdit?.markee.toLowerCase() === preparation.action.markee.toLowerCase()) this.queuedNameEdit.afterHash = hash;
-        this.pending = { preparation, hash }; this.review = undefined; this.form = undefined; this.result = undefined;
+        if (preparation.action.kind === 'edit-message' && this.queuedNameEdit?.markee.toLowerCase() === preparation.action.markee.toLowerCase()) {
+          this.queuedNameEdit.afterReviewId = preparation.id;
+          if ('hash' in submitted) this.queuedNameEdit.afterHash = submitted.hash;
+        }
+        this.pending = submitted; this.review = undefined; this.form = undefined; this.result = undefined;
         void this.poll();
+      } else if (cmd === 'recover' && this.pending && 'phase' in this.pending) {
+        const input = this.root.querySelector<HTMLInputElement>('[name="recovery-hash"]');
+        const result = await this.client.recoverOperation(this.pending, (input?.value.trim() ?? '') as `0x${string}`);
+        this.pending = this.account ? this.client.pendingOperation(this.options.placement, this.account) : undefined;
+        if (result?.status === 'confirmed') { this.result = result; await this.reload(); }
+        else if (result?.status === 'reverted') this.error = 'The wallet batch reverted. Check its activity before trying again.';
+        this.render();
       } else if (cmd === 'check') await this.poll();
       else if (['stop', 'withdraw-buffer', 'settle'].includes(cmd)) await this.prepare({ kind: cmd } as Action);
       else if (cmd.startsWith('claim-refund:') || cmd.startsWith('connect-refund:') || cmd.startsWith('claim-top:')) {
@@ -761,7 +784,7 @@ export class MarkeeModal {
     const active = this.root.activeElement as HTMLElement | null;
     const focusCommand = active?.dataset.cmd;
     const focusId = active?.id;
-    const viewKey = this.wallets ? 'wallets' : this.review ? `review:${this.review.id}` : this.authorization ? `authorization:${this.authorization.value.nonce}` : this.pending ? `pending:${this.pending.hash}` : `${this.tab}:${this.form?.kind ?? 'create'}:${this.form?.entry.address ?? ''}`;
+    const viewKey = this.wallets ? 'wallets' : this.review ? `review:${this.review.id}` : this.authorization ? `authorization:${this.authorization.value.nonce}` : this.pending ? `pending:${'hash' in this.pending ? this.pending.hash : this.pending.phase === 'batch-submitted' ? this.pending.batchId : this.pending.preparation.id}` : `${this.tab}:${this.form?.kind ?? 'create'}:${this.form?.entry.address ?? ''}`;
     const scrollTop = viewKey === this.renderedView ? this.root.querySelector('.content')?.scrollTop ?? 0 : 0;
     this.renderedView = viewKey;
     const shouldFocus = !document.activeElement || document.activeElement === document.body || document.activeElement === this.host;
@@ -772,7 +795,11 @@ export class MarkeeModal {
     else if (this.review) body = this.reviewHtml();
     else if (this.authorization) body = this.authorizationHtml();
     else if (!s) body = this.error ? btn('refresh', 'Retry', 'primary') : '<div class="loading" role="status" aria-live="polite"><span class="spinner"></span>Loading Markee…</div>';
-    else if (this.pending) body = `<h2>Waiting for confirmation</h2><p>Your transaction was sent. You can close this modal and come back to check it.</p><p class="meta mono">${e(this.pending.hash)}</p><p class="note">Do not send a second payment while this transaction is pending.</p>`;
+    else if (this.pending) body = 'phase' in this.pending && this.pending.phase === 'submitting'
+      ? `<h2>Check your wallet activity</h2><p>The wallet request may have been accepted, but Markee did not receive an identifier. Do not send this payment again. If your wallet shows an on-chain transaction, enter its hash to verify it.</p><input name="recovery-hash" aria-label="Transaction hash" placeholder="0x…" />${btn('recover', 'Verify transaction', 'primary')}`
+      : 'phase' in this.pending && this.pending.phase === 'batch-submitted'
+        ? `<h2>Waiting for wallet batch</h2><p>The batch was submitted to your wallet. A Safe may need other signers before it executes.</p><p class="meta mono">${e(this.pending.batchId)}</p><p class="note">Do not send a second payment while this batch is pending.</p>`
+        : `<h2>Waiting for confirmation</h2><p>Your transaction was sent. You can close this modal and come back to check it.</p><p class="meta mono">${e(this.pending.hash)}</p><p class="note">Do not send a second payment while this transaction is pending.</p>${'phase' in this.pending && this.pending.phase === 'receipt-submitted' ? `<input name="recovery-hash" aria-label="Transaction hash" placeholder="0x…" />${btn('recover', 'Verify another hash', 'primary')}` : ''}`;
     else if (this.tab === 'activation' && this.options.placement.kind === 'platform-community') body = this.activationHtml();
     else if (!s.board || s.community?.integration.status === 'pending_admin' || this.tab === 'community') body = this.communityHtml();
     else if (this.tab === 'wallet') body = this.walletHtml();

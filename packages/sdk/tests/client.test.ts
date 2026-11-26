@@ -111,7 +111,7 @@ test('snapshot and preparation identify the SDK version without changing the v1 
   await client.snapshot(preparation().placement);
   await client.prepare(preparation().placement, { kind: 'edit-message', markee: other, message: 'hello' });
   await client.verifySite(preparation().placement, 'https://example.org');
-  assert.deepEqual(urls.map(url => url.searchParams.get('client')), ['markee-sdk@0.1.0-beta.17', 'markee-sdk@0.1.0-beta.17', null]);
+  assert.deepEqual(urls.map(url => url.searchParams.get('client')), ['markee-sdk@0.1.0-beta.18', 'markee-sdk@0.1.0-beta.18', null]);
   assert.equal(urls[0].searchParams.has('placement'), true);
 });
 

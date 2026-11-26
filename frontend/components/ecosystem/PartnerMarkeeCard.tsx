@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { authorName } from '@/lib/moderation/author-name'
 import Link from 'next/link'
 import { useReadContract } from 'wagmi'
 import { formatEther } from 'viem'
@@ -57,6 +58,7 @@ export function PartnerMarkeeCard({
 
   const minIncrement = BigInt('1000000000000000') // 0.001 ETH
   const minPrice = (minimumPrice as bigint) ?? minIncrement
+  const winningAuthor = winningMarkee ? authorName(winningMarkee.name, winningMarkee.owner) : ''
   const rawBuyPrice = (winningMarkee?.totalFundsAdded ?? BigInt(0)) + minIncrement
   const buyPrice = rawBuyPrice > minPrice ? rawBuyPrice : minPrice
   const buyPriceFormatted = Number(formatEther(buyPrice)).toFixed(3)
@@ -99,8 +101,8 @@ export function PartnerMarkeeCard({
                 <p className="text-[#EDEEFF] font-mono text-sm break-words mb-2">
                   {winningMarkee.message}
                 </p>
-                {winningMarkee.name && (
-                  <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {winningMarkee.name}</p>
+                {winningAuthor && (
+                  <p className="text-[#8A8FBF] text-xs text-right mt-auto">- {winningAuthor}</p>
                 )}
               </div>
             </div>
