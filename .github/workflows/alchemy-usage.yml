@@ -1,10 +1,8 @@
 name: Alchemy account budget
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  schedule:
+    - cron: '17 14 * * *'
   workflow_dispatch:
 
 permissions:
@@ -19,19 +17,13 @@ jobs:
     name: Deployed account usage forecast
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Keep this forecast out of required PR checks. It measures deployed usage.
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.ref == 'refs/heads/main'
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
         with:
-          # Forecast deployed usage using the base revision on PR runs.
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -40,14 +32,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: Fetch usage and forecast monthly budget
-        id: forecast
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: node --import tsx tests/integration/alchemy-account-budget.ts
         env:
           ALCHEMY_ADMIN_ACCESS_KEY: ${{ secrets.ALCHEMY_ADMIN_ACCESS_KEY }}
-      - name: Flag unsuccessful PR forecast
-        if: github.event_name == 'pull_request' && steps.forecast.outcome == 'failure'
-        run: echo "::warning::The live Alchemy forecast did not pass. Check the forecast log and report for details."
       - name: Upload account forecast
         if: always()
         uses: actions/upload-artifact@v4
