@@ -57,6 +57,17 @@ within the existing five-minute cadence, and unavailable/checkpoint behavior hol
 Production-only route logs cannot attribute staging usage of the same key. Keep
 the missing-usage fraction provisional until the same app/time window reconciles.
 
+### Published moderation checks
+
+The public published check shares complete, membership-verified chain observations
+for 60 seconds per Base Markee. Overlapping batches fetch only missing IDs.
+Manual flags, overrides, and board policies are resolved on each request. Cached
+observations cannot write into the moderation queue or invalidate SDK snapshots.
+The website batches nearby requests for 50 ms and still verifies the returned
+message hash against the displayed text, so a new revision can show the loading
+state until a fresh observation is available. Scan and write paths keep their
+existing chain reads.
+
 ### Integration budget
 
 Run `npm run test:rpc:usage --prefix frontend -- --alchemy-usage /path/to/usage.json`

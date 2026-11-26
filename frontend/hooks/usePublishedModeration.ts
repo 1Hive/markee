@@ -11,7 +11,7 @@ function load(id: string): Promise<PublishedModeration> {
     waiting.push({ id, resolve, reject })
     if (scheduled) return
     scheduled = true
-    queueMicrotask(async () => {
+    setTimeout(async () => {
       scheduled = false
       const batch = waiting; waiting = []
       for (let i = 0; i < batch.length; i += 50) {
@@ -27,7 +27,7 @@ function load(id: string): Promise<PublishedModeration> {
           }
         } catch { slice.forEach(w => w.reject(new Error('Moderation check unavailable'))) }
       }
-    })
+    }, 50)
   })
 }
 export function usePublishedModeration(chainId: number | string, id: string, message?: string) {
