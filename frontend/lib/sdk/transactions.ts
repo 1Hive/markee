@@ -223,7 +223,7 @@ type CallTrace = { type?: string; from?: string; to?: string; input?: string; va
 export function batchTraceMatches(tx: PreparedAction['transaction'], trace: CallTrace | null | undefined, allowReverted = false): boolean {
   let remaining = 4096;
   const matches = (call: CallTrace): boolean => {
-    if (--remaining < 0 || call.error && !allowReverted) return false;
+    if (--remaining < 0 || (call.error && !allowReverted)) return false;
     if (call.type === 'CALL' && call.from?.toLowerCase() === tx.from.toLowerCase()
       && call.to?.toLowerCase() === tx.to.toLowerCase() && call.input?.toLowerCase() === tx.data.toLowerCase()) {
       try { if (BigInt(call.value ?? '0x0') === BigInt(tx.value)) return true; } catch { /* Invalid trace value. */ }
@@ -242,6 +242,7 @@ export async function verifyTransaction(id: string, hash: Hex, mode: 'direct' | 
   let actual;
   try { actual = await client.getTransaction({ hash }); }
   catch (error) { if ((error as Error).name === 'TransactionNotFoundError') return pending; throw error; }
+  // A batch's outer transaction is sent by a wallet or bundler; its trace checks the reviewed call below.
   if (mode === 'direct' && (actual.from.toLowerCase() !== tx.from.toLowerCase() || actual.to?.toLowerCase() !== tx.to.toLowerCase() || actual.input.toLowerCase() !== tx.data.toLowerCase() || actual.value !== BigInt(tx.value))) throw new SDKError('TRANSACTION_MISMATCH', 'This transaction does not match the reviewed action.', 409);
   let receipt;
   try { receipt = await client.getTransactionReceipt({ hash }); }

@@ -221,3 +221,27 @@ test('atomic-ready or absent wallet capabilities keep the direct transaction pat
   assert.equal(batches, 0);
   assert.equal(direct, 2);
 });
+
+test('wallet discovery allows only one submission prompt at a time', async t => {
+  browser(t);
+  let release!: () => void;
+  let reached!: () => void;
+  const capabilities = new Promise<void>(resolve => { release = resolve; });
+  const discovering = new Promise<void>(resolve => { reached = resolve; });
+  let batches = 0;
+  const provider: EIP1193Provider = { async request({ method }) {
+    if (method === 'eth_accounts') return [account];
+    if (method === 'eth_chainId') return '0x2105';
+    if (method === 'wallet_getCapabilities') { reached(); await capabilities; return { atomic: { status: 'supported' } }; }
+    if (method === 'wallet_sendCalls') { batches++; return { id: '0x1234' }; }
+    throw Error(method);
+  } };
+  const client = new MarkeeClient({ wallet: { getProvider: async () => provider } });
+  const first = client.submit(prep());
+  await discovering;
+  await assert.rejects(client.submit(prep()), /already in progress/);
+  await assert.rejects(client.send(prep()), /already in progress/);
+  release();
+  assert.ok('batchId' in await first);
+  assert.equal(batches, 1);
+});

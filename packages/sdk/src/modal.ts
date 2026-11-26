@@ -433,7 +433,7 @@ export class MarkeeModal {
         void this.poll();
       } else if (cmd === 'recover' && this.pending && 'phase' in this.pending) {
         const input = this.root.querySelector<HTMLInputElement>('[name="recovery-hash"]');
-        const result = await this.client.recoverOperation(this.pending, input?.value.trim() as `0x${string}`);
+        const result = await this.client.recoverOperation(this.pending, (input?.value.trim() ?? '') as `0x${string}`);
         this.pending = this.account ? this.client.pendingOperation(this.options.placement, this.account) : undefined;
         if (result?.status === 'confirmed') { this.result = result; await this.reload(); }
         else if (result?.status === 'reverted') this.error = 'The wallet batch reverted. Check its activity before trying again.';

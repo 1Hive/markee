@@ -71,6 +71,7 @@ export class MarkeeClient {
   private readonly fetcher: typeof fetch;
   private injected: EIP1193Provider | null = null;
   private sending = false;
+  private discoveringWallet = false;
   private pendingOrigins = new Map<string, string>();
   private adminOrigin?: string;
   private inMemoryPending: PendingTransaction[] = [];
@@ -161,7 +162,7 @@ export class MarkeeClient {
     return provider;
   }
   async send(preparation: PreparedAction): Promise<Hex> {
-    if (this.sending) throw new MarkeeError('A wallet request is already in progress.');
+    if (this.sending || this.discoveringWallet) throw new MarkeeError('A wallet request is already in progress.');
     if (preparation.expiresAt <= Date.now()) throw new MarkeeError('This review expired. Prepare the action again.', 'REVIEW_EXPIRED');
     this.assertReviewNotConfirmed(preparation);
     const existing = this.pendingOperation(preparation.placement, preparation.transaction.from);
@@ -186,21 +187,25 @@ export class MarkeeClient {
   }
   /** EIP-5792 capable wallets may return a batch ID before an on-chain hash exists. */
   async submit(preparation: PreparedAction): Promise<PendingWalletOperation> {
-    if (this.sending) throw new MarkeeError('A wallet request is already in progress.');
+    if (this.sending || this.discoveringWallet) throw new MarkeeError('A wallet request is already in progress.');
     if (preparation.expiresAt <= Date.now()) throw new MarkeeError('This review expired. Prepare the action again.', 'REVIEW_EXPIRED');
     this.assertReviewNotConfirmed(preparation);
     if (this.pendingOperation(preparation.placement, preparation.transaction.from)) throw new MarkeeError(RECOVERY_BLOCKED, 'PENDING_TRANSACTION');
-    const provider = await this.ensureWallet(preparation.transaction.from, preparation.transaction.chainId);
     const chainId = `0x${preparation.transaction.chainId.toString(16)}`;
     let atomic = false;
+    let provider: EIP1193Provider;
+    this.discoveringWallet = true;
     try {
-      const response = await provider.request({ method: 'wallet_getCapabilities', params: [preparation.transaction.from, [chainId]] });
-      const capabilities = response && typeof response === 'object' ? response as Record<string, unknown> : {};
-      const onChain = capabilities[chainId] && typeof capabilities[chainId] === 'object' ? capabilities[chainId] as Record<string, unknown> : capabilities;
-      const status = onChain.atomic as { status?: unknown } | undefined;
-      const legacy = onChain.atomicBatch as { supported?: unknown } | undefined;
-      atomic = status?.status === 'supported' || legacy?.supported === true;
-    } catch { /* Wallets without capability discovery keep the existing direct path. */ }
+      provider = await this.ensureWallet(preparation.transaction.from, preparation.transaction.chainId);
+      try {
+        const response = await provider.request({ method: 'wallet_getCapabilities', params: [preparation.transaction.from, [chainId]] });
+        const capabilities = response && typeof response === 'object' ? response as Record<string, unknown> : {};
+        const onChain = capabilities[chainId] && typeof capabilities[chainId] === 'object' ? capabilities[chainId] as Record<string, unknown> : capabilities;
+        const status = onChain.atomic as { status?: unknown } | undefined;
+        const legacy = onChain.atomicBatch as { supported?: unknown } | undefined;
+        atomic = status?.status === 'supported' || legacy?.supported === true;
+      } catch { /* Wallets without capability discovery keep the existing direct path. */ }
+    } finally { this.discoveringWallet = false; }
     if (!atomic) return { preparation, hash: await this.send(preparation) };
     if (this.sending || this.pendingOperation(preparation.placement, preparation.transaction.from)) throw new MarkeeError(RECOVERY_BLOCKED, 'PENDING_TRANSACTION');
     this.sending = true;
@@ -239,7 +244,7 @@ export class MarkeeClient {
       const result = await this.recoveryClient(found.origin).request<TransactionResult>('verify', {
         id: operation.preparation.id, hash: operation.hash, ...(operation.mode === 'batch' ? { mode: 'batch' } : {}),
       });
-      if (result.status === 'confirmed' || operation.mode === 'direct' && result.status === 'reverted') {
+      if (result.status === 'confirmed' || (operation.mode === 'direct' && result.status === 'reverted')) {
         if (result.status === 'confirmed') this.recovery.set({ version: 2, phase: 'confirmed', mode: operation.mode, preparation: operation.preparation, hash: result.hash, at: Date.now() }, found.origin);
         else this.recovery.clear(operation.preparation, found.origin);
         if (result.status === 'confirmed') this.options.onEvent?.({ type: 'confirmed', hash: result.hash });
