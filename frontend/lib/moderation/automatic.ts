@@ -38,6 +38,12 @@ export const automaticDeps = {
   client: getModerationClient,
   members: () => kv.smembers<string[]>(SOFT_INDEX),
   mget: (...keys: string[]) => kv.mget<(PublishedModeration | null)[]>(...keys),
+  readDisplayCache: async (keys: string[]) => kv.mget<(Observation | null)[]>(...keys),
+  writeDisplayCache: async (observations: Observation[]) => {
+    const pipeline = kv.pipeline()
+    for (const observation of observations) pipeline.set(displayObservationKey(observation.markee), observation, { ex: 60 })
+    await pipeline.exec()
+  },
   read: async (ids: string[]): Promise<Observation[]> => {
     const client = automaticDeps.client()
     const abi = parseAbi(['function message() view returns (string)', 'function pricingStrategy() view returns (address)', 'function name() view returns (string)'])
@@ -52,7 +58,7 @@ export const automaticDeps = {
     const observations = ids.flatMap((markee, i) => {
       const message = reads[i * 3], board = reads[i * 3 + 1], read = reads[i * 3 + 2]
       if (message.status !== 'success' || board.status !== 'success' || typeof message.result !== 'string' || typeof board.result !== 'string') return []
-      const name = read.status === 'success' && typeof read.result === 'string' ? read.result : ''
+      const name = read.status === 'success' && typeof read.result === 'string' ? read.result : undefined
       return [{ markee: markee.toLowerCase(), message: message.result, name, board: board.result.toLowerCase(), blockNumber: blockNumber.toString() }]
     })
     const members = await automaticDeps.membership(observations, client, blockNumber)
@@ -104,6 +110,8 @@ export const SOFT_INDEX = 'moderation:auto:soft:8453'
 
 // Call only with text read by our server (never a browser-provided published message).
 type Observation = { markee: string; message: string; name?: string; board: string; blockNumber?: string }
+const displayObservationKey = (id: string) => `moderation:display-observation:v1:8453:${id.toLowerCase()}`
+
 const unavailable = (markee: string): PublishedModeration => ({ markee: markee.toLowerCase(), contentHash: '', state: 'unavailable', siteState: 'unavailable', reason: 'Moderation check unavailable', policyVersion: AUTO_POLICY })
 
 export async function evaluateObserved(id: string, message: string, board: string, manual: { board: boolean; site: boolean }, name = ''): Promise<PublishedModeration> {
@@ -131,7 +139,7 @@ export async function evaluateObservedBatch(
   return results
 }
 type Override = { contentHash?: string; nameHash?: string; scope?: string }
-async function evaluateTrusted(id: string, message: string, board: string, manual: { board: boolean; site: boolean }, severity: ModerationSeverity = 'standard', name = ''): Promise<PublishedModeration> {
+async function evaluateTrusted(id: string, message: string, board: string, manual: { board: boolean; site: boolean }, severity: ModerationSeverity = 'standard', name = '', publish = true): Promise<PublishedModeration> {
   const hash = contentHash(message), nameHash = contentHash(name)
   const base = { markee: id.toLowerCase(), board, contentHash: hash, nameHash, policyVersion: AUTO_POLICY }
   if (manual.board) return { ...base, state: 'manual-flagged', siteState: 'manual-flagged' }
@@ -146,13 +154,13 @@ async function evaluateTrusted(id: string, message: string, board: string, manua
     const [siteOverride, sharedOverride, previous] = await Promise.all([
       verdict.state === 'soft-flagged' ? automaticDeps.get<Override>(overrideKey(id, hash)) : null,
       verdict.state === 'soft-flagged' ? automaticDeps.get<Override>(sharedOverrideKey(id, hash)) : null,
-      severity === 'standard' ? automaticDeps.get<PublishedModeration>(softKey(id)) : null,
+      publish && severity === 'standard' ? automaticDeps.get<PublishedModeration>(softKey(id)) : null,
     ])
     if (sharedOverride?.scope === 'all' && sharedOverride.contentHash === hash && covers(sharedOverride)) state = 'visible'
     const override = covers(siteOverride)
     const result: PublishedModeration = { ...base, state, siteState: manual.site ? 'manual-flagged' : override ? 'visible' : state, ...(verdict.reason ? { reason: verdict.reason, reasonCodes: verdict.reasonCodes } : {}) }
     // Per-integration presets never mutate the global Standard moderation queue/index.
-    if (severity !== 'standard') return result
+    if (!publish || severity !== 'standard') return result
     if (previous?.contentHash === hash && previous?.nameHash === nameHash && previous?.state === state && previous?.siteState === result.siteState && previous?.policyVersion === AUTO_POLICY) return result
     const pipeline = automaticDeps.pipeline()
     pipeline.set(softKey(id), result)
@@ -165,13 +173,34 @@ async function evaluateTrusted(id: string, message: string, board: string, manua
     return { ...base, state: 'unavailable', siteState: manual.site ? 'manual-flagged' : 'unavailable', reason: 'Moderation check unavailable' }
   }
 }
-export async function checkPublished(ids: string[], severity: ModerationSeverity | ((board: string) => Promise<ModerationSeverity>) = 'standard'): Promise<PublishedModeration[]> {
-  const [observations, flags] = await Promise.all([automaticDeps.read(ids), automaticDeps.flags()])
+async function readPublishedDisplay(ids: string[], cachedIds: Set<string>): Promise<Observation[]> {
+  const hits = await automaticDeps.readDisplayCache(ids.map(displayObservationKey)).catch(() => [])
+  const cached: Observation[] = []
+  const missing = ids.filter((id, i) => {
+    const hit = hits[i]
+    if (!hit || hit.markee !== id || typeof hit.name !== 'string') return true
+    cached.push(hit)
+    cachedIds.add(id)
+    return false
+  })
+  if (!missing.length) return cached
+  const fresh = await automaticDeps.read(missing)
+  const complete = fresh.filter(observation => typeof observation.name === 'string')
+  if (complete.length) await automaticDeps.writeDisplayCache(complete).catch(() => {})
+  return [...cached, ...fresh]
+}
+
+export async function checkPublished(ids: string[], severity: ModerationSeverity | ((board: string) => Promise<ModerationSeverity>) = 'standard', options?: { displayCache: boolean }): Promise<PublishedModeration[]> {
+  const cachedIds = new Set<string>()
+  const [observations, flags] = await Promise.all([
+    options?.displayCache ? readPublishedDisplay(ids, cachedIds) : automaticDeps.read(ids),
+    automaticDeps.flags(),
+  ])
   const boardFlags = new Set(flags.board), siteFlags = new Set(flags.site)
   const byId = new Map(observations.map(o => [o.markee.toLowerCase(), o]))
   return Promise.all(ids.map(async id => {
     const o = byId.get(id.toLowerCase())
-    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }, typeof severity === 'function' ? await severity(o.board) : severity, o.name ?? '') : unavailable(id)
+    return o ? evaluateTrusted(o.markee, o.message, o.board, { board: boardFlags.has(flagKey(o.markee)), site: siteFlags.has(flagKey(o.markee)) }, typeof severity === 'function' ? await severity(o.board) : severity, o.name ?? '', !cachedIds.has(o.markee)) : unavailable(id)
   }))
 }
 export async function softRecords(): Promise<PublishedModeration[]> {

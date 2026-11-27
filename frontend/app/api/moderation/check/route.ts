@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       && body.markeeIds.every(id => typeof id === 'string' && ADDRESS_PATTERN.test(id))
     if (isDraft) return NextResponse.json(checkDraft(body.message as string, severity, (body.name as string | undefined) ?? ''), { headers })
     if (isPublished) {
-      const items = await checkPublished([...new Set((body.markeeIds as string[]).map(id => id.toLowerCase()))], board => boardModerationPolicy(board, body.policy, body.severity, body.rules))
+      const items = await checkPublished([...new Set((body.markeeIds as string[]).map(id => id.toLowerCase()))], board => boardModerationPolicy(board, body.policy, body.severity, body.rules), { displayCache: true })
       return NextResponse.json({ enabled: autoEnabled(), items }, { headers })
     }
     return NextResponse.json({ error: 'Invalid moderation request' }, { status: 400, headers })

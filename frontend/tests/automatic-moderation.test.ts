@@ -11,7 +11,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { checkDraft, checkPublished, evaluateObserved, evaluateObservedBatch, softRecords, softKey, AUTO_POLICY, automaticDeps, automaticAuthDeps, contentHash, overrideKey, sharedOverrideKey, AUTO_LANGUAGES } from '../lib/moderation/automatic'
 import { approveMessage, falsePositiveMessage } from '../lib/moderation/automatic-message'
 import { POST } from '../app/api/moderation/false-positive/route'
-import { itemKey } from '../lib/moderation/server'
+import { flagKey, itemKey } from '../lib/moderation/server'
 import { moderationPolicy } from '../lib/moderation/severity'
 import { boardPolicyDeps } from '../lib/moderation/board-policy'
 import { draftModeration } from '../lib/sdk/transactions'
@@ -578,4 +578,40 @@ test('SDK reviews judge the name a message edit keeps, and nameless approvals re
   const response = await POST(new NextRequest('https://markee.xyz/api/moderation/false-positive', { method: 'POST', body: JSON.stringify({ chainId: 8453, markee: id, moderator: moderator.address, contentHash: hash, timestamp, scope: 'all', signature }) }))
   assert.equal(response.status, 200)
   assert.equal('nameHash' in records.get(sharedOverrideKey(id, hash)), false)
+})
+
+test('published display reads only cache misses and still applies current flags without republishing old text', async t => {
+  enable(t)
+  const { records } = storage(t)
+  const second = '0x3333333333333333333333333333333333333333'
+  const observations = new Map<string, { markee: string; board: string; message: string; name: string }>()
+  const reads: string[][] = []
+  t.mock.method(automaticDeps, 'readDisplayCache', async (keys: string[]) => keys.map(key => observations.get(key.slice(-42)) ?? null))
+  t.mock.method(automaticDeps, 'writeDisplayCache', async (items: { markee: string; board: string; message: string; name: string }[]) => {
+    for (const item of items) observations.set(item.markee, item)
+  })
+  t.mock.method(automaticDeps, 'read', async (ids: string[]) => {
+    reads.push(ids)
+    return ids.map(markee => ({ markee, board, message: 'Original text', name: 'Author' }))
+  })
+  const options = { displayCache: true }
+  await checkPublished([id], 'standard', options)
+  const newer = { contentHash: contentHash('New chain text'), state: 'soft-flagged' }
+  records.set(softKey(id), newer)
+  t.mock.method(automaticDeps, 'flags', async () => ({ board: [flagKey(id)], site: [] }))
+  const [cached, fresh] = await checkPublished([id, second], 'standard', options)
+  assert.deepEqual(reads, [[id], [second]])
+  assert.equal(cached.contentHash, contentHash('Original text'))
+  assert.equal(cached.state, 'manual-flagged')
+  assert.equal(fresh.state, 'visible')
+
+  t.mock.method(automaticDeps, 'flags', async () => ({ board: [], site: [] }))
+  await checkPublished([id, second], 'standard', options)
+  assert.deepEqual(records.get(softKey(id)), newer)
+  assert.equal(reads.length, 2)
+
+  observations.delete(id)
+  await checkPublished([id], 'standard', options)
+  await checkPublished([id])
+  assert.deepEqual(reads, [[id], [second], [id], [id]])
 })

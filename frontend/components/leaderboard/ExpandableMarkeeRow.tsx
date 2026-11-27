@@ -96,7 +96,7 @@ export function ExpandableMarkeeRow({
 
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
+            <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={markee.name ?? ''} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
           </span>
           {isOwner && (
             <span style={{ background: `${PURP}33`, color: PURP, fontFamily: MONO, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, borderRadius: 99, padding: '1px 7px', flexShrink: 0 }}>

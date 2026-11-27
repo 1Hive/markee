@@ -57,6 +57,18 @@ within the existing five-minute cadence, and unavailable/checkpoint behavior hol
 Production-only route logs cannot attribute staging usage of the same key. Keep
 the missing-usage fraction provisional until the same app/time window reconciles.
 
+### Published moderation checks
+
+The public published check shares complete, membership-verified chain observations
+for 60 seconds per Base Markee. Overlapping batches fetch only missing IDs.
+Manual flags, overrides, and board policies are resolved on each request. Cached
+observations cannot write into the moderation queue or invalidate SDK snapshots.
+The website batches nearby requests for 50 ms and still verifies the returned
+message hash against the displayed text and verifies the name hash before showing
+a live author name. A new revision stays hidden or blurred until a fresh
+observation is available. Scan and write paths keep their
+existing chain reads.
+
 ### Integration budget
 
 Run `npm run test:rpc:usage --prefix frontend -- --alchemy-usage /path/to/usage.json`
@@ -117,24 +129,24 @@ fixture savings or treats a forecast as a spending guarantee.
 `--fixtures-only` explicitly runs offline regression checks without the forecast;
 the report status is `fixtures-only`, not an account-budget pass. No arguments
 cannot silently skip the monthly check. Refresh the MCP export for every manual
-budget review. The account forecast is not a scheduled monitoring task.
+budget review. The manual integration check also accepts a fresh on-demand export.
 
 ### Account budget via the Alchemy Admin API
 
 Add a GitHub Actions **secret** named `ALCHEMY_ADMIN_ACCESS_KEY`, created for the
 Markee Alchemy team with **Usage read** permission. This is an Admin API access
 key, not an app RPC key. Do not put it in plain repository variables or Vercel.
-The separate `Alchemy account budget` workflow runs on pushes to `main`, or via
-Run workflow on `main` after the workflow is merged. It never runs on PR code.
-Keep this separate workflow out of required PR checks: current deployed account
-spend is not a forecast of an unmerged feature's incremental RPC cost.
+The separate `Alchemy account budget` workflow runs daily at 14:17 UTC on
+`main` once the workflow is merged. Use Run workflow on `main` for an
+on-demand forecast. The live workflow measures deployed account spend.
+The mocked RPC regression tests run in PR CI.
 
 The runner calls `GET /v1/usage/summary` and `POST /v1/usage/time-series` on
 `https://admin-api.alchemy.com`, follows pagination, and uses the 24 complete hours
 ending at the summary's latest complete hour. It uses the same unfiltered all-app
 forecast validation and CU limit as MCP exports. Missing credentials, invalid or
-incomplete data, API errors and over-limit forecasts fail this separate workflow;
-none are treated as a budget pass. The summary and `alchemy-account-forecast`
+incomplete data, API errors and over-limit forecasts fail scheduled and manual
+runs. The summary and `alchemy-account-forecast`
 artifact (14 days) show the result. Request credentials and raw responses are not
 logged or uploaded. No blockchain RPCs or transactions are issued by this check.
 
@@ -153,3 +165,15 @@ The local cache regression observed 64 upstream storage reads cold and zero
 warm. This is a synthetic local measurement, not a production savings claim.
 Compare uploaded counts from real CI runs at the same pinned fork block before
 and after rollout. No production transactions are required for these checks.
+
+### PR budget impact
+
+PRs targeting main compare the mocked moderation scan CU on the base SHA and
+the PR merge commit. The check adds the largest positive periodic scenario
+delta at the deployed five-minute scan cadence to the latest daily Alchemy
+account forecast. The result fails when the PR adds modeled CU and the
+combined forecast exceeds the configured limit. An already-over-limit
+baseline alone produces a warning. Missing or stale data is marked unavailable.
+This estimate covers the periodic moderation fixture. It does not estimate
+traffic to unrelated endpoints or credit undeployed savings. The PR workflow
+reads the daily report artifact without an Alchemy credential.

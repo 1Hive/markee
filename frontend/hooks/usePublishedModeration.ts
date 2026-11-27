@@ -11,7 +11,7 @@ function load(id: string): Promise<PublishedModeration> {
     waiting.push({ id, resolve, reject })
     if (scheduled) return
     scheduled = true
-    queueMicrotask(async () => {
+    setTimeout(async () => {
       scheduled = false
       const batch = waiting; waiting = []
       for (let i = 0; i < batch.length; i += 50) {
@@ -27,11 +27,38 @@ function load(id: string): Promise<PublishedModeration> {
           }
         } catch { slice.forEach(w => w.reject(new Error('Moderation check unavailable'))) }
       }
-    })
+    }, 50)
   })
 }
-export function usePublishedModeration(chainId: number | string, id: string, message?: string) {
+async function hashText(text: string) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(bytes), x => x.toString(16).padStart(2, '0')).join('')
+}
+
+export async function matchesPublishedRevision(
+  verdict: Pick<PublishedModeration, 'contentHash' | 'nameHash'>,
+  message: string,
+  name?: string,
+) {
+  return await hashText(message) === verdict.contentHash &&
+    (name === undefined || await hashText(name) === verdict.nameHash)
+}
+
+export function usePublishedModeration(chainId: number | string, id: string, message?: string, name?: string) {
   const { autoModerationEnabled } = useModeration()
-  const query = useQuery({ queryKey: ['message-moderation', chainId, id.toLowerCase(), message], enabled: autoModerationEnabled === true && Number(chainId) === 8453 && /^0x[0-9a-f]{40}$/i.test(id) && message !== undefined, queryFn: async () => { const result = await load(id.toLowerCase()); const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message!)); const hash = Array.from(new Uint8Array(bytes), x => x.toString(16).padStart(2, '0')).join(''); if (hash !== result.contentHash) throw new Error('Message changed; refreshing moderation'); return result }, staleTime: 10000, refetchInterval: 30000, retry: 1 })
+  const query = useQuery({
+    queryKey: ['message-moderation', chainId, id.toLowerCase(), message, name],
+    enabled: autoModerationEnabled === true && Number(chainId) === 8453 && /^0x[0-9a-f]{40}$/i.test(id) && message !== undefined,
+    queryFn: async () => {
+      const result = await load(id.toLowerCase())
+      if (!await matchesPublishedRevision(result, message!, name)) {
+        throw new Error('Message or author name changed; refreshing moderation')
+      }
+      return result
+    },
+    staleTime: 10000,
+    refetchInterval: 30000,
+    retry: 1,
+  })
   return { data: autoModerationEnabled ? query.data : undefined, unavailable: autoModerationEnabled === null || autoModerationEnabled === true && (!query.data || query.isError || query.data.siteState === 'unavailable') }
 }

@@ -1,0 +1,131 @@
+name: Alchemy PR forecast
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: alchemy-pr-forecast-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  forecast:
+    name: Estimate PR RPC budget impact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      rpc-changed: ${{ steps.rpc-diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          path: baseline
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            baseline/frontend/package-lock.json
+            candidate/frontend/package-lock.json
+      - name: Measure base fixture
+        working-directory: baseline/frontend
+        run: npm ci && npm run test:rpc:usage -- --fixtures-only
+      - name: Measure PR merge fixture
+        working-directory: candidate/frontend
+        run: npm ci && npm run test:rpc:usage -- --fixtures-only
+      - name: Test forecast calculation
+        run: node --test candidate/frontend/tests/integration/rpc-pr-forecast.test.mjs
+      - name: Compare mocked RPC usage
+        id: rpc-diff
+        run: |
+          node candidate/frontend/tests/integration/rpc-pr-forecast.mjs --compare \
+            baseline/frontend/test-results/rpc-usage/moderation.json \
+            candidate/frontend/test-results/rpc-usage/moderation.json
+      - name: Read latest deployed budget report
+        if: steps.rpc-diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow alchemy-usage.yml --branch main --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name alchemy-account-forecast --dir deployed || echo "::warning::No deployed forecast artifact"
+          fi
+      - name: Flag regression that exceeds the limit
+        if: steps.rpc-diff.outputs.changed == 'true'
+        env:
+          RPC_PR_REPORT: ${{ runner.temp }}/rpc-pr-forecast.md
+        run: |
+          node candidate/frontend/tests/integration/rpc-pr-forecast.mjs \
+            deployed/forecast.json \
+            baseline/frontend/test-results/rpc-usage/moderation.json \
+            candidate/frontend/test-results/rpc-usage/moderation.json
+
+      - name: Upload PR forecast comment
+        if: always() && !cancelled() && steps.rpc-diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpc-pr-forecast-comment
+          path: ${{ runner.temp }}/rpc-pr-forecast.md
+          if-no-files-found: ignore
+          retention-days: 1
+
+  comment:
+    name: Publish PR forecast comment
+    needs: forecast
+    if: always() && !cancelled() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Download forecast comment
+        if: needs.forecast.outputs.rpc-changed == 'true'
+        id: report
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: rpc-pr-forecast-comment
+          path: report
+      - name: Upsert forecast comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RPC_CHANGED: ${{ needs.forecast.outputs.rpc-changed }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          marker='<!-- markee-rpc-pr-forecast -->'
+          endpoint="repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments"
+          current_head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+          if [ "$current_head" != "$HEAD_SHA" ]; then
+            exit 0
+          fi
+
+          {
+            printf '%s\n' "$marker"
+            if [ -f report/rpc-pr-forecast.md ]; then
+              cat report/rpc-pr-forecast.md
+            elif [ "$RPC_CHANGED" = false ]; then
+              printf '## Alchemy PR forecast\n\nSkipped. The mocked fixtures showed identical RPC usage.\n'
+            else
+              printf '## Alchemy PR forecast\n\nForecast unavailable for this run.\n'
+            fi
+            printf '\n[Workflow run](%s/%s/actions/runs/%s) · Commit `%s`\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$HEAD_SHA"
+          } > comment.md
+
+          comment_id=$(gh api --paginate "$endpoint" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- markee-rpc-pr-forecast -->"))) | .id')
+          comment_id=${comment_id%%$'\n'*}
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -F body=@comment.md --silent
+          elif [ "$RPC_CHANGED" != false ]; then
+            gh api --method POST "$endpoint" -F body=@comment.md --silent
+          fi

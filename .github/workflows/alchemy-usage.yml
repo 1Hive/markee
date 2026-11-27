@@ -1,8 +1,8 @@
 name: Alchemy account budget
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '17 14 * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,14 +17,14 @@ jobs:
     name: Deployed account usage forecast
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Never expose the account access key to PR code. Keep this workflow separate
-    # from required PR regression checks: unrelated changes cannot fix account spend.
     if: github.ref == 'refs/heads/main'
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
