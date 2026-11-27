@@ -342,7 +342,7 @@ function WebsiteLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x${s
                     <FlagButton chainId={CANONICAL_CHAIN_ID} markeeId={topMarkee.address} boardAdmin={boardAdmin} compact />
                   </div>
                   <div className="flex items-center gap-4 mt-3">
-                    {topAuthor && <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topAuthor}</ModeratedAuthor></span>}
+                    {topAuthor && <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={topMarkee.name ?? ''} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topAuthor}</ModeratedAuthor></span>}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
                     {!NETWORK_PAUSED && (
                       <button

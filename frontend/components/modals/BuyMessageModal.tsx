@@ -658,7 +658,7 @@ export function BuyMessageModal({
                     </div>
                   </ModeratedContent>
                   {userMarkee && userAuthor && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userAuthor}</ModeratedAuthor></div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontStyle: 'italic' }}>- <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={userMarkee.name ?? ''} message={userMarkee.message ?? ''} markeeId={userMarkee.address}>{userAuthor}</ModeratedAuthor></div>
                   )}
                 </div>
               )}

@@ -505,7 +505,7 @@ function SuperfluidLeaderboard({ leaderboardAddress }: { leaderboardAddress: `0x
                   </div>
                   <div className="flex items-center gap-4 mt-3">
                     {topAuthor && (
-                      <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topAuthor}</ModeratedAuthor></span>
+                      <span className="text-[#8A8FBF] text-xs">by <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={topMarkee.name ?? ''} message={topMarkee.message ?? ''} markeeId={topMarkee.address} boardAdmin={boardAdmin}>{topAuthor}</ModeratedAuthor></span>
                     )}
                     <span className="text-[#F897FE] text-xs font-semibold">{formatFunds(topMarkee.totalFundsAdded)}</span>
                     {!NETWORK_PAUSED && !isLegacyContract && (

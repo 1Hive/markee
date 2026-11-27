@@ -607,7 +607,7 @@ function StreamingRow({ markee, rank, featured, board, boardAdmin, topSince, eth
         <TxHistoryToggle expanded={historyOpen} onClick={() => setHistoryOpen(v => !v)} rank={rank} />
 
         <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
+          <ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={markee.name ?? ''} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{displayName}</ModeratedAuthor>
           {isOwner && <span style={{ color: PINK }}> · yours</span>}
         </span>
 

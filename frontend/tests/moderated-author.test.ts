@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
+import { matchesPublishedRevision } from '../hooks/usePublishedModeration'
 import React, { createElement as h, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -36,4 +38,14 @@ test('a flagged Markee blurs its author label for viewers, but not for its moder
 test('until automatic moderation has a verdict, the author label stays blurred', () => {
   assert.ok(blurred(render({ autoModerationEnabled: true }, { message: 'Hello', children: 'Gossman' })))
   assert.ok(blurred(render({ autoModerationEnabled: null }, { message: 'Hello', children: 'Gossman' })))
+})
+
+
+test('a name-only edit requires a verdict for the new name even when the message hash matches', async () => {
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex')
+  const verdict = { contentHash: hash('Hello'), nameHash: hash('Original name') }
+  assert.equal(await matchesPublishedRevision(verdict, 'Hello', 'Original name'), true)
+  assert.equal(await matchesPublishedRevision(verdict, 'Hello', 'Edited name'), false)
+  assert.equal(await matchesPublishedRevision({ contentHash: verdict.contentHash }, 'Hello', 'Edited name'), false)
+  assert.equal(await matchesPublishedRevision(verdict, 'Hello'), true)
 })

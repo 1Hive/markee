@@ -290,7 +290,7 @@ function SignRow({
           </div>
         </ModeratedContent>
         <div style={{ marginTop: 2 }}>
-          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
+          <MessageMeta views={views} isOwner={isOwner} authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={markee.name ?? ''} message={markee.message ?? ''} markeeId={markee.address} boardAdmin={boardAdmin}>{subtitle}</ModeratedAuthor>} />
         </div>
       </div>
       <span style={{ color: BLUE, fontFamily: MONO, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{eth} ETH</span>
@@ -911,7 +911,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                       <MessageMeta
                         views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                         isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                        authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{authorName(target.name, target.owner) || fmtAddr(target.owner)}</ModeratedAuthor>}
+                        authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={target.name ?? ''} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{authorName(target.name, target.owner) || fmtAddr(target.owner)}</ModeratedAuthor>}
                       />
                     </div>
                   </div>
@@ -956,7 +956,7 @@ export function MarkeeSignModal({ isOpen, onClose, leaderboardAddress, initialVi
                         <MessageMeta
                           views={viewsMap.get(target.address.toLowerCase()) ?? 0}
                           isOwner={!!activeAddress && target.owner.toLowerCase() === activeAddress.toLowerCase()}
-                          authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{authorName(target.name, target.owner) || fmtAddr(target.owner)}</ModeratedAuthor>}
+                          authorLabel={<ModeratedAuthor chainId={CANONICAL_CHAIN_ID} name={target.name ?? ''} message={target.message ?? ''} markeeId={target.address} boardAdmin={meta?.admin}>{authorName(target.name, target.owner) || fmtAddr(target.owner)}</ModeratedAuthor>}
                         />
                       </div>
                     </div>
